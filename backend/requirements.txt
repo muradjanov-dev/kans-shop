@@ -1,0 +1,55 @@
+# Installed unpinned into a clean Python 3.13 venv on 2026-07-29, verified with `pip install`,
+# then frozen to these exact resolved versions (`pip freeze`). Re-verify with `pip install -r
+# requirements.txt` after any change. See docs/ASSUMPTIONS.md.
+
+# --- Telegram bot ---
+aiogram==3.30.0
+
+# --- Web framework / API ---
+fastapi==0.140.13
+starlette==1.3.1
+uvicorn==0.51.0
+httptools==0.8.0
+watchfiles==1.2.0
+websockets==16.1.1
+python-multipart==0.0.32
+# uvloop accelerates asyncio on Linux only; not resolvable in the Windows dev venv, added here
+# with a platform marker so the Linux Docker image still gets it via uvicorn[standard].
+uvloop==0.22.1; sys_platform != "win32"
+
+# --- Database ---
+SQLAlchemy==2.0.51
+alembic==1.18.5
+asyncpg==0.31.0
+psycopg[binary]==3.3.4
+greenlet==3.5.4
+
+# --- Cache / FSM storage / rate limiting ---
+redis==8.0.1
+
+# --- Validation / settings ---
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-dotenv==1.2.2
+
+# --- Auth ---
+PyJWT==2.13.0
+
+# --- Logging ---
+structlog==26.1.0
+
+# --- Files / exports ---
+openpyxl==3.1.5
+pillow==12.3.0
+aiofiles==25.1.0
+
+# --- HTTP client (aiogram dep + used directly in tests) ---
+httpx==0.28.1
+
+# --- Dev / test / lint ---
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+ruff==0.16.0
+black==26.5.1
+mypy==2.3.0

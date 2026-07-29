@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kansshop
+      POSTGRES_PASSWORD: kansshop
+      POSTGRES_DB: kansshop
+    ports:
+      - "5432:5432"
+    volumes:
+      - kansshop_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kansshop -d kansshop"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - kansshop_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://kansshop:kansshop@postgres:5432/kansshop
+      DATABASE_URL_SYNC: postgresql+psycopg://kansshop:kansshop@postgres:5432/kansshop
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - kansshop_media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["/app/entrypoint.sh", "api"]
+
+  bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://kansshop:kansshop@postgres:5432/kansshop
+      DATABASE_URL_SYNC: postgresql+psycopg://kansshop:kansshop@postgres:5432/kansshop
+      REDIS_URL: redis://redis:6379/0
+      # Polling mode is only meant for local docker-compose testing without a public webhook URL.
+      # In production, leave this container stopped/unused and let `api` run the webhook instead.
+      WEBHOOK_URL: ""
+    volumes:
+      - kansshop_media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["/app/entrypoint.sh", "bot-polling"]
+    profiles: ["polling"]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - kansshop_media:/media:ro
+    depends_on:
+      - api
+
+volumes:
+  kansshop_pgdata:
+  kansshop_redisdata:
+  kansshop_media:
