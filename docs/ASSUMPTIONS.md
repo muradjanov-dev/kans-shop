@@ -47,6 +47,36 @@ ambiguous or silent, the decision made and its rationale are logged here.
   middleware + a FastAPI dependency (no extra framework), per spec's stated limits (20 req/min
   general, 3 checkouts/min).
 
+## Phase 2 — service layer business rules
+- **Cart pricing is always live**: `cart_service.calculate_subtotal` prices items at the
+  product's *current* `price`, not the `price_snapshot` captured when the item was added.
+  `price_snapshot` is still written/updated on every add (per DB_SCHEMA.md) for audit purposes,
+  but display/total math always re-reads the live product row — consistent with the spec's
+  "narx hech qachon klientdan olinmaydi — har doim bazadan" rule, extended from checkout to the
+  cart view as well so the two never disagree.
+- **Checkout re-prices from the DB at checkout time**, independent of whatever the cart showed —
+  `order_service.checkout` locks each product row (`SELECT ... FOR UPDATE`, ordered by
+  `product_id` to prevent cross-checkout deadlocks) and uses that row's live `price`/`stock_qty`.
+- **`min_order_amount` does not apply to `preorder`** orders: preorder is a manual
+  "a manager will call you back" flow (no payment collected, no address), not a self-checkout,
+  so the minimum-basket guard is skipped for it. Delivery and pickup both enforce it.
+- **`preorder` payment_method defaults to `cash`** as a placeholder — the enum has no "not
+  applicable" value and the bot never asks a preorder customer for a payment method (spec 5.5).
+- **Order status transitions are a fixed graph** (`order_service.ALLOWED_TRANSITIONS`):
+  new→confirmed→preparing→{delivering,completed}→completed. Skipping a step (e.g. new straight to
+  delivering) raises `OrderAlreadyProcessedError`. `cancel_order` is reachable from any
+  non-terminal status and restores `stock_qty`/`sold_count` on the affected products.
+- **Stock-safety is verified with a real concurrency test**, not just code review:
+  `tests/test_order_service.py::test_concurrent_checkouts_never_oversell_stock` runs two
+  independent DB connections racing to buy the last unit of a product via `asyncio.gather` and
+  asserts exactly one succeeds — this is the Definition-of-Done item "Qoldiq yetmasa buyurtma
+  yaratilmaydi (race condition test qilingan)".
+- **Test database**: a separate `kansshop_test` Postgres database (not `kansshop`) is used by
+  the pytest suite (`TEST_DATABASE_URL`, defaults to `kansshop_test` on the same local Postgres
+  container). Schema is built once per test session directly from `Base.metadata` (not via
+  Alembic) for speed; each test runs inside a SAVEPOINT that's rolled back afterward, except the
+  dedicated concurrency test which needs real cross-connection commits and manages its own data.
+
 ## Deferred/out of scope unless requested later
 - Payment gateway *callbacks* for Click/Payme are modeled in the `payment_method` enum and the
   order/payment flow is built to accommodate them, but the spec's actual checkout flow only

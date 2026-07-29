@@ -1,8 +1,13 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import BigInteger, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.models.mixins import IDMixin, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.db.models.product import Product
 
 
 class Favorite(IDMixin, TimestampMixin, Base):
@@ -20,6 +25,8 @@ class Favorite(IDMixin, TimestampMixin, Base):
     product_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("products.id", ondelete="CASCADE"), nullable=False
     )
+
+    product: Mapped["Product"] = relationship("Product")
 
     def __repr__(self) -> str:
         return f"<Favorite user_id={self.user_id} product_id={self.product_id}>"
