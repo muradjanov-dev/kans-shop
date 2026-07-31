@@ -77,6 +77,30 @@ ambiguous or silent, the decision made and its rationale are logged here.
   Alembic) for speed; each test runs inside a SAVEPOINT that's rolled back afterward, except the
   dedicated concurrency test which needs real cross-connection commits and manages its own data.
 
+## Phase 4 — cart, checkout FSM, receipts
+- **Checkout FSM sends sequential new messages rather than editing in place.** Catalog/cart
+  browsing (Phase 3, and cart in this phase) edit the same message for a scrollable-app feel,
+  but the checkout wizard mixes inline keyboards with two reply-keyboard steps (phone via
+  `request_contact`, address via `request_location`) that Telegram cannot attach to an edited
+  message — so every step in the wizard sends a fresh message for consistency, not just those two.
+- **"⬅️ Orqaga" is not offered on the phone and address steps** (reply-keyboard-based, per
+  above) — only "❌ Bekor qilish". All inline-keyboard steps (name, address comment, comment,
+  payment, receipt, confirm) do support back. Documented gap vs. the spec's "har qadamda orqaga
+  va bekor qilish", justified by reply-keyboard/inline-keyboard being mutually exclusive on one
+  message; the user can simply retype instead of using "back" at those two steps.
+- **"✏️ O'zgartirish" at the final confirmation restarts the whole wizard** from order-type,
+  rather than jumping to edit one specific field. Field-level re-entry would need materially more
+  state-machine branching for marginal benefit at this stage.
+- **`product_name_snapshot` is captured in the customer's checkout-time language** (`uz` or
+  `ru`), since `order_items` has a single snapshot column (per docs/DB_SCHEMA.md), not one per
+  language. `order_service.checkout()` takes a `lang` parameter for this.
+- **Receipts mirror the product-image dual-storage pattern** (Telegram `file_id` + a copy on
+  disk under `MEDIA_ROOT/receipts/`), but the disk copy is only written *after* the order is
+  created (inside the confirm handler), because the filename is keyed by `order.id`, which
+  doesn't exist yet while the user is still in the `uploading_receipt` FSM step.
+- **Preorder skips the payment step entirely**; `payment_method` defaults to `cash` internally
+  for those orders (enum has no "n/a" value — see Phase 2 assumption on this).
+
 ## Deferred/out of scope unless requested later
 - Payment gateway *callbacks* for Click/Payme are modeled in the `payment_method` enum and the
   order/payment flow is built to accommodate them, but the spec's actual checkout flow only

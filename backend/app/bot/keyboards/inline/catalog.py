@@ -5,9 +5,12 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.keyboards.callback_data import (
+    AddToCartCallback,
     CategoryCallback,
+    FavoriteToggleCallback,
     ProductCallback,
     ProductListCallback,
+    ProductQtyCallback,
     SearchPageCallback,
     SearchProductCallback,
 )
@@ -133,9 +136,65 @@ def search_results_keyboard(
 
 
 def product_detail_keyboard(
-    *, back_callback_data: str, translator: Callable[..., str]
+    *,
+    product_id: int,
+    origin: str,
+    ref_id: int,
+    page: int,
+    qty: int,
+    in_stock: bool,
+    is_favorite: bool,
+    back_callback_data: str,
+    translator: Callable[..., str],
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    if in_stock:
+        builder.row(
+            InlineKeyboardButton(
+                text="➖",
+                callback_data=ProductQtyCallback(
+                    product_id=product_id,
+                    origin=origin,
+                    ref_id=ref_id,
+                    page=page,
+                    qty=qty,
+                    action="dec",
+                ).pack(),
+            ),
+            InlineKeyboardButton(text=str(qty), callback_data="noop"),
+            InlineKeyboardButton(
+                text="➕",
+                callback_data=ProductQtyCallback(
+                    product_id=product_id,
+                    origin=origin,
+                    ref_id=ref_id,
+                    page=page,
+                    qty=qty,
+                    action="inc",
+                ).pack(),
+            ),
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=translator("cart.add_button"),
+                callback_data=AddToCartCallback(
+                    product_id=product_id, qty=qty, origin=origin, ref_id=ref_id, page=page
+                ).pack(),
+            )
+        )
+    fav_text = (
+        translator("favorites.remove_button")
+        if is_favorite
+        else translator("favorites.add_button")
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=fav_text,
+            callback_data=FavoriteToggleCallback(
+                product_id=product_id, origin=origin, ref_id=ref_id, page=page
+            ).pack(),
+        )
+    )
     builder.row(
         InlineKeyboardButton(text=translator("common.back"), callback_data=back_callback_data)
     )

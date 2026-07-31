@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.user.catalog import send_category_level, send_product_detail
 from app.bot.keyboards.callback_data import (
+    ORIGIN_CATEGORY,
     ROOT_CATEGORY_ID,
     CategoryCallback,
     LanguageCallback,
@@ -22,7 +23,13 @@ router = Router(name="start")
 
 
 async def _handle_deeplink(
-    message: Message, session: AsyncSession, *, lang: str, translator: Callable, payload: str
+    message: Message,
+    session: AsyncSession,
+    *,
+    user_id: int,
+    lang: str,
+    translator: Callable,
+    payload: str,
 ) -> None:
     if payload.startswith("product_"):
         try:
@@ -34,6 +41,10 @@ async def _handle_deeplink(
             message.answer,
             session,
             product_id,
+            user_id=user_id,
+            origin=ORIGIN_CATEGORY,
+            ref_id=ROOT_CATEGORY_ID,
+            page=1,
             back_callback_data=back,
             lang=lang,
             translator=translator,
@@ -72,7 +83,9 @@ async def cmd_start(
         _("start.welcome", name=user.first_name), reply_markup=main_menu_keyboard(_)
     )
     if command.args:
-        await _handle_deeplink(message, session, lang=lang, translator=_, payload=command.args)
+        await _handle_deeplink(
+            message, session, user_id=user.id, lang=lang, translator=_, payload=command.args
+        )
 
 
 @router.callback_query(LanguageCallback.filter())
@@ -105,6 +118,7 @@ async def on_language_selected(
         await _handle_deeplink(
             message,
             session,
+            user_id=user.id,
             lang=callback_data.code,
             translator=translator,
             payload=deeplink,

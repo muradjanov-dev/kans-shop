@@ -4,6 +4,10 @@ from aiogram.filters.callback_data import CallbackData
 # Real category ids are BigInteger autoincrement starting at 1, so 0 is never a real category.
 ROOT_CATEGORY_ID = 0
 
+# Where a product detail view was opened from — determines what "back"/re-render targets.
+ORIGIN_CATEGORY = "cat"
+ORIGIN_SEARCH = "search"
+
 
 class LanguageCallback(CallbackData, prefix="lang"):
     code: str
@@ -31,3 +35,83 @@ class SearchPageCallback(CallbackData, prefix="spage"):
 class SearchProductCallback(CallbackData, prefix="sprod"):
     product_id: int
     page: int
+
+
+# --- Product detail: quantity picker / add-to-cart / favorite ---
+# `origin`+`ref_id`+`page` let these buttons re-render the exact same product detail view
+# (and know how "back" should behave) regardless of whether the product was reached via
+# category browsing (origin="cat", ref_id=category_id) or search (origin="search", ref_id=0).
+
+
+class ProductQtyCallback(CallbackData, prefix="pqty"):
+    product_id: int
+    origin: str
+    ref_id: int
+    page: int
+    qty: int
+    action: str  # "inc" | "dec"
+
+
+class AddToCartCallback(CallbackData, prefix="addcart"):
+    product_id: int
+    qty: int
+    origin: str
+    ref_id: int
+    page: int
+
+
+class FavoriteToggleCallback(CallbackData, prefix="fav"):
+    product_id: int
+    origin: str
+    ref_id: int
+    page: int
+
+
+# --- Cart ---
+class CartItemQtyCallback(CallbackData, prefix="citem"):
+    product_id: int
+    action: str  # "inc" | "dec" | "remove"
+
+
+class CartActionCallback(CallbackData, prefix="cart"):
+    action: str  # "clear" | "clear_confirm" | "clear_cancel" | "checkout"
+
+
+# --- Checkout FSM ---
+class OrderTypeCallback(CallbackData, prefix="otype"):
+    value: str  # OrderType.value
+
+
+class UseDefaultNameCallback(CallbackData, prefix="usename"):
+    pass
+
+
+class SkipStepCallback(CallbackData, prefix="skip"):
+    step: str
+
+
+class PaymentMethodCallback(CallbackData, prefix="pay"):
+    value: str  # PaymentMethod.value
+
+
+class CheckoutNavCallback(CallbackData, prefix="cknav"):
+    action: str  # "back" | "cancel" | "confirm" | "edit"
+
+
+# --- Order history ---
+class OrderListCallback(CallbackData, prefix="olist"):
+    page: int
+
+
+class OrderDetailCallback(CallbackData, prefix="odetail"):
+    order_id: int
+    page: int
+
+
+class ReorderCallback(CallbackData, prefix="reorder"):
+    order_id: int
+
+
+# --- Favorites ---
+class FavoriteRemoveCallback(CallbackData, prefix="favrm"):
+    product_id: int

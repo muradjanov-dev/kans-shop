@@ -33,13 +33,3 @@ async def show_contact(message: Message, session: AsyncSession, _: Callable) -> 
 @router.message(StateFilter(None), F.text.in_(menu_button_texts("menu.settings")))
 async def show_settings(message: Message, _: Callable) -> None:
     await message.answer(_("settings.text"), reply_markup=language_keyboard())
-
-
-_STUB_KEYS = ("menu.cart", "menu.orders", "menu.favorites")
-
-
-@router.message(
-    StateFilter(None), F.text.in_({t for k in _STUB_KEYS for t in menu_button_texts(k)})
-)
-async def coming_soon(message: Message, _: Callable) -> None:
-    await message.answer(_("common.coming_soon"))

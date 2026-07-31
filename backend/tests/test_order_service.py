@@ -59,6 +59,17 @@ async def test_checkout_happy_path_creates_order_and_decrements_stock(
     assert cart.items == []
 
 
+async def test_checkout_snapshots_product_name_in_customer_language(
+    db_session: AsyncSession, user: User, product: Product
+) -> None:
+    await setting_repository.set_value(db_session, "min_order_amount", 0)
+    await cart_service.add_item(db_session, user.id, product.id, quantity=1)
+
+    order = await _checkout_delivery(db_session, user.id, lang="ru")
+
+    assert order.items[0].product_name_snapshot == product.name_ru
+
+
 async def test_checkout_below_min_order_amount_raises(
     db_session: AsyncSession, user: User, product: Product
 ) -> None:

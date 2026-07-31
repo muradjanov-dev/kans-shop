@@ -49,7 +49,7 @@ async def _lock_and_validate_stock(
     return locked
 
 
-async def _calculate_delivery_fee(
+async def calculate_delivery_fee(
     session: AsyncSession, order_type: OrderType, subtotal: Decimal
 ) -> Decimal:
     if order_type != OrderType.DELIVERY:
@@ -77,6 +77,7 @@ async def checkout(
     longitude: Decimal | None = None,
     comment: str | None = None,
     source: str = "bot",
+    lang: str = "uz",
 ) -> Order:
     cart = await cart_repository.get_active_cart(session, user_id)
     if cart is None or not cart.items:
@@ -97,7 +98,7 @@ async def checkout(
                 details={"subtotal": str(subtotal), "min_amount": str(min_amount)},
             )
 
-    delivery_fee = await _calculate_delivery_fee(session, order_type, subtotal)
+    delivery_fee = await calculate_delivery_fee(session, order_type, subtotal)
     discount = Decimal("0")
     total = subtotal + delivery_fee - discount
 
@@ -123,11 +124,12 @@ async def checkout(
     )
 
     for product, quantity in locked_products:
+        name_snapshot = product.name_uz if lang == "uz" else product.name_ru
         await order_repository.add_item(
             session,
             order,
             product_id=product.id,
-            product_name_snapshot=product.name_uz,
+            product_name_snapshot=name_snapshot,
             product_sku_snapshot=product.sku,
             price=product.price,
             quantity=quantity,

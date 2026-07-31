@@ -4,14 +4,19 @@ from decimal import Decimal
 from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InaccessibleMessage, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.callback_data import (
+    ORIGIN_CATEGORY,
+    ORIGIN_SEARCH,
     ROOT_CATEGORY_ID,
+    AddToCartCallback,
     CategoryCallback,
+    FavoriteToggleCallback,
     ProductCallback,
     ProductListCallback,
+    ProductQtyCallback,
     SearchPageCallback,
     SearchProductCallback,
 )
@@ -22,26 +27,18 @@ from app.bot.keyboards.inline.catalog import (
     search_results_keyboard,
 )
 from app.bot.utils.i18n import menu_button_texts
-from app.core.exceptions import CategoryNotFoundError, ProductNotFoundError
+from app.bot.utils.messages import require_message
+from app.core.exceptions import CategoryNotFoundError, OutOfStockError, ProductNotFoundError
 from app.db.models.category import Category
 from app.db.models.product import Product
-from app.services import catalog_service
+from app.db.models.user import User
+from app.db.repositories import favorite_repository
+from app.services import cart_service, catalog_service
 from app.services.common import DEFAULT_CATALOG_PAGE_SIZE
 
 router = Router(name="catalog")
 
 Sender = Callable[..., Awaitable[object]]
-
-
-async def _require_message(
-    callback: CallbackQuery, translator: Callable[..., str]
-) -> Message | None:
-    """`CallbackQuery.message` can be None or an InaccessibleMessage (too old to edit) — this
-    narrows to a real, editable Message or bails out with a localized alert."""
-    if callback.message is None or isinstance(callback.message, InaccessibleMessage):
-        await callback.answer(translator("common.error_generic"), show_alert=True)
-        return None
-    return callback.message
 
 
 def _category_name(category: Category, lang: str) -> str:
@@ -58,6 +55,12 @@ def _product_description(product: Product, lang: str) -> str:
 
 def _format_price(price: Decimal) -> str:
     return f"{price:,.0f}".replace(",", " ")
+
+
+def _back_callback_for(origin: str, ref_id: int, page: int) -> str:
+    if origin == ORIGIN_SEARCH:
+        return SearchPageCallback(page=page).pack()
+    return ProductListCallback(category_id=ref_id, page=page).pack()
 
 
 async def send_category_level(
@@ -145,6 +148,11 @@ async def send_product_detail(
     session: AsyncSession,
     product_id: int,
     *,
+    user_id: int,
+    origin: str,
+    ref_id: int,
+    page: int,
+    qty: int = 1,
     back_callback_data: str,
     lang: str,
     translator: Callable[..., str],
@@ -160,11 +168,8 @@ async def send_product_detail(
     description = _product_description(product, lang)
     price = _format_price(product.price)
     unit = translator(f"units.{product.unit.value}")
-    stock = (
-        translator("catalog.out_of_stock")
-        if product.stock_qty <= 0
-        else str(product.stock_qty)
-    )
+    in_stock = product.stock_qty > 0
+    stock = str(product.stock_qty) if in_stock else translator("catalog.out_of_stock")
 
     if description:
         text = translator(
@@ -184,10 +189,21 @@ async def send_product_detail(
             unit=unit,
         )
 
+    is_favorite = (await favorite_repository.get(session, user_id, product_id)) is not None
+    qty = max(1, min(qty, product.stock_qty)) if in_stock else qty
+
     await send(
         text,
         reply_markup=product_detail_keyboard(
-            back_callback_data=back_callback_data, translator=translator
+            product_id=product_id,
+            origin=origin,
+            ref_id=ref_id,
+            page=page,
+            qty=qty,
+            in_stock=in_stock,
+            is_favorite=is_favorite,
+            back_callback_data=back_callback_data,
+            translator=translator,
         ),
     )
 
@@ -209,7 +225,7 @@ async def on_category_selected(
     lang: str,
     _: Callable,
 ) -> None:
-    message = await _require_message(callback, _)
+    message = await require_message(callback, _)
     if message is None:
         return
 
@@ -230,7 +246,7 @@ async def on_product_list_page(
     lang: str,
     _: Callable,
 ) -> None:
-    message = await _require_message(callback, _)
+    message = await require_message(callback, _)
     if message is None:
         return
 
@@ -248,10 +264,11 @@ async def on_product_selected(
     callback: CallbackQuery,
     callback_data: ProductCallback,
     session: AsyncSession,
+    user: User,
     lang: str,
     _: Callable,
 ) -> None:
-    message = await _require_message(callback, _)
+    message = await require_message(callback, _)
     if message is None:
         return
 
@@ -265,9 +282,109 @@ async def on_product_selected(
         edit,
         session,
         callback_data.product_id,
+        user_id=user.id,
+        origin=ORIGIN_CATEGORY,
+        ref_id=callback_data.category_id,
+        page=callback_data.page,
         back_callback_data=back,
         lang=lang,
         translator=_,
+    )
+    await callback.answer()
+
+
+@router.callback_query(ProductQtyCallback.filter())
+async def on_product_qty_change(
+    callback: CallbackQuery,
+    callback_data: ProductQtyCallback,
+    session: AsyncSession,
+    user: User,
+    lang: str,
+    _: Callable,
+) -> None:
+    message = await require_message(callback, _)
+    if message is None:
+        return
+
+    async def edit(text: str, reply_markup=None) -> object:
+        return await message.edit_text(text, reply_markup=reply_markup)
+
+    delta = 1 if callback_data.action == "inc" else -1
+    new_qty = max(1, callback_data.qty + delta)
+    back = _back_callback_for(callback_data.origin, callback_data.ref_id, callback_data.page)
+    await send_product_detail(
+        edit,
+        session,
+        callback_data.product_id,
+        user_id=user.id,
+        origin=callback_data.origin,
+        ref_id=callback_data.ref_id,
+        page=callback_data.page,
+        qty=new_qty,
+        back_callback_data=back,
+        lang=lang,
+        translator=_,
+        track_view=False,
+    )
+    await callback.answer()
+
+
+@router.callback_query(AddToCartCallback.filter())
+async def on_add_to_cart(
+    callback: CallbackQuery,
+    callback_data: AddToCartCallback,
+    session: AsyncSession,
+    user: User,
+    _: Callable,
+) -> None:
+    try:
+        await cart_service.add_item(
+            session, user.id, callback_data.product_id, callback_data.qty
+        )
+    except OutOfStockError:
+        await callback.answer(_("cart.out_of_stock_alert"), show_alert=True)
+        return
+    except ProductNotFoundError:
+        await callback.answer(_("common.not_found"), show_alert=True)
+        return
+    await callback.answer(_("cart.added_alert"))
+
+
+@router.callback_query(FavoriteToggleCallback.filter())
+async def on_favorite_toggle(
+    callback: CallbackQuery,
+    callback_data: FavoriteToggleCallback,
+    session: AsyncSession,
+    user: User,
+    lang: str,
+    _: Callable,
+) -> None:
+    message = await require_message(callback, _)
+    if message is None:
+        return
+
+    existing = await favorite_repository.get(session, user.id, callback_data.product_id)
+    if existing is not None:
+        await favorite_repository.remove(session, user.id, callback_data.product_id)
+    else:
+        await favorite_repository.add(session, user.id, callback_data.product_id)
+
+    async def edit(text: str, reply_markup=None) -> object:
+        return await message.edit_text(text, reply_markup=reply_markup)
+
+    back = _back_callback_for(callback_data.origin, callback_data.ref_id, callback_data.page)
+    await send_product_detail(
+        edit,
+        session,
+        callback_data.product_id,
+        user_id=user.id,
+        origin=callback_data.origin,
+        ref_id=callback_data.ref_id,
+        page=callback_data.page,
+        back_callback_data=back,
+        lang=lang,
+        translator=_,
+        track_view=False,
     )
     await callback.answer()
 
@@ -286,7 +403,7 @@ async def on_search_page(
     _: Callable,
     state: FSMContext,
 ) -> None:
-    message = await _require_message(callback, _)
+    message = await require_message(callback, _)
     if message is None:
         return
 
@@ -307,10 +424,11 @@ async def on_search_product_selected(
     callback: CallbackQuery,
     callback_data: SearchProductCallback,
     session: AsyncSession,
+    user: User,
     lang: str,
     _: Callable,
 ) -> None:
-    message = await _require_message(callback, _)
+    message = await require_message(callback, _)
     if message is None:
         return
 
@@ -322,6 +440,10 @@ async def on_search_product_selected(
         edit,
         session,
         callback_data.product_id,
+        user_id=user.id,
+        origin=ORIGIN_SEARCH,
+        ref_id=0,
+        page=callback_data.page,
         back_callback_data=back,
         lang=lang,
         translator=_,
