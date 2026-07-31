@@ -1,0 +1,57 @@
+{
+  "common": {
+    "back": "⬅️ Назад",
+    "cancel": "❌ Отмена",
+    "skip": "⏭ Пропустить",
+    "error_generic": "Произошла ошибка, попробуйте ещё раз.",
+    "rate_limited": "Слишком много запросов, подождите немного.",
+    "not_found": "Не найдено.",
+    "coming_soon": "🚧 Этот раздел скоро будет доступен."
+  },
+  "start": {
+    "choose_language": "Выберите язык:",
+    "welcome": "Здравствуйте, {name}! 👋\n\nДобро пожаловать в Kans Shop — надёжный магазин канцтоваров для офиса и школы.",
+    "language_set": "Язык изменён на русский ✅"
+  },
+  "menu": {
+    "catalog": "🛍 Каталог",
+    "cart": "🛒 Корзина",
+    "orders": "📦 Мои заказы",
+    "favorites": "⭐️ Избранное",
+    "about": "ℹ️ О нас",
+    "contact": "☎️ Контакты",
+    "webapp": "🌐 Открыть приложение",
+    "settings": "⚙️ Настройки",
+    "choose_action": "Выберите действие в меню 👇"
+  },
+  "catalog": {
+    "title": "🛍 Каталог",
+    "choose_category": "Выберите категорию:",
+    "empty_catalog": "Каталог пока пуст.",
+    "empty_category": "В этой категории пока нет товаров.",
+    "product_card": "<b>{name}</b>\n\n{description}\n\n💰 Цена: {price} сум\n📦 Остаток: {stock} {unit}",
+    "product_card_no_description": "<b>{name}</b>\n\n💰 Цена: {price} сум\n📦 Остаток: {stock} {unit}",
+    "out_of_stock": "Нет в наличии ❌",
+    "page_indicator": "📄 {page}/{total_pages}",
+    "search_prompt": "🔎 Введите название товара для поиска:",
+    "search_results": "По запросу \"{query}\" найдено {count} результатов:",
+    "search_empty": "Ничего не найдено. Попробуйте другой запрос."
+  },
+  "units": {
+    "dona": "шт",
+    "quti": "коробка",
+    "paket": "пакет",
+    "komplekt": "комплект"
+  },
+  "about": {
+    "text": "ℹ️ <b>О Kans Shop</b>\n\nМы — надёжный интернет-магазин канцтоваров для офиса и школы в Ташкенте. В каталоге — письменные принадлежности, бумажная продукция, школьные товары и многое другое."
+  },
+  "contact": {
+    "text": "☎️ <b>Контакты</b>\n\n📞 Телефон: {phone}\n💬 Telegram: @{username}\n🕐 Часы работы: {work_hours}"
+  },
+  "settings": {
+    "text": "⚙️ Настройки",
+    "change_language": "🌐 Изменить язык",
+    "current_language": "Текущий язык: Русский"
+  }
+}

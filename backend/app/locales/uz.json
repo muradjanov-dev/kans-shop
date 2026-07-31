@@ -1,0 +1,57 @@
+{
+  "common": {
+    "back": "⬅️ Orqaga",
+    "cancel": "❌ Bekor qilish",
+    "skip": "⏭ O'tkazib yuborish",
+    "error_generic": "Xatolik yuz berdi, qaytadan urinib ko'ring.",
+    "rate_limited": "Juda tez-tez so'rov yubordingiz, biroz kuting.",
+    "not_found": "Topilmadi.",
+    "coming_soon": "🚧 Bu bo'lim tez orada ishga tushadi."
+  },
+  "start": {
+    "choose_language": "Tilni tanlang:",
+    "welcome": "Assalomu alaykum, {name}! 👋\n\nKans Shop botiga xush kelibsiz — ofis va maktab buyumlari uchun ishonchli manzil.",
+    "language_set": "Til o'zbek tiliga o'rnatildi ✅"
+  },
+  "menu": {
+    "catalog": "🛍 Katalog",
+    "cart": "🛒 Savat",
+    "orders": "📦 Buyurtmalarim",
+    "favorites": "⭐️ Sevimlilar",
+    "about": "ℹ️ Biz haqimizda",
+    "contact": "☎️ Aloqa",
+    "webapp": "🌐 Ilovani ochish",
+    "settings": "⚙️ Sozlamalar",
+    "choose_action": "Quyidagi menyudan birini tanlang 👇"
+  },
+  "catalog": {
+    "title": "🛍 Katalog",
+    "choose_category": "Kategoriyani tanlang:",
+    "empty_catalog": "Katalog hozircha bo'sh.",
+    "empty_category": "Bu kategoriyada hozircha mahsulot yo'q.",
+    "product_card": "<b>{name}</b>\n\n{description}\n\n💰 Narx: {price} so'm\n📦 Qoldiq: {stock} {unit}",
+    "product_card_no_description": "<b>{name}</b>\n\n💰 Narx: {price} so'm\n📦 Qoldiq: {stock} {unit}",
+    "out_of_stock": "Mavjud emas ❌",
+    "page_indicator": "📄 {page}/{total_pages}",
+    "search_prompt": "🔎 Qidirmoqchi bo'lgan mahsulot nomini yozing:",
+    "search_results": "\"{query}\" bo'yicha {count} ta natija topildi:",
+    "search_empty": "Hech narsa topilmadi. Boshqa so'z bilan urinib ko'ring."
+  },
+  "units": {
+    "dona": "dona",
+    "quti": "quti",
+    "paket": "paket",
+    "komplekt": "komplekt"
+  },
+  "about": {
+    "text": "ℹ️ <b>Kans Shop haqida</b>\n\nBiz — Toshkentdagi ofis va maktab buyumlari bo'yicha ishonchli onlayn do'kon. Katalogimizda yozuv qurollari, qog'oz mahsulotlari, maktab buyumlari va boshqa ko'plab tovarlar mavjud."
+  },
+  "contact": {
+    "text": "☎️ <b>Aloqa</b>\n\n📞 Telefon: {phone}\n💬 Telegram: @{username}\n🕐 Ish vaqti: {work_hours}"
+  },
+  "settings": {
+    "text": "⚙️ Sozlamalar",
+    "change_language": "🌐 Tilni o'zgartirish",
+    "current_language": "Joriy til: O'zbekcha"
+  }
+}
