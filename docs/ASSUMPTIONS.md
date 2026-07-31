@@ -101,6 +101,31 @@ ambiguous or silent, the decision made and its rationale are logged here.
 - **Preorder skips the payment step entirely**; `payment_method` defaults to `cash` internally
   for those orders (enum has no "n/a" value — see Phase 2 assumption on this).
 
+## Phase 5 — admin order notifications, status flow, message customer
+- **Each admin's copy of the order card is localized to that admin's own language**, not a
+  fixed `uz`. `admins` has no `language` column, but every admin is also a `users` row (created
+  automatically on first bot contact via `UserRegistrationMiddleware`), so `order_notifications.py`
+  looks up each admin's `users.language` individually when sending/editing their copy — two
+  admins can see the same order in two different languages.
+- **Race safety**: `orders.admin_message_ids` (JSONB, built in Phase 2) maps
+  `{admin_telegram_id: message_id}`. Any status-changing action re-renders *every* admin's copy
+  via `sync_admin_cards`, stamping who acted and when. A second admin tapping a now-stale button
+  hits `order_service`'s status-transition guard (`OrderAlreadyProcessedError`), which is caught
+  and turned into `answer_callback_query(show_alert=True)` naming the admin who already handled
+  it — the first commit wins, matching the spec's "ikki admin bir vaqtda" requirement.
+- **"💬 Mijozga yozish" is a two-option sub-menu**, not a single action: a URL button opens the
+  direct Telegram chat (`t.me/<username>` or `tg://user?id=` if no username), and a second
+  "✍️ Bot orqali yozish" button starts a short FSM (`AdminOrderStates.writing_to_customer`) that
+  relays one typed message from the admin to the customer, prefixed so the customer knows it's
+  from the shop. This matches the spec's "URL tugma ... qo'shimcha: admin bot orqali ham xabar
+  yuborishi mumkin".
+- **Cancel is available at any non-terminal status** (new/confirmed/preparing/delivering), not
+  only at `new` — `order_service.cancel_order` already supports this (Phase 2) and restores
+  stock regardless of which status it's cancelled from.
+- **`ORDERS_CHANNEL_ID`** (optional channel/group posting alongside per-admin DMs) is defined in
+  `.env` but not wired up in this phase — only direct messages to each notification-enabled admin
+  are sent. Can be added later as one more send target inside `notify_admins_new_order`.
+
 ## Deferred/out of scope unless requested later
 - Payment gateway *callbacks* for Click/Payme are modeled in the `payment_method` enum and the
   order/payment flow is built to accommodate them, but the spec's actual checkout flow only

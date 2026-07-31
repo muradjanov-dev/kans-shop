@@ -115,3 +115,38 @@ class ReorderCallback(CallbackData, prefix="reorder"):
 # --- Favorites ---
 class FavoriteRemoveCallback(CallbackData, prefix="favrm"):
     product_id: int
+
+
+# --- Admin: order notification card ---
+class AdminConfirmCallback(CallbackData, prefix="aconf"):
+    order_id: int
+
+
+class AdminAdvanceCallback(CallbackData, prefix="aadv"):
+    order_id: int
+    to_status: str  # OrderStatus.value
+
+
+class AdminCancelRequestCallback(CallbackData, prefix="acreq"):
+    order_id: int
+
+
+class AdminCancelReasonCallback(CallbackData, prefix="acrsn"):
+    order_id: int
+    reason: str  # "out_of_stock" | "no_response" | "rejected" | "other"
+
+
+class AdminMessageCustomerCallback(CallbackData, prefix="amsg"):
+    order_id: int
+
+
+class AdminWriteViaBotCallback(CallbackData, prefix="awrite"):
+    order_id: int
+
+
+class AdminViewReceiptCallback(CallbackData, prefix="arcpt"):
+    order_id: int
+
+
+class AdminBackToOrderCallback(CallbackData, prefix="aback"):
+    order_id: int
