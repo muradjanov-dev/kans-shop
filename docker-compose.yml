@@ -74,13 +74,17 @@ services:
     profiles: ["polling"]
 
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Same-origin in production — nginx.conf proxies /api/ to the api service.
+        VITE_API_BASE_URL: /api/v1
     restart: unless-stopped
     ports:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
       - kansshop_media:/media:ro
     depends_on:
       - api

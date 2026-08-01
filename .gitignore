@@ -19,6 +19,7 @@ htmlcov/
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/*.tsbuildinfo
 
 # Media / uploads (local dev only, not source) — keep directories tracked via .gitkeep
 backend/media/**

@@ -6,9 +6,11 @@ Kans Shop is an online stationery/office-supplies storefront for the Uzbekistan 
 delivered through three coordinated clients that all share **one database and one business-logic
 layer**:
 
-1. **Telegram Bot** (aiogram 3.x) — primary customer channel + admin operations console.
-2. **Telegram Mini App** (React + TypeScript, served as a Telegram WebApp) — visual storefront.
-3. **Web Admin Panel** (same React app, `/admin` route) — back-office for staff.
+1. **Telegram Bot** (aiogram 3.x) — primary customer channel **and** the only admin operations
+   console (orders, products, categories, stats, broadcasts, users). There is no separate web
+   admin panel — this was explicitly cut from scope; see docs/ASSUMPTIONS.md's "Phase 8+" entry.
+2. **Telegram Mini App** (React + TypeScript, served as a Telegram WebApp) — customer-only visual
+   storefront (catalog, product, cart, checkout, orders).
 
 The bot and the Mini App never talk to the database directly for business operations — both go
 through the **service layer** (`app/services/*`). The bot calls services in-process (same Python
@@ -45,9 +47,12 @@ cart, catalog, and order logic can never drift between bot and web.
   (pure data access, no business rules — one repository per aggregate).
 - `services/` — business logic. Handlers/routers call services; services call repositories.
   Services own transactions (`async with session.begin(): ...`).
-- `api/v1/` — FastAPI routers (`catalog`, `cart`, `orders`, `admin`, `auth`, `settings`). Routers
-  are thin: validate input via Pydantic, call a service, return a Pydantic response model.
-  `deps.py` provides `get_db`, `get_current_user` (initData JWT), `get_current_admin` (role guard).
+- `api/v1/` — FastAPI routers (`catalog`, `cart`, `orders`, `auth`, `settings`) consumed by the
+  Mini App. `deps.py` provides `get_db`, `get_current_user` (initData JWT), `get_current_admin`
+  (role guard). An `admin/*` router set (categories, products, orders, users, stats, broadcasts)
+  also exists and is fully implemented/tested, but currently has no consumer — admin control is
+  done through the bot exclusively (see docs/ASSUMPTIONS.md). Kept rather than deleted in case a
+  web admin panel is wanted later.
 - `bot/` — aiogram application: `handlers/user` (customer flows), `handlers/admin` (admin console),
   `keyboards/`, `states/` (FSM state groups), `middlewares/` (db-session injection, i18n,
   throttling, user auto-registration, last_active_at touch).
@@ -85,16 +90,12 @@ wins.
 
 ## Frontend (`frontend/src`)
 
-Single Vite React app serving two audiences via routing:
+Single Vite React app, customer-only Mini App: catalog (categories → products, search), product
+detail, cart, checkout, orders + order detail. Authenticates via Telegram WebApp `initData` →
+`POST /api/v1/auth/telegram` → JWT pair stored via Zustand (`persist` middleware, localStorage).
 
-- `/` … Mini App routes (Home, Category, Product, Search, Cart, Checkout, Orders, Order detail,
-  Profile) — mounted only inside Telegram (`@twa-dev/sdk`), theme driven by `themeParams`.
-- `/admin/*` … Web Admin Panel routes (Dashboard, Orders, Products, Categories, Customers,
-  Settings, Broadcasts) — guarded by JWT stored in memory + httpOnly-less refresh via
-  `/auth/refresh` (short-lived access token in memory, refresh token in httpOnly cookie).
-
-State: Zustand for local/UI state (cart optimistic state, WebApp theme), TanStack Query for all
-server state (fetch/cache/invalidate). No Redux.
+State: Zustand for auth/language (small, persisted, non-server state), TanStack Query for all
+server state (catalog, cart, orders — fetch/cache/invalidate). No Redux.
 
 ## Infra
 

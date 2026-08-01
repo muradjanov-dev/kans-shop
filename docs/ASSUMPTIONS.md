@@ -240,6 +240,51 @@ ambiguous or silent, the decision made and its rationale are logged here.
   catchable `ValidationError`; anything else would bypass FastAPI's request-validation handling
   entirely and surface as a raw 500 instead of a clean 422.
 
+## Phase 8 — Mini App (React/Vite/Tailwind)
+- **`npm audit` flags 2 high-severity findings in `react-router-dom@7.18.2`** (GHSA-qwww-vcr4-c8h2,
+  "RSC Mode CSRF Bypass Allows Action Execution Before 400 Response"). Reviewed and accepted:
+  the advisory is specific to React Router's RSC (React Server Components) / server-actions mode
+  — this app never imports `unstable_RSCStaticRouter`, defines no `action()`/`loader()` server
+  functions, and uses plain client-side `BrowserRouter` against a separate FastAPI backend, so
+  the vulnerable code path is never reached. The fix (`npm audit fix --force`) would downgrade to
+  7.11.0 or require migrating off `react-router-dom` entirely onto the unified `react-router`
+  v8 package (which dropped the `-dom` split) — not worth the churn/regression risk for a
+  vulnerability class this app doesn't exercise. Revisit if the app ever adopts RSC/framework mode.
+
+## Phase 10 — final wiring, infra fixes, and Docker verification
+- **`docker-compose.yml`'s `nginx` service originally bind-mounted `./frontend/dist`**, which
+  wouldn't exist on a fresh clone until someone manually ran `npm run build` — breaking the "just
+  `docker-compose up`" requirement. Added `frontend/Dockerfile` (multi-stage: `node:24-alpine`
+  build → `nginx:1.27-alpine` serving the built `dist/`) and switched the compose service to
+  `build: context: ./frontend` instead. `VITE_API_BASE_URL` is baked in at Docker build time via
+  a build arg, defaulting to the relative `/api/v1` (nginx proxies same-origin in production);
+  Railway needs it set to the API's full public URL instead since the two services get separate
+  domains there — documented in docs/DEPLOY.md.
+- **pytest's `kansshop_test` database bootstrap was undocumented-and-manual**: `conftest.py`
+  connected straight to `kansshop_test` assuming it already existed, but nothing in the repo ever
+  created it — it only existed because it was created once by hand earlier in the build and
+  silently kept working across sessions. This surfaced as 39 test failures
+  (`InvalidCatalogNameError`) after a full Docker volume reset (see below) wiped it. Fixed:
+  `conftest.py`'s `test_engine` fixture now connects to the `postgres` maintenance database first
+  and issues `CREATE DATABASE kansshop_test` if it's missing (can't run inside a transaction, so
+  this uses a short-lived `AUTOCOMMIT`-isolation connection) — `make test` / `pytest` now works
+  against a completely fresh Postgres server with zero manual setup.
+- **Host environment ran out of disk space on `C:` mid-build** (`docker_data.vhdx`, Docker
+  Desktop's WSL2 data disk, had grown to 14 GB from this session's image builds/pulls, filling the
+  drive to 0 bytes free and blocking all shell command execution). Fixed by deleting that file
+  (user-authorized — it's fully reproducible: base images, containers, build cache, nothing
+  irreplaceable) after stopping Docker Desktop/WSL to release the lock. This is a host-machine
+  issue, not a project one — the project itself already lives on `D:` (see "Environment" above),
+  but Docker Desktop's own WSL2 disk cache lives on `C:` by default regardless and doesn't follow
+  the project's drive. Relocating it permanently requires Docker Desktop → Settings → Resources →
+  Advanced → "Disk image location" → a `D:` path — a GUI-only setting with no safe CLI/config-file
+  equivalent found.
+- **Full stack verified end-to-end via `docker compose up -d --build`** against a completely reset
+  Postgres/Redis (fresh volumes): migrations auto-apply (`entrypoint.sh` → `alembic upgrade head`),
+  `python -m app.db.seed` populates the catalog, and nginx correctly serves the Mini App SPA,
+  proxies `/api/*` to the API container, proxies `/webhook`, and falls back to `index.html` for
+  client-side routes (`/product/1` → 200, not 404). No errors in any container's logs.
+
 ## Deferred/out of scope unless requested later
 - Payment gateway *callbacks* for Click/Payme are modeled in the `payment_method` enum and the
   order/payment flow is built to accommodate them, but the spec's actual checkout flow only

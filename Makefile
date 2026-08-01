@@ -23,7 +23,7 @@ lint:
 	cd backend && ../$(VENV_PY) -m ruff check app tests
 	cd backend && ../$(VENV_PY) -m black --check app tests
 	cd backend && ../$(VENV_PY) -m mypy app
-	cd frontend && npm run lint
+	cd frontend && npm run typecheck
 
 format:
 	cd backend && ../$(VENV_PY) -m ruff check --fix app tests

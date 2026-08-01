@@ -1,8 +1,10 @@
 import os
 from collections.abc import AsyncIterator
 from decimal import Decimal
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -23,8 +25,29 @@ TEST_DATABASE_URL = os.environ.get(
 )
 
 
+async def _ensure_test_database_exists() -> None:
+    """CREATE DATABASE can't run inside a transaction, so this connects to the `postgres`
+    maintenance database first — lets `pytest` run against a completely fresh Postgres server
+    without a separate manual setup step."""
+    parts = urlsplit(TEST_DATABASE_URL)
+    db_name = parts.path.lstrip("/")
+    maintenance_url = urlunsplit(parts._replace(path="/postgres"))
+
+    engine = create_async_engine(maintenance_url, isolation_level="AUTOCOMMIT")
+    try:
+        async with engine.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": db_name}
+            )
+            if not exists:
+                await conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+    finally:
+        await engine.dispose()
+
+
 @pytest_asyncio.fixture(scope="session")
 async def test_engine() -> AsyncIterator[AsyncEngine]:
+    await _ensure_test_database_exists()
     engine = create_async_engine(TEST_DATABASE_URL)
     async with engine.begin() as conn:
         await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS pg_trgm")
