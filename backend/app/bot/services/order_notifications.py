@@ -33,7 +33,7 @@ ACTION_KEY_BY_STATUS = {
 }
 
 
-async def _translator_for_admin(session: AsyncSession, admin_telegram_id: int):
+async def translator_for_admin(session: AsyncSession, admin_telegram_id: int):
     admin_user = await user_repository.get_by_telegram_id(session, admin_telegram_id)
     lang = admin_user.language if admin_user else settings.default_language
     return partial(translate, lang)
@@ -48,7 +48,7 @@ async def notify_admins_new_order(bot: Bot, session: AsyncSession, order: Order)
 
     admins = await admin_repository.list_active_notifiable(session)
     for admin in admins:
-        translator = await _translator_for_admin(session, admin.telegram_id)
+        translator = await translator_for_admin(session, admin.telegram_id)
         text = build_admin_order_text(order, customer, translator=translator)
         keyboard = build_admin_order_keyboard(order, translator=translator)
         try:
@@ -98,7 +98,7 @@ async def sync_admin_cards(
 
     for admin_telegram_id_str, message_id in list(order.admin_message_ids.items()):
         admin_telegram_id = int(admin_telegram_id_str)
-        translator = await _translator_for_admin(session, admin_telegram_id)
+        translator = await translator_for_admin(session, admin_telegram_id)
 
         processed_line = None
         if action_key:

@@ -189,6 +189,7 @@
     "order_not_found": "Buyurtma topilmadi.",
     "no_username": "—",
     "login_code": "🔐 Bir martalik kodingiz: <code>{code}</code>\n\n{minutes} daqiqa amal qiladi. Bu kodni web admin panelga kiritish uchun ishlating.",
+    "deploy_notification": "✅ Kans Shop tizimi qayta ishga tushirildi (deploy/restart). Hammasi joyida.",
 
     "menu_title": "🛠 Admin panel",
     "menu_orders": "📦 Buyurtmalar",
@@ -256,6 +257,9 @@
     "product_not_found": "Mahsulot topilmadi.",
     "product_empty_list": "Bu kategoriyada mahsulot yo'q.",
     "product_stock_label": "📦 Qoldiqni o'zgartirish:",
+    "product_manage_images": "🖼 Rasmlar ({count})",
+    "product_images_current": "Joriy rasmlar soni: {count}\n\nYangi rasm(lar) yuboring yoki \"✅ Tugatish\" tugmasini bosing:",
+    "product_images_updated": "✅ Rasmlar yangilandi.",
     "product_stock_custom": "✏️ Boshqa",
     "product_stock_enter_custom": "Qoldiqqa qo'shiladigan/ayiriladigan sonni kiriting (masalan -5 yoki 20):",
     "product_stock_updated": "✅ Qoldiq yangilandi: {value}",

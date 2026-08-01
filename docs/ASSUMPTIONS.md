@@ -200,6 +200,46 @@ ambiguous or silent, the decision made and its rationale are logged here.
   live category with children. Fixed to a plain `==` comparison, which SQLAlchemy compiles to
   `IS NULL` for a literal `None` and to a normal bound-parameter `=` otherwise.
 
+## Phase 8+ — scope change: web admin panel dropped, Mini App is customer-only
+- **Web admin panel (originally Phase 9) was cancelled by the user mid-build**: "web admin panel
+  no need, i need only admin panel that controls everywhere from bot." All admin control stays
+  exclusively in the Telegram bot (Phases 5–6: orders, products, categories, stats, broadcasts,
+  users). The Mini App (Phase 8) is customer-facing only — catalog, product, cart, checkout,
+  orders — with no admin UI.
+- **Phase 7's `/api/v1/admin/*` REST routes were NOT deleted** even though their originally
+  intended consumer (the web admin panel) no longer exists. They're complete, tested, and
+  harmless to keep (no dead-code/stub issue — every handler is fully implemented), and ripping
+  out a full day's already-verified work on a scope change alone seemed like the wrong call
+  without being asked to. Bot-based admin control (Phases 5–6) is what's actually wired up and
+  used; the admin API is unused-but-functional infrastructure, should it be wanted later.
+- **Deploy notification**: per the user's request ("after finish deploy and send notification to
+  admins... from bot"), `app/main.py`'s lifespan now calls `notify_admins_deploy()` once, right
+  after the webhook is registered — i.e., every time the production app starts up after a real
+  deploy or restart. It only messages active admins (never customers), and only fires in webhook
+  mode (`WEBHOOK_URL` set) — `bot_polling.py` (local dev) does not trigger it. This satisfies the
+  request without me actually running the Railway deploy myself (still no Railway credentials —
+  see docs/DEPLOY.md, which the user runs manually).
+- **Product image management for existing products**: the Phase 6 admin bot could only attach
+  photos while *creating* a new product (`products_form.py`) — there was no way to add photos to
+  a product afterward. `AdminProductActionCallback`'s docstring already anticipated an
+  `"add_photo"`-style action that was never implemented. Closed that gap: `products_edit.py` now
+  has a "🖼 Rasmlar (N)" button opening the same upload-then-finish flow, reusing a newly shared
+  `persist_product_images()` (promoted out of `products_form.py`, parameterized with
+  `start_index` so it can append to a product's existing images instead of only writing from
+  index 0). Caught and fixed the same "stale in-memory relationship collection" class of bug
+  encountered earlier in Phase 7: after `session.add()`-ing a new `ProductImage` by FK column
+  only (not through the `.product` relationship attribute), the already-loaded `product.images`
+  collection doesn't reflect it without an explicit `session.refresh(product, ["images"])`.
+- **Checkout phone validation gap closed**: `order_service.checkout()` never validated
+  `customer_phone` format — the bot's checkout FSM validates before calling it
+  (`is_valid_uz_phone`), but the Phase 7 API's `POST /orders` didn't, so a Mini App client could
+  submit garbage phone numbers. Added a Pydantic `field_validator` on `CheckoutIn.customer_phone`
+  reusing the bot's existing `normalize_uz_phone`/`is_valid_uz_phone` (`app/bot/utils/helpers.py`)
+  rather than a second regex — raises plain `ValueError` (not a `KansShopError` subclass), since
+  Pydantic only auto-wraps `ValueError`/`TypeError`/`AssertionError` from validators into a
+  catchable `ValidationError`; anything else would bypass FastAPI's request-validation handling
+  entirely and surface as a raw 500 instead of a clean 422.
+
 ## Deferred/out of scope unless requested later
 - Payment gateway *callbacks* for Click/Payme are modeled in the `payment_method` enum and the
   order/payment flow is built to accommodate them, but the spec's actual checkout flow only

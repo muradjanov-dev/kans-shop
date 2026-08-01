@@ -1,8 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.db.models.enums import OrderStatus, OrderType, PaymentMethod, PaymentStatus
 
 
@@ -16,6 +17,14 @@ class CheckoutIn(BaseModel):
     latitude: Decimal | None = None
     longitude: Decimal | None = None
     comment: str | None = None
+
+    @field_validator("customer_phone")
+    @classmethod
+    def _validate_phone(cls, value: str) -> str:
+        normalized = normalize_uz_phone(value)
+        if not is_valid_uz_phone(normalized):
+            raise ValueError(f"Invalid Uzbek phone number: {value}")
+        return normalized
 
 
 class OrderItemOut(BaseModel):

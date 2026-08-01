@@ -11,9 +11,11 @@ from app.api.errors import register_exception_handlers
 from app.api.rate_limit import RateLimitMiddleware
 from app.api.v1 import router as api_v1_router
 from app.bot.loader import create_bot, create_dispatcher
+from app.bot.services.system_notifications import notify_admins_deploy
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.core.security import verify_webhook_secret
+from app.db.session import async_session_maker
 
 log = get_logger(__name__)
 
@@ -34,6 +36,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             drop_pending_updates=True,
         )
         log.info("webhook_set", url=settings.webhook_url)
+        async with async_session_maker() as session:
+            await notify_admins_deploy(bot, session)
     else:
         log.info("webhook_disabled_use_bot_polling_py")
 

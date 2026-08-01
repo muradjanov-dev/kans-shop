@@ -189,6 +189,7 @@
     "order_not_found": "Заказ не найден.",
     "no_username": "—",
     "login_code": "🔐 Ваш одноразовый код: <code>{code}</code>\n\nДействителен {minutes} минут. Используйте его для входа в веб-админку.",
+    "deploy_notification": "✅ Kans Shop перезапущен (деплой/рестарт). Всё работает штатно.",
 
     "menu_title": "🛠 Админ-панель",
     "menu_orders": "📦 Заказы",
@@ -256,6 +257,9 @@
     "product_not_found": "Товар не найден.",
     "product_empty_list": "В этой категории нет товаров.",
     "product_stock_label": "📦 Изменить остаток:",
+    "product_manage_images": "🖼 Фото ({count})",
+    "product_images_current": "Текущее количество фото: {count}\n\nОтправьте новые фото или нажмите \"✅ Готово\":",
+    "product_images_updated": "✅ Фото обновлены.",
     "product_stock_custom": "✏️ Другое",
     "product_stock_enter_custom": "Введите число для изменения остатка (например -5 или 20):",
     "product_stock_updated": "✅ Остаток обновлён: {value}",

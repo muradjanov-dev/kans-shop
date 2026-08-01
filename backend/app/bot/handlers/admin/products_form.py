@@ -280,7 +280,7 @@ async def on_save_product(
     session.add(product)
     await session.flush()
 
-    await _persist_product_images(bot, session, product, data.get("images", []))
+    await persist_product_images(bot, session, product, data.get("images", []))
 
     category = await category_repository.get_by_id(session, product.category_id)
     if category is not None:
@@ -291,14 +291,23 @@ async def on_save_product(
     await callback.answer(_("admin.product_created"))
 
 
-async def _persist_product_images(
-    bot: Bot, session: AsyncSession, product: Product, file_ids: list[str]
+async def persist_product_images(
+    bot: Bot,
+    session: AsyncSession,
+    product: Product,
+    file_ids: list[str],
+    *,
+    start_index: int = 0,
 ) -> None:
+    """Downloads Telegram photo file_ids to MEDIA_ROOT/products/{id}/ and creates ProductImage
+    rows. `start_index` lets callers append to a product that already has images (the first-ever
+    image, index 0, is the only one auto-marked `is_main`)."""
     if not file_ids:
         return
     product_dir = settings.media_root_path / "products" / str(product.id)
     product_dir.mkdir(parents=True, exist_ok=True)
-    for index, file_id in enumerate(file_ids):
+    for offset, file_id in enumerate(file_ids):
+        index = start_index + offset
         destination = product_dir / f"{index}.jpg"
         await bot.download(file_id, destination=destination)
         url = f"{settings.media_base_url}/products/{product.id}/{destination.name}"

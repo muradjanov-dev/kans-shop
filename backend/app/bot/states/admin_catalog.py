@@ -17,6 +17,7 @@ class ProductFormStates(StatesGroup):
 
 class ProductEditStates(StatesGroup):
     editing_field = State()
+    uploading_images = State()
 
 
 class StockAdjustStates(StatesGroup):

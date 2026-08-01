@@ -1,18 +1,23 @@
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.admin.products import render_product_detail
+from app.bot.handlers.admin.products_form import persist_product_images
 from app.bot.keyboards.callback_data import (
+    AdminImagesFinishCallback,
     AdminProductActionCallback,
     AdminProductFieldEditCallback,
 )
 from app.bot.keyboards.inline.admin_common import cancel_only_keyboard
-from app.bot.keyboards.inline.admin_products import admin_stock_menu_keyboard
+from app.bot.keyboards.inline.admin_products import (
+    admin_stock_menu_keyboard,
+    images_upload_keyboard,
+)
 from app.bot.states.admin_catalog import ProductEditStates, StockAdjustStates
 from app.bot.utils.admin_guard import MANAGEMENT_ROLES, require_admin
 from app.bot.utils.messages import require_message
@@ -106,6 +111,75 @@ async def on_field_value_entered(
 
     await message.answer(_("admin.product_updated"))
     await render_product_detail(message.answer, session, product, _)
+
+
+@router.callback_query(AdminProductActionCallback.filter(F.action == "manage_images"))
+async def on_manage_images_start(
+    callback: CallbackQuery,
+    callback_data: AdminProductActionCallback,
+    session: AsyncSession,
+    admin: Admin | None,
+    state: FSMContext,
+    _: Callable,
+) -> None:
+    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES):
+        return
+    message = await require_message(callback, _)
+    if message is None:
+        return
+    product = await _get_product_or_alert(callback, session, callback_data.product_id, _)
+    if product is None:
+        return
+
+    await state.set_state(ProductEditStates.uploading_images)
+    await state.update_data(product_id=product.id)
+    await message.edit_text(
+        _("admin.product_images_current", count=len(product.images)),
+        reply_markup=images_upload_keyboard(_),
+    )
+    await callback.answer()
+
+
+@router.message(ProductEditStates.uploading_images, F.photo)
+async def on_edit_image_uploaded(
+    message: Message, session: AsyncSession, state: FSMContext, bot: Bot, _: Callable
+) -> None:
+    if not message.photo:
+        return
+    data = await state.get_data()
+    product = await product_repository.get_by_id(session, data["product_id"])
+    if product is None:
+        await state.clear()
+        await message.answer(_("admin.product_not_found"))
+        return
+
+    await persist_product_images(
+        bot, session, product, [message.photo[-1].file_id], start_index=len(product.images)
+    )
+    await session.refresh(product, attribute_names=["images"])
+    await message.answer(
+        _("admin.product_images_current", count=len(product.images)),
+        reply_markup=images_upload_keyboard(_),
+    )
+
+
+@router.callback_query(ProductEditStates.uploading_images, AdminImagesFinishCallback.filter())
+async def on_edit_images_finish(
+    callback: CallbackQuery, session: AsyncSession, state: FSMContext, _: Callable
+) -> None:
+    message = await require_message(callback, _)
+    if message is None:
+        return
+    data = await state.get_data()
+    await state.clear()
+    product = await product_repository.get_by_id(session, data["product_id"])
+    if product is None:
+        await callback.answer(_("admin.product_not_found"), show_alert=True)
+        return
+
+    await message.edit_text(_("admin.product_images_updated"))
+    await render_product_detail(message.answer, session, product, _)
+    await callback.answer()
 
 
 @router.callback_query(AdminProductActionCallback.filter(F.action == "stock_menu"))

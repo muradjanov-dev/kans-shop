@@ -107,6 +107,14 @@ def admin_product_detail_keyboard(
     )
     builder.row(
         InlineKeyboardButton(
+            text=translator("admin.product_manage_images", count=len(product.images)),
+            callback_data=AdminProductActionCallback(
+                product_id=product.id, action="manage_images"
+            ).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
             text=translator("admin.product_toggle_active"),
             callback_data=AdminProductActionCallback(
                 product_id=product.id, action="toggle_active"
