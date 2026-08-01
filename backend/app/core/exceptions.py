@@ -70,3 +70,13 @@ class InvalidFileError(KansShopError):
 class OrderAlreadyProcessedError(KansShopError):
     code = "ORDER_ALREADY_PROCESSED"
     http_status = 409
+
+
+class CategoryInUseError(KansShopError):
+    code = "CATEGORY_IN_USE"
+    http_status = 409
+
+
+class SkuAlreadyExistsError(KansShopError):
+    code = "SKU_ALREADY_EXISTS"
+    http_status = 409

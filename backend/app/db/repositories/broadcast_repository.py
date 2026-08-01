@@ -4,6 +4,10 @@ from app.db.models.broadcast import Broadcast
 from app.db.models.enums import BroadcastStatus, BroadcastTarget
 
 
+async def get_by_id(session: AsyncSession, broadcast_id: int) -> Broadcast | None:
+    return await session.get(Broadcast, broadcast_id)
+
+
 async def create(
     session: AsyncSession,
     *,

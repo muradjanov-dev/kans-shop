@@ -158,6 +158,48 @@ ambiguous or silent, the decision made and its rationale are logged here.
   Phase 9's deliverable and doesn't exist yet — it's a stable placeholder link, not a stub
   removed later.
 
+## Phase 7 — FastAPI REST API, initData auth, webhook
+- **`PATCH`/`DELETE /cart/items/{id}`**: `{id}` in the spec's endpoint list is interpreted as
+  `product_id`, not `cart_item.id` — matches `cart_service`'s existing interface (which already
+  keys on `user_id` + `product_id`) and matches what a Mini App cart screen actually has on hand
+  (the product being displayed), no extra lookup needed.
+- **Admin-panel login without HTTPS/Telegram WebApp context**: the web admin panel (Phase 9)
+  can't use `initData` validation (it's not opened from inside Telegram). Added a fallback:
+  `/admin_login` in the bot issues a 6-digit code (Redis, 5 min TTL, `app/bot/handlers/admin/
+  auth.py`), exchanged via `POST /auth/telegram/code` for the same JWT pair the Mini App gets.
+- **Broadcast send is a `BackgroundTasks` fire-and-forget**, not synchronous-in-request or a
+  separate worker/queue: `POST /admin/broadcasts` creates the `Broadcast` row and returns `202`
+  immediately; the actual paced send (still 20 msg/sec, same algorithm as the bot's composer
+  flow) runs after the response via FastAPI's `BackgroundTasks`, in its own DB session (the
+  request-scoped session is already closed by then). `GET /admin/broadcasts/{id}` polls status.
+  A real queue (Celery/RQ) would survive a process restart mid-send; not worth the added infra
+  for this product's traffic volume, but noted here in case broadcasts grow large enough to matter.
+- **Notification helpers shared between bot and API**: `_notify_customer` (order status DMs) and
+  the broadcast pacing loop (`_send_one`/`_run_broadcast`) were bot-handler-private in Phase 5/6.
+  Both the admin API's `PATCH /admin/orders/{id}/status` and `POST /admin/broadcasts` need the
+  identical logic, so they were promoted to `app/bot/services/order_notifications.py` (
+  `notify_customer_status_change`) and a new `app/services/broadcast_service.py` (`run_broadcast`,
+  with progress-reporting as an optional callback so the bot's Telegram-message-editing UI stays
+  bot-specific while the send/retry/pacing core is shared) rather than duplicated.
+- **Rate limiting**: implemented as Starlette middleware (`app/api/rate_limit.py`) using Redis
+  `INCR`+`EXPIRE` sliding-ish windows — 20 req/min/IP general, 3 req/min/IP on `POST /api/v1/
+  orders` specifically (checkout), per spec section 10. Applied only under `/api/v1`; `/webhook`
+  and `/media` are exempt (webhook has its own secret-token gate, media is static reads).
+- **`products_count` denormalization**: the bot's product editor never hard-deletes a product
+  (only edits fields/stock/active-flag), so it never had to keep `categories.products_count` in
+  sync on delete. The admin API adds the first real hard-delete (`DELETE /admin/products/{id}`,
+  intentionally supported at the schema level — `order_items.product_id` is `ON DELETE SET NULL`
+  precisely so historical orders survive a product's removal) and the first category-reassignment
+  (`PATCH /admin/products/{id}` with a new `category_id`), so both paths now increment/decrement
+  `products_count` on the old/new category to keep the counter accurate.
+- **`app/db/repositories/category_repository.py::list_children` bug found via live smoke test**:
+  used `Category.parent_id.is_(parent_id)`, which only produces valid SQL when `parent_id is
+  None` (`IS NULL`) — Postgres rejects `IS $1` for a bound non-NULL parameter. This silently broke
+  category deletion (and the bot's own subcategory listing) any time a category with real
+  subcategories was checked; nothing in the existing test suite exercised that path against a
+  live category with children. Fixed to a plain `==` comparison, which SQLAlchemy compiles to
+  `IS NULL` for a literal `None` and to a normal bound-parameter `=` otherwise.
+
 ## Deferred/out of scope unless requested later
 - Payment gateway *callbacks* for Click/Payme are modeled in the `payment_method` enum and the
   order/payment flow is built to accommodate them, but the spec's actual checkout flow only

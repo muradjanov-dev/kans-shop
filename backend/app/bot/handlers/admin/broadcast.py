@@ -1,11 +1,10 @@
-import asyncio
 import contextlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.callback_data import (
@@ -25,13 +24,10 @@ from app.bot.utils.admin_guard import MANAGEMENT_ROLES, require_admin
 from app.bot.utils.messages import require_message
 from app.db.models.admin import Admin
 from app.db.models.enums import BroadcastStatus, BroadcastTarget
-from app.db.models.user import User
 from app.db.repositories import broadcast_repository, user_repository
+from app.services.broadcast_service import run_broadcast
 
 router = Router(name="admin_broadcast")
-
-MESSAGES_PER_SECOND = 20
-PROGRESS_UPDATE_EVERY = 20
 
 
 async def render_broadcast_entry(
@@ -203,15 +199,22 @@ async def on_broadcast_send(
     )
     assert isinstance(progress_message, Message)
 
-    sent, failed = await _run_broadcast(
+    async def _report_progress(index: int, total: int) -> None:
+        # e.g. "message is not modified" when the count didn't change since last edit —
+        # never let a cosmetic progress-update failure abort the send loop.
+        with contextlib.suppress(TelegramBadRequest):
+            await progress_message.edit_text(
+                _("admin.broadcast_sending", sent=index, total=total)
+            )
+
+    sent, failed = await run_broadcast(
         bot,
         session,
         audience,
         text=data.get("content_text", ""),
         photo_file_id=data.get("photo_file_id"),
         button_markup=button_markup,
-        progress_message=progress_message,
-        translator=_,
+        on_progress=_report_progress,
     )
 
     status = BroadcastStatus.COMPLETED if failed < len(audience) else BroadcastStatus.FAILED
@@ -219,76 +222,3 @@ async def on_broadcast_send(
         session, broadcast, sent=sent, failed=failed, status=status
     )
     await progress_message.edit_text(_("admin.broadcast_done", sent=sent, failed=failed))
-
-
-async def _send_one(
-    bot: Bot,
-    session: AsyncSession,
-    user: User,
-    *,
-    text: str,
-    photo_file_id: str | None,
-    button_markup: InlineKeyboardMarkup | None,
-) -> bool:
-    try:
-        if photo_file_id:
-            await bot.send_photo(
-                user.telegram_id, photo_file_id, caption=text, reply_markup=button_markup
-            )
-        else:
-            await bot.send_message(user.telegram_id, text, reply_markup=button_markup)
-        return True
-    except TelegramRetryAfter as exc:
-        await asyncio.sleep(exc.retry_after)
-        try:
-            if photo_file_id:
-                await bot.send_photo(
-                    user.telegram_id, photo_file_id, caption=text, reply_markup=button_markup
-                )
-            else:
-                await bot.send_message(user.telegram_id, text, reply_markup=button_markup)
-            return True
-        except (TelegramForbiddenError, TelegramRetryAfter):
-            return False
-    except TelegramForbiddenError:
-        await user_repository.set_blocked(session, user, True)
-        return False
-
-
-async def _run_broadcast(
-    bot: Bot,
-    session: AsyncSession,
-    audience: Sequence[User],
-    *,
-    text: str,
-    photo_file_id: str | None,
-    button_markup: InlineKeyboardMarkup | None,
-    progress_message: Message,
-    translator: Callable[..., str],
-) -> tuple[int, int]:
-    sent = 0
-    failed = 0
-    total = len(audience)
-    for index, user in enumerate(audience, start=1):
-        ok = await _send_one(
-            bot,
-            session,
-            user,
-            text=text,
-            photo_file_id=photo_file_id,
-            button_markup=button_markup,
-        )
-        if ok:
-            sent += 1
-        else:
-            failed += 1
-        if index % PROGRESS_UPDATE_EVERY == 0 or index == total:
-            # e.g. "message is not modified" when the count didn't change since last edit —
-            # never let a cosmetic progress-update failure abort the send loop.
-            with contextlib.suppress(TelegramBadRequest):
-                await progress_message.edit_text(
-                    translator("admin.broadcast_sending", sent=index, total=total)
-                )
-        await asyncio.sleep(1 / MESSAGES_PER_SECOND)
-    await session.commit()
-    return sent, failed

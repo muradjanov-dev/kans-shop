@@ -188,6 +188,7 @@
     "message_from_admin_prefix": "💬 <b>Сообщение от менеджера:</b>\n\n",
     "order_not_found": "Заказ не найден.",
     "no_username": "—",
+    "login_code": "🔐 Ваш одноразовый код: <code>{code}</code>\n\nДействителен {minutes} минут. Используйте его для входа в веб-админку.",
 
     "menu_title": "🛠 Админ-панель",
     "menu_orders": "📦 Заказы",

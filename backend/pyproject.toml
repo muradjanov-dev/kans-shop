@@ -12,6 +12,21 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # Cyrillic characters in strings/comments are expected, not "ambiguous".
 ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom requires calling Depends()/Query()/etc. as argument
+# defaults; these calls are immutable from ruff's perspective and not the B008 footgun.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Security",
+]
+
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true

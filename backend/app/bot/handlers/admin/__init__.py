@@ -1,6 +1,7 @@
 from aiogram import Router
 
 from app.bot.handlers.admin import (
+    auth,
     broadcast,
     categories,
     menu,
@@ -18,6 +19,7 @@ admin_router = Router(name="admin")
 # menu.py's /admin command + AdminMenuCallback dispatcher must be tried first; then each
 # section's own callbacks/FSM message handlers.
 admin_router.include_router(menu.router)
+admin_router.include_router(auth.router)
 admin_router.include_router(orders.router)
 admin_router.include_router(orders_list.router)
 admin_router.include_router(categories.router)

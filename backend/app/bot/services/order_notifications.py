@@ -1,3 +1,4 @@
+import contextlib
 from datetime import datetime
 from functools import partial
 from zoneinfo import ZoneInfo
@@ -9,9 +10,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.utils.admin_order_card import build_admin_order_keyboard, build_admin_order_text
 from app.bot.utils.i18n import translate
 from app.core.config import settings
+from app.db.models.enums import OrderStatus
 from app.db.models.order import Order
 from app.db.repositories import admin_repository, user_repository
 from app.services import order_service
+
+STATUS_LABEL_KEYS = {
+    OrderStatus.NEW: "orders.status_new",
+    OrderStatus.CONFIRMED: "orders.status_confirmed",
+    OrderStatus.PREPARING: "orders.status_preparing",
+    OrderStatus.DELIVERING: "orders.status_delivering",
+    OrderStatus.COMPLETED: "orders.status_completed",
+    OrderStatus.CANCELLED: "orders.status_cancelled",
+}
+
+ACTION_KEY_BY_STATUS = {
+    OrderStatus.CONFIRMED: "admin.confirmed_by",
+    OrderStatus.PREPARING: "admin.preparing_by",
+    OrderStatus.DELIVERING: "admin.delivering_by",
+    OrderStatus.COMPLETED: "admin.completed_by",
+    OrderStatus.CANCELLED: "admin.cancelled_by",
+}
 
 
 async def _translator_for_admin(session: AsyncSession, admin_telegram_id: int):
@@ -98,3 +117,24 @@ async def sync_admin_cards(
             )
         except (TelegramBadRequest, TelegramForbiddenError):
             continue
+
+
+async def notify_customer_status_change(
+    bot: Bot,
+    session: AsyncSession,
+    order: Order,
+    key: str,
+    *,
+    status_key: str | None = None,
+    **kwargs: str,
+) -> None:
+    """Sends a status-change DM to the order's customer, localized to their own language."""
+    customer = await user_repository.get_by_id(session, order.user_id)
+    if customer is None:
+        return
+    translator = partial(translate, customer.language)
+    if status_key is not None:
+        kwargs["status"] = translator(status_key)
+    text = translator(key, order_number=order.order_number, **kwargs)
+    with contextlib.suppress(TelegramBadRequest, TelegramForbiddenError):
+        await bot.send_message(customer.telegram_id, text)

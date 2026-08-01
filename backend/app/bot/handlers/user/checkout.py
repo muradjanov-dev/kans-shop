@@ -38,15 +38,13 @@ from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.bot.utils.messages import require_message
 from app.core.config import settings
 from app.core.exceptions import CartEmptyError, MinOrderAmountError, OutOfStockError
+from app.core.uploads import ALLOWED_RECEIPT_MIME_TYPES, MAX_RECEIPT_SIZE_BYTES
 from app.db.models.enums import OrderType, PaymentMethod
 from app.db.models.user import User
 from app.db.repositories import setting_repository
 from app.services import cart_service, order_service
 
 router = Router(name="checkout")
-
-MAX_RECEIPT_SIZE_BYTES = 5 * 1024 * 1024
-ALLOWED_RECEIPT_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 
 PAYMENT_LABEL_KEYS = {
     PaymentMethod.CASH.value: "checkout.payment_cash",

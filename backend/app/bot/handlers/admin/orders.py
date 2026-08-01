@@ -23,7 +23,12 @@ from app.bot.keyboards.inline.admin_orders import (
     cancel_reason_keyboard,
     message_customer_keyboard,
 )
-from app.bot.services.order_notifications import sync_admin_cards
+from app.bot.services.order_notifications import (
+    ACTION_KEY_BY_STATUS,
+    STATUS_LABEL_KEYS,
+    notify_customer_status_change,
+    sync_admin_cards,
+)
 from app.bot.states.admin import AdminOrderStates
 from app.bot.utils.admin_order_card import build_admin_order_keyboard, build_admin_order_text
 from app.bot.utils.i18n import translate
@@ -36,23 +41,6 @@ from app.db.repositories import admin_repository, user_repository
 from app.services import order_service
 
 router = Router(name="admin_orders")
-
-STATUS_LABEL_KEYS = {
-    OrderStatus.NEW: "orders.status_new",
-    OrderStatus.CONFIRMED: "orders.status_confirmed",
-    OrderStatus.PREPARING: "orders.status_preparing",
-    OrderStatus.DELIVERING: "orders.status_delivering",
-    OrderStatus.COMPLETED: "orders.status_completed",
-    OrderStatus.CANCELLED: "orders.status_cancelled",
-}
-
-ACTION_KEY_BY_STATUS = {
-    OrderStatus.CONFIRMED: "admin.confirmed_by",
-    OrderStatus.PREPARING: "admin.preparing_by",
-    OrderStatus.DELIVERING: "admin.delivering_by",
-    OrderStatus.COMPLETED: "admin.completed_by",
-    OrderStatus.CANCELLED: "admin.cancelled_by",
-}
 
 
 async def _require_admin(
@@ -91,26 +79,6 @@ async def _already_processed_alert(
     await callback.answer(
         translator("admin.already_processed_alert", admin=admin_name), show_alert=True
     )
-
-
-async def _notify_customer(
-    bot: Bot,
-    session: AsyncSession,
-    order: Order,
-    key: str,
-    *,
-    status_key: str | None = None,
-    **kwargs: str,
-) -> None:
-    customer = await user_repository.get_by_id(session, order.user_id)
-    if customer is None:
-        return
-    translator = partial(translate, customer.language)
-    if status_key is not None:
-        kwargs["status"] = translator(status_key)
-    text = translator(key, order_number=order.order_number, **kwargs)
-    with contextlib.suppress(TelegramBadRequest, TelegramForbiddenError):
-        await bot.send_message(customer.telegram_id, text)
 
 
 async def _render_order_card(
@@ -157,7 +125,7 @@ async def on_confirm_order(
         action_key=ACTION_KEY_BY_STATUS[OrderStatus.CONFIRMED],
         admin_name=admin.full_name,
     )
-    await _notify_customer(bot, session, order, "orders.confirmed_notification")
+    await notify_customer_status_change(bot, session, order, "orders.confirmed_notification")
     await callback.answer()
 
 
@@ -196,7 +164,7 @@ async def on_advance_status(
         action_key=ACTION_KEY_BY_STATUS[to_status],
         admin_name=admin.full_name,
     )
-    await _notify_customer(
+    await notify_customer_status_change(
         bot,
         session,
         order,
@@ -290,7 +258,7 @@ async def on_custom_cancel_reason(
         admin_name=admin.full_name,
         reason=reason_text,
     )
-    await _notify_customer(
+    await notify_customer_status_change(
         bot, session, order, "orders.cancelled_notification", reason=reason_text
     )
     await message.answer(
@@ -327,7 +295,7 @@ async def _finalize_cancel(
         admin_name=admin.full_name,
         reason=reason_text,
     )
-    await _notify_customer(
+    await notify_customer_status_change(
         bot, session, order, "orders.cancelled_notification", reason=reason_text
     )
     await callback.answer()

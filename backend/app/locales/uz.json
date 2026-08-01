@@ -188,6 +188,7 @@
     "message_from_admin_prefix": "💬 <b>Menejerdan xabar:</b>\n\n",
     "order_not_found": "Buyurtma topilmadi.",
     "no_username": "—",
+    "login_code": "🔐 Bir martalik kodingiz: <code>{code}</code>\n\n{minutes} daqiqa amal qiladi. Bu kodni web admin panelga kiritish uchun ishlating.",
 
     "menu_title": "🛠 Admin panel",
     "menu_orders": "📦 Buyurtmalar",
