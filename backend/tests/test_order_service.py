@@ -242,3 +242,23 @@ async def test_concurrent_checkouts_never_oversell_stock(test_engine: AsyncEngin
         refreshed = await verify_session.get(Product, product_id)
         assert refreshed is not None
         assert refreshed.stock_qty == 0
+
+    # This test commits directly (real cross-connection concurrency), bypassing the
+    # savepoint-rollback isolation every other test relies on — clean up explicitly so later
+    # tests (e.g. date-scoped stats queries) don't see this order/product/user leak through.
+    async with setup_maker() as cleanup_session:
+        async with cleanup_session.begin():
+            order = await cleanup_session.get(Order, successes[0].id)
+            if order is not None:
+                await cleanup_session.delete(order)
+            for uid in (user_a_id, user_b_id):
+                user = await cleanup_session.get(User, uid)
+                if user is not None:
+                    await cleanup_session.delete(user)
+            product = await cleanup_session.get(Product, product_id)
+            if product is not None:
+                await cleanup_session.delete(product)
+        async with cleanup_session.begin():
+            category = await cleanup_session.get(Category, category.id)
+            if category is not None:
+                await cleanup_session.delete(category)

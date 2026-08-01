@@ -126,6 +126,38 @@ ambiguous or silent, the decision made and its rationale are logged here.
   `.env` but not wired up in this phase — only direct messages to each notification-enabled admin
   are sent. Can be added later as one more send target inside `notify_admins_new_order`.
 
+## Phase 6 — product/category CRUD, stats, broadcast, users, settings
+- **Role gating**: product/category CRUD, broadcast, settings, and user management (block/
+  unblock) are restricted to `manager`+`superadmin` (`MANAGEMENT_ROLES` in
+  `app/bot/utils/admin_guard.py`), matching DB_SCHEMA.md's role matrix. Order actions (Phase 5)
+  and viewing stats stay open to every active admin including `operator`, since the spec
+  explicitly scopes `operator` to "buyurtmalarni ko'rish va status o'zgartirish" — that's
+  everything Phase 5 does, and stats-viewing isn't a mutation.
+- **Category deletion is blocked** if the category has any products (active or inactive) or any
+  child categories — admin must reassign/delete those first. This mirrors the DB's real
+  constraint (`products.category_id` is `ON DELETE RESTRICT`) as a friendly in-bot check instead
+  of surfacing a raw FK-violation error.
+- **New-product images are held as Telegram `file_id`s in FSM state** during the add-product
+  wizard and only written to disk (`MEDIA_ROOT/products/{product_id}/`) after the `Product` row
+  exists, for the same reason as receipts in Phase 4: the on-disk path is keyed by an id that
+  doesn't exist yet mid-form.
+- **Stats**: `orders_count` counts every order created in the period regardless of status (a raw
+  activity number); `revenue`/`avg_check` exclude cancelled orders; the top-10 list aggregates
+  `order_items.product_name_snapshot` (what was actually sold, by name at sale time) rather than
+  joining to the live `products` table, so renamed/deleted products still show correctly in
+  historical stats.
+- **Broadcast pacing**: 20 msg/sec (spec says "25 msg/sek limit" — 20 is a deliberately
+  conservative margin under Telegram's own ~30/sec global cap), progress message updated every
+  20 sends (not per-message, to avoid flooding the *edit* rate too), `TelegramRetryAfter`
+  respected with one retry, `TelegramForbiddenError` marks the user `is_blocked=true` and counts
+  as failed. Audience "active" = `last_active_at` within the last 30 days.
+- **Settings editor exposes 9 of the 11 seeded keys** — `welcome_text_uz`/`welcome_text_ru` are
+  left out of the bot's quick-edit list (longer free-form text better suited to the Phase 9 web
+  admin panel's form UI) but remain fully readable/writable via `setting_repository` already.
+- **"🌐 Web admin panel" menu button** links to `{WEBAPP_URL}/admin` even though that panel is
+  Phase 9's deliverable and doesn't exist yet — it's a stable placeholder link, not a stub
+  removed later.
+
 ## Deferred/out of scope unless requested later
 - Payment gateway *callbacks* for Click/Payme are modeled in the `payment_method` enum and the
   order/payment flow is built to accommodate them, but the spec's actual checkout flow only

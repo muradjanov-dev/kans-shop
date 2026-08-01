@@ -1,10 +1,14 @@
-from datetime import UTC, datetime
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.enums import UserSource
+from app.db.models.order import Order
 from app.db.models.user import User
+
+ACTIVE_WINDOW_DAYS = 30
 
 
 async def get_by_telegram_id(session: AsyncSession, telegram_id: int) -> User | None:
@@ -80,3 +84,26 @@ async def set_phone(session: AsyncSession, user: User, phone: str) -> None:
 async def set_blocked(session: AsyncSession, user: User, blocked: bool) -> None:
     user.is_blocked = blocked
     await session.flush()
+
+
+async def list_all(
+    session: AsyncSession, *, page: int = 1, limit: int = 20
+) -> tuple[Sequence[User], int]:
+    total = (await session.scalar(select(func.count()).select_from(User))) or 0
+    stmt = (
+        select(User).order_by(User.created_at.desc()).offset((page - 1) * limit).limit(limit)
+    )
+    items = (await session.scalars(stmt)).all()
+    return items, total
+
+
+async def list_for_broadcast(session: AsyncSession, target: str) -> Sequence[User]:
+    """target: "all" (not blocked) | "active" (touched the bot in the last 30 days) |
+    "buyers" (has placed at least one order)."""
+    stmt = select(User).where(User.is_blocked.is_(False))
+    if target == "active":
+        since = datetime.now(UTC) - timedelta(days=ACTIVE_WINDOW_DAYS)
+        stmt = stmt.where(User.last_active_at.is_not(None), User.last_active_at >= since)
+    elif target == "buyers":
+        stmt = stmt.where(exists().where(Order.user_id == User.id))
+    return (await session.scalars(stmt)).all()

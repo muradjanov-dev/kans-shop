@@ -150,3 +150,107 @@ class AdminViewReceiptCallback(CallbackData, prefix="arcpt"):
 
 class AdminBackToOrderCallback(CallbackData, prefix="aback"):
     order_id: int
+
+
+# --- Admin: main menu ---
+class AdminMenuCallback(CallbackData, prefix="amenu"):
+    section: str  # "orders" | "categories" | "products" | "stats" | "broadcast" | "users" | "settings"
+
+
+# --- Admin: categories ---
+class AdminCategoryListCallback(CallbackData, prefix="acatl"):
+    parent_id: int  # ROOT_CATEGORY_ID = top level
+
+
+class AdminCategoryDetailCallback(CallbackData, prefix="acatd"):
+    category_id: int
+
+
+class AdminCategoryActionCallback(CallbackData, prefix="acata"):
+    category_id: int
+    action: str  # "toggle_active" | "delete_request" | "delete_confirm" | "add_sub"
+
+
+# --- Admin: products ---
+class AdminProductListCallback(CallbackData, prefix="aprodl"):
+    category_id: int
+    page: int
+
+
+class AdminProductDetailCallback(CallbackData, prefix="aprodd"):
+    product_id: int
+
+
+class AdminProductFieldEditCallback(CallbackData, prefix="aprodf"):
+    product_id: int
+    field: str  # "name_uz" | "name_ru" | "description_uz" | "description_ru" | "price" | "sku"
+
+
+class AdminProductActionCallback(CallbackData, prefix="aproda"):
+    product_id: int
+    action: str
+    # "toggle_active" | "delete_request" | "delete_confirm" | "add_photo" | "finish_add_photo"
+    # | "stock_p10" | "stock_p50" | "stock_m1" | "stock_custom"
+
+
+class AdminUnitCallback(CallbackData, prefix="aunit"):
+    value: str  # ProductUnit.value
+
+
+class AdminProductCategoryChooseCallback(CallbackData, prefix="aprodcc"):
+    category_id: int
+
+
+class AdminImagesFinishCallback(CallbackData, prefix="aimgfin"):
+    pass
+
+
+class AdminFormCancelCallback(CallbackData, prefix="acancel"):
+    pass
+
+
+class AdminFormSaveCallback(CallbackData, prefix="asave"):
+    pass
+
+
+# --- Admin: orders list ---
+class AdminOrderFilterCallback(CallbackData, prefix="aofilt"):
+    status: str  # "all" or OrderStatus.value
+    page: int
+
+
+# --- Admin: users ---
+class AdminUserListCallback(CallbackData, prefix="ausrl"):
+    page: int
+
+
+class AdminUserActionCallback(CallbackData, prefix="ausra"):
+    user_id: int
+    action: str  # "block" | "unblock"
+
+
+# --- Admin: settings ---
+class AdminSettingEditCallback(CallbackData, prefix="asetf"):
+    key: str
+
+
+# --- Admin: broadcast ---
+class BroadcastButtonChoiceCallback(CallbackData, prefix="bcbtn"):
+    add_button: bool
+
+
+class BroadcastTargetCallback(CallbackData, prefix="bctgt"):
+    target: str  # "all" | "active" | "buyers"
+
+
+class BroadcastConfirmCallback(CallbackData, prefix="bcconf"):
+    action: str  # "send" | "cancel"
+
+
+# --- Admin: stats ---
+class StatsPeriodCallback(CallbackData, prefix="statp"):
+    period: str  # "today" | "week" | "month"
+
+
+class StatsExportCallback(CallbackData, prefix="statexp"):
+    period: str
