@@ -67,7 +67,7 @@ export function ProductPage() {
       </div>
 
       {!outOfStock && (
-        <div className="fixed bottom-16 mx-auto flex w-full max-w-lg items-center gap-3 border-t border-gray-200 bg-white p-4">
+        <div className="fixed bottom-24 mx-auto flex w-full max-w-lg items-center gap-3 border-t border-gray-200 bg-white p-4">
           <QuantityStepper
             quantity={quantity}
             min={product.min_order_qty}
