@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -16,6 +16,7 @@ from app.bot.handlers.admin.users import render_users_list
 from app.bot.keyboards.callback_data import ROOT_CATEGORY_ID, AdminMenuCallback
 from app.bot.keyboards.inline.admin_menu import admin_menu_keyboard
 from app.bot.utils.admin_guard import require_admin
+from app.bot.utils.i18n import menu_button_texts
 from app.bot.utils.messages import require_message
 from app.db.models.admin import Admin
 from app.db.models.enums import OrderStatus
@@ -32,6 +33,7 @@ async def _new_orders_count(session: AsyncSession) -> int:
 
 
 @router.message(Command("admin"))
+@router.message(F.text.in_(menu_button_texts("admin.menu_title")))
 async def cmd_admin(
     message: Message, session: AsyncSession, admin: Admin | None, _: Callable
 ) -> None:

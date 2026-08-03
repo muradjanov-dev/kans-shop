@@ -16,6 +16,7 @@ from app.bot.keyboards.callback_data import (
 from app.bot.keyboards.inline.language import language_keyboard
 from app.bot.keyboards.reply.main_menu import main_menu_keyboard
 from app.bot.utils.i18n import translate
+from app.db.models.admin import Admin
 from app.db.models.user import User
 from app.db.repositories import user_repository
 
@@ -71,6 +72,7 @@ async def cmd_start(
     lang: str,
     _: Callable,
     state: FSMContext,
+    admin: Admin | None,
 ) -> None:
     if command.args:
         await state.update_data(deeplink=command.args)
@@ -79,8 +81,10 @@ async def cmd_start(
         await message.answer(_("start.choose_language"), reply_markup=language_keyboard())
         return
 
+    is_admin = admin is not None and admin.is_active
     await message.answer(
-        _("start.welcome", name=user.first_name), reply_markup=main_menu_keyboard(_)
+        _("start.welcome", name=user.first_name),
+        reply_markup=main_menu_keyboard(_, is_admin=is_admin),
     )
     if command.args:
         await _handle_deeplink(
@@ -95,18 +99,20 @@ async def on_language_selected(
     session: AsyncSession,
     user: User,
     state: FSMContext,
+    admin: Admin | None,
 ) -> None:
     await user_repository.set_language(session, user, callback_data.code)
 
     def translator(key: str, **kwargs: object) -> str:
         return translate(callback_data.code, key, **kwargs)
 
+    is_admin = admin is not None and admin.is_active
     message = callback.message
     if message is not None and not isinstance(message, InaccessibleMessage):
         await message.edit_text(translator("start.language_set"))
         await message.answer(
             translator("start.welcome", name=user.first_name),
-            reply_markup=main_menu_keyboard(translator),
+            reply_markup=main_menu_keyboard(translator, is_admin=is_admin),
         )
     else:
         message = None

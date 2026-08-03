@@ -6,7 +6,9 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from app.core.config import settings
 
 
-def main_menu_keyboard(translator: Callable[..., str]) -> ReplyKeyboardMarkup:
+def main_menu_keyboard(
+    translator: Callable[..., str], *, is_admin: bool = False
+) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     builder.row(
         KeyboardButton(text=translator("menu.catalog")),
@@ -27,4 +29,6 @@ def main_menu_keyboard(translator: Callable[..., str]) -> ReplyKeyboardMarkup:
         ),
         KeyboardButton(text=translator("menu.settings")),
     )
+    if is_admin:
+        builder.row(KeyboardButton(text=translator("admin.menu_title")))
     return builder.as_markup(resize_keyboard=True)
