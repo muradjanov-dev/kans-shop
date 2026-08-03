@@ -16,7 +16,7 @@ export function useTelegramAuth(): AuthStatus {
 
   useEffect(() => {
     initTelegramWebApp();
-    if (!isTelegramWebApp) {
+    if (!isTelegramWebApp()) {
       setStatus("unavailable");
       return;
     }
