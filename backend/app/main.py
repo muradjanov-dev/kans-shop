@@ -43,8 +43,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
-    if settings.webhook_url:
-        await bot.delete_webhook()
     await bot.session.close()
 
 
