@@ -36,11 +36,11 @@ export function Layout() {
   const itemsCount = cart?.items_count ?? 0;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-lg flex-col bg-white">
+    <div className="mx-auto flex min-h-screen max-w-lg flex-col">
       <main className="flex-1 pb-24">
         <Outlet />
       </main>
-      <nav className="fixed bottom-0 mx-auto flex w-full max-w-lg border-t border-gray-200 bg-white/95 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur">
+      <nav className="fixed bottom-0 mx-auto flex w-full max-w-lg border-t border-gray-200 bg-white/95 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur dark:border-white/10 dark:bg-[#14161b]/95">
         <NavItem to="/" icon="🛍" label={t("nav.catalog")} />
         <div className="relative flex flex-1">
           <NavItem to="/cart" icon="🛒" label={t("nav.cart")} />

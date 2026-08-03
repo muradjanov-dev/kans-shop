@@ -81,7 +81,7 @@ export function CartPage() {
             })}
           </div>
 
-          <div className="fixed bottom-24 mx-auto flex w-full max-w-lg flex-col gap-3 border-t border-gray-200 bg-white p-4">
+          <div className="fixed bottom-24 mx-auto flex w-full max-w-lg flex-col gap-3 border-t border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#14161b]">
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-500">{t("cart.subtotal")}</span>
               <span className="font-semibold text-gray-900">

@@ -31,10 +31,10 @@ export function ProductPage() {
 
   return (
     <div className="pb-24">
-      <Link to="/" className="absolute left-4 top-4 z-10 rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-brand shadow">
+      <Link to="/" className="absolute left-4 top-4 z-10 rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-brand shadow dark:bg-black/60">
         ← {t("common.back")}
       </Link>
-      <div className="flex aspect-square items-center justify-center bg-gray-50">
+      <div className="flex aspect-square items-center justify-center bg-gray-50 dark:bg-white/5">
         {image?.url ? (
           <img src={image.url} alt={name} className="size-full object-cover" />
         ) : (
@@ -42,10 +42,12 @@ export function ProductPage() {
         )}
       </div>
       <div className="flex flex-col gap-3 p-4">
-        <h1 className="text-lg font-semibold text-gray-900">{name}</h1>
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{name}</h1>
         <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-gray-900">{formatPrice(product.price)}</span>
-          <span className="text-sm text-gray-500">{t("common.som")}</span>
+          <span className="text-2xl font-bold text-gray-900 dark:text-white">
+            {formatPrice(product.price)}
+          </span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">{t("common.som")}</span>
           {product.old_price && (
             <span className="text-sm text-gray-400 line-through">
               {formatPrice(product.old_price)}
@@ -53,11 +55,13 @@ export function ProductPage() {
           )}
         </div>
         {product.min_order_qty > 1 && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             {t("product.min_order", { qty: product.min_order_qty })}
           </p>
         )}
-        {description && <p className="text-sm text-gray-600">{description}</p>}
+        {description && (
+          <p className="text-sm text-gray-600 dark:text-gray-300">{description}</p>
+        )}
         <p className="text-xs text-gray-400">
           {t("product.sku")}: {product.sku}
         </p>
@@ -67,7 +71,7 @@ export function ProductPage() {
       </div>
 
       {!outOfStock && (
-        <div className="fixed bottom-24 mx-auto flex w-full max-w-lg items-center gap-3 border-t border-gray-200 bg-white p-4">
+        <div className="fixed bottom-24 mx-auto flex w-full max-w-lg items-center gap-3 border-t border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#14161b]">
           <QuantityStepper
             quantity={quantity}
             min={product.min_order_qty}

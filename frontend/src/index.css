@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-brand: #2563eb;
   --color-brand-dark: #1d4ed8;
@@ -12,6 +14,18 @@ body,
 }
 
 body {
-  background-color: #f5f6f8;
+  background:
+    radial-gradient(circle at 12% 0%, rgb(37 99 235 / 12%), transparent 55%),
+    radial-gradient(circle at 100% 20%, rgb(249 115 22 / 10%), transparent 45%),
+    #f5f6f8;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.2s ease;
+}
+
+html.dark body {
+  background:
+    radial-gradient(circle at 12% 0%, rgb(37 99 235 / 20%), transparent 55%),
+    radial-gradient(circle at 100% 20%, rgb(249 115 22 / 12%), transparent 45%),
+    #0f1115;
+  color-scheme: dark;
 }

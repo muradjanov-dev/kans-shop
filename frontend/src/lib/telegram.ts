@@ -7,10 +7,19 @@ export function isTelegramWebApp(): boolean {
   return Boolean(WebApp.initData);
 }
 
+function applyColorScheme(): void {
+  const isDark = isTelegramWebApp()
+    ? WebApp.colorScheme === "dark"
+    : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.classList.toggle("dark", isDark);
+}
+
 export function initTelegramWebApp(): void {
+  applyColorScheme();
   if (!isTelegramWebApp()) return;
   WebApp.ready();
   WebApp.expand();
+  WebApp.onEvent("themeChanged", applyColorScheme);
 }
 
 export function telegramLanguageCode(): "uz" | "ru" {

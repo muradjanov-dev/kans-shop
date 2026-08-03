@@ -1,89 +1,104 @@
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useCategories, useCategoryProducts, useProductSearch } from "@/hooks/queries";
-import { CategoryCard } from "@/components/CategoryCard";
 import { ProductCard } from "@/components/ProductCard";
 import { Spinner } from "@/components/Spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { useTranslate } from "@/lib/i18n";
 import { useLanguageStore } from "@/store/language";
 import { localizedField } from "@/lib/format";
-import type { Product } from "@/types/api";
+import type { Category, Product } from "@/types/api";
 
 export function CatalogPage() {
   const t = useTranslate();
   const language = useLanguageStore((state) => state.language);
-  const [searchParams] = useSearchParams();
-  const categoryId = searchParams.get("category");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const categoryParam = searchParams.get("category");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
   const categoriesQuery = useCategories();
-  const productsQuery = useCategoryProducts(
-    categoryId ? Number(categoryId) : undefined,
-    page,
-  );
-  const searchQuery = useProductSearch(search, page);
+  const categories = categoriesQuery.data ?? [];
+  const activeCategoryId = categoryParam ? Number(categoryParam) : categories[0]?.id;
 
-  const activeCategory = categoriesQuery.data?.find((c) => c.id === Number(categoryId));
+  const productsQuery = useCategoryProducts(activeCategoryId, page);
+  const searchQuery = useProductSearch(search, page);
   const isSearching = search.trim().length > 0;
 
+  function selectCategory(category: Category) {
+    setPage(1);
+    setSearchParams(category.id === categories[0]?.id ? {} : { category: String(category.id) });
+  }
+
   return (
-    <div className="p-4">
-      <div className="mb-4 flex items-center gap-2">
-        {categoryId && (
-          <Link to="/" className="text-sm font-medium text-brand">
-            ← {t("common.back")}
-          </Link>
-        )}
+    <div className="pb-2">
+      <div className="p-4 pb-3">
+        <h1 className="mb-3 text-xl font-bold text-gray-900 dark:text-white">
+          {t("catalog.title")}
+        </h1>
+        <input
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+          }}
+          placeholder={t("common.search")}
+          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-brand focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500"
+        />
       </div>
 
-      <input
-        value={search}
-        onChange={(event) => {
-          setSearch(event.target.value);
-          setPage(1);
-        }}
-        placeholder={t("common.search")}
-        className="mb-4 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm focus:border-brand focus:outline-none"
-      />
-
-      {isSearching ? (
-        <ProductGrid
-          isLoading={searchQuery.isLoading}
-          isError={searchQuery.isError}
-          onRetry={searchQuery.refetch}
-          products={searchQuery.data?.items}
-        />
-      ) : categoryId ? (
+      {!isSearching && (
         <>
-          {activeCategory && (
-            <h1 className="mb-3 text-lg font-semibold text-gray-900">
-              {localizedField(language, activeCategory, "name")}
-            </h1>
+          {categoriesQuery.isError && (
+            <div className="px-4">
+              <ErrorState onRetry={() => categoriesQuery.refetch()} />
+            </div>
           )}
-          <ProductGrid
-            isLoading={productsQuery.isLoading}
-            isError={productsQuery.isError}
-            onRetry={productsQuery.refetch}
-            products={productsQuery.data?.items}
-            emptyLabel={t("catalog.no_products")}
-          />
-        </>
-      ) : (
-        <>
-          <h1 className="mb-3 text-lg font-semibold text-gray-900">{t("catalog.title")}</h1>
-          {categoriesQuery.isLoading && <Spinner />}
-          {categoriesQuery.isError && <ErrorState onRetry={() => categoriesQuery.refetch()} />}
-          {categoriesQuery.data && (
-            <div className="grid grid-cols-2 gap-3">
-              {categoriesQuery.data.map((category) => (
-                <CategoryCard key={category.id} category={category} />
-              ))}
+          {categories.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto px-4 pb-4 [scrollbar-width:none]">
+              {categories.map((category) => {
+                const isActive = category.id === activeCategoryId;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => selectCategory(category)}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                      isActive
+                        ? "bg-brand text-white shadow-md shadow-brand/30"
+                        : "bg-white text-gray-600 shadow-sm dark:bg-white/5 dark:text-gray-300"
+                    }`}
+                  >
+                    <span>🗂️</span>
+                    {localizedField(language, category, "name")}
+                  </button>
+                );
+              })}
             </div>
           )}
         </>
       )}
+
+      <div className="px-4">
+        {isSearching ? (
+          <ProductGrid
+            isLoading={searchQuery.isLoading}
+            isError={searchQuery.isError}
+            onRetry={searchQuery.refetch}
+            products={searchQuery.data?.items}
+          />
+        ) : (
+          <ProductGrid
+            isLoading={categoriesQuery.isLoading || productsQuery.isLoading}
+            isError={productsQuery.isError}
+            onRetry={productsQuery.refetch}
+            products={productsQuery.data?.items}
+            emptyLabel={
+              categories.length === 0 ? t("common.empty") : t("catalog.no_products")
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -105,7 +120,11 @@ function ProductGrid({
   if (isLoading) return <Spinner />;
   if (isError) return <ErrorState onRetry={onRetry} />;
   if (!products || products.length === 0) {
-    return <p className="py-10 text-center text-sm text-gray-500">{emptyLabel ?? t("common.empty")}</p>;
+    return (
+      <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+        {emptyLabel ?? t("common.empty")}
+      </p>
+    );
   }
   return (
     <div className="grid grid-cols-2 gap-3">
