@@ -4,9 +4,7 @@ from aiogram.fsm.state import State, StatesGroup
 class ProductFormStates(StatesGroup):
     choosing_category = State()
     entering_name_uz = State()
-    entering_name_ru = State()
     entering_description_uz = State()
-    entering_description_ru = State()
     entering_sku = State()
     entering_price = State()
     entering_stock = State()
@@ -26,7 +24,6 @@ class StockAdjustStates(StatesGroup):
 
 class CategoryFormStates(StatesGroup):
     entering_name_uz = State()
-    entering_name_ru = State()
 
 
 class BroadcastFormStates(StatesGroup):

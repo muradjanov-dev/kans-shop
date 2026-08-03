@@ -159,21 +159,11 @@ async def on_category_add_start(
 
 
 @router.message(CategoryFormStates.entering_name_uz, F.text)
-async def on_category_name_uz(message: Message, state: FSMContext, _: Callable) -> None:
-    name_uz = (message.text or "").strip()
-    if not name_uz:
-        return
-    await state.update_data(name_uz=name_uz)
-    await state.set_state(CategoryFormStates.entering_name_ru)
-    await message.answer(_("admin.category_enter_name_ru"))
-
-
-@router.message(CategoryFormStates.entering_name_ru, F.text)
-async def on_category_name_ru(
+async def on_category_name_uz(
     message: Message, session: AsyncSession, state: FSMContext, _: Callable
 ) -> None:
-    name_ru = (message.text or "").strip()
-    if not name_ru:
+    name_uz = (message.text or "").strip()
+    if not name_uz:
         return
     data = await state.get_data()
     await state.clear()
@@ -181,10 +171,8 @@ async def on_category_name_ru(
     parent_id = data.get("parent_id") or None
     if parent_id == ROOT_CATEGORY_ID:
         parent_id = None
-    slug = await _unique_slug(session, _slugify(data["name_uz"]))
-    category = Category(
-        name_uz=data["name_uz"], name_ru=name_ru, slug=slug, parent_id=parent_id
-    )
+    slug = await _unique_slug(session, _slugify(name_uz))
+    category = Category(name_uz=name_uz, name_ru=name_uz, slug=slug, parent_id=parent_id)
     session.add(category)
     await session.flush()
 

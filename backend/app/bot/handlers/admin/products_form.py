@@ -66,19 +66,7 @@ async def on_name_uz(message: Message, state: FSMContext, _: Callable) -> None:
     name = (message.text or "").strip()
     if not name:
         return
-    await state.update_data(name_uz=name)
-    await state.set_state(ProductFormStates.entering_name_ru)
-    await message.answer(
-        _("admin.product_enter_name_ru"), reply_markup=cancel_only_keyboard(_)
-    )
-
-
-@router.message(ProductFormStates.entering_name_ru, F.text)
-async def on_name_ru(message: Message, state: FSMContext, _: Callable) -> None:
-    name = (message.text or "").strip()
-    if not name:
-        return
-    await state.update_data(name_ru=name)
+    await state.update_data(name_uz=name, name_ru=name)
     await state.set_state(ProductFormStates.entering_description_uz)
     await message.answer(
         _("admin.product_enter_description_uz"),
@@ -86,18 +74,16 @@ async def on_name_ru(message: Message, state: FSMContext, _: Callable) -> None:
     )
 
 
-async def _advance_to_description_ru(target: Message, state: FSMContext, _: Callable) -> None:
-    await state.set_state(ProductFormStates.entering_description_ru)
-    await target.answer(
-        _("admin.product_enter_description_ru"),
-        reply_markup=comment_step_keyboard(_, show_back=False),
-    )
+async def _advance_to_sku(target: Message, state: FSMContext, _: Callable) -> None:
+    await state.set_state(ProductFormStates.entering_sku)
+    await target.answer(_("admin.product_enter_sku"), reply_markup=cancel_only_keyboard(_))
 
 
 @router.message(ProductFormStates.entering_description_uz, F.text)
 async def on_description_uz(message: Message, state: FSMContext, _: Callable) -> None:
-    await state.update_data(description_uz=(message.text or "").strip() or None)
-    await _advance_to_description_ru(message, state, _)
+    description = (message.text or "").strip() or None
+    await state.update_data(description_uz=description, description_ru=description)
+    await _advance_to_sku(message, state, _)
 
 
 @router.callback_query(
@@ -109,32 +95,7 @@ async def on_description_uz_skip(
     message = await require_message(callback, _)
     if message is None:
         return
-    await state.update_data(description_uz=None)
-    await _advance_to_description_ru(message, state, _)
-    await callback.answer()
-
-
-async def _advance_to_sku(target: Message, state: FSMContext, _: Callable) -> None:
-    await state.set_state(ProductFormStates.entering_sku)
-    await target.answer(_("admin.product_enter_sku"), reply_markup=cancel_only_keyboard(_))
-
-
-@router.message(ProductFormStates.entering_description_ru, F.text)
-async def on_description_ru(message: Message, state: FSMContext, _: Callable) -> None:
-    await state.update_data(description_ru=(message.text or "").strip() or None)
-    await _advance_to_sku(message, state, _)
-
-
-@router.callback_query(
-    ProductFormStates.entering_description_ru, SkipStepCallback.filter(F.step == "comment")
-)
-async def on_description_ru_skip(
-    callback: CallbackQuery, state: FSMContext, _: Callable
-) -> None:
-    message = await require_message(callback, _)
-    if message is None:
-        return
-    await state.update_data(description_ru=None)
+    await state.update_data(description_uz=None, description_ru=None)
     await _advance_to_sku(message, state, _)
     await callback.answer()
 
