@@ -248,7 +248,12 @@ async def on_save_product(
         category.products_count = category.products_count + 1
         await session.flush()
 
-    await render_product_detail(message.edit_text, session, product, _)
+    # product.images was never loaded on this freshly-created instance (only
+    # get_by_id() eager-loads it) - refetch so the detail keyboard's sync access
+    # to .images doesn't trigger a lazy-load outside the awaited context.
+    reloaded = await product_repository.get_by_id(session, product.id)
+    assert reloaded is not None  # just flushed in this same transaction
+    await render_product_detail(message.edit_text, session, reloaded, _)
     await callback.answer(_("admin.product_created"))
 
 
