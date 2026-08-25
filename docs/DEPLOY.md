@@ -88,8 +88,37 @@ bot in Telegram (to every configured admin) confirming the app came up, right af
 - [ ] Seed the catalog if this is a fresh database: `railway run --service api python -m app.db.seed`
       (or open a shell on the service via the Railway dashboard).
 
-## 7. Redeploying
+## 7. Deploying from the CLI (exact commands)
+
+`railway up` archives the **linked project directory** (the repo root), not your shell's
+current directory — `cd backend && railway up` uploads the repo root all the same. Since
+neither Dockerfile sits at the repo root, the build then dies with:
+
+```
+error | failed to read Dockerfile at 'Dockerfile'
+```
+
+which the CLI hides — `railway up` prints only a bare `Deploy failed`. To see the real reason,
+ask the API directly:
+
+```bash
+railway api 'query { buildLogs(deploymentId: "<id>", limit: 200) { message severity } }'
+```
+
+Use `--path-as-root` to make the service's own subdirectory the archive root, so its Dockerfile
+lands at the context root:
+
+```bash
+railway up backend  --path-as-root --service api      --ci
+railway up frontend --path-as-root --service frontend --ci
+```
+
+Both services have `RAILWAY_DOCKERFILE_PATH=Dockerfile` set to match. Do not set it to
+`/Dockerfile` from Git Bash on Windows — MSYS rewrites the leading slash and it arrives as
+`C:/Program Files/Git/Dockerfile`. Use PowerShell, or a path with no leading slash.
+
+## 8. Redeploying
 
 Railway redeploys automatically on push if you've connected the GitHub repo, or manually via
-`railway up` / the dashboard's "Deploy" button. Every deploy re-runs Alembic migrations
+the `railway up` commands in section 7 / the dashboard's "Deploy" button. Every deploy re-runs Alembic migrations
 automatically and re-notifies admins on startup — no extra steps.
