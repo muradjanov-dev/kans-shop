@@ -13,7 +13,7 @@ from app.bot.keyboards.callback_data import (
     AdminViewReceiptCallback,
 )
 from app.core.config import settings
-from app.db.models.enums import OrderStatus, OrderType, PaymentMethod
+from app.db.models.enums import OrderStatus, OrderType, PaymentMethod, PaymentStatus
 from app.db.models.order import Order
 from app.db.models.user import User
 
@@ -21,6 +21,15 @@ ORDER_TYPE_LABEL_KEYS = {
     OrderType.DELIVERY.value: "checkout.type_delivery",
     OrderType.PICKUP.value: "checkout.type_pickup",
     OrderType.PREORDER.value: "checkout.type_preorder",
+}
+
+ADMIN_PAYMENT_LABEL_KEYS = {
+    PaymentMethod.CASH: "admin.payment_cash",
+    PaymentMethod.CARD_TRANSFER: "admin.payment_card",
+    PaymentMethod.CLICK: "admin.payment_click",
+    PaymentMethod.PAYME: "admin.payment_payme",
+    PaymentMethod.PAYNET: "admin.payment_paynet",
+    PaymentMethod.TENDER: "admin.payment_tender",
 }
 
 
@@ -83,14 +92,16 @@ def build_admin_order_text(
         )
     lines.append(translator("admin.total_line", value=_format_price(order.total)))
 
-    method_key = (
-        "admin.payment_cash"
-        if order.payment_method == PaymentMethod.CASH
-        else "admin.payment_card"
-    )
-    receipt_suffix = (
-        translator("admin.receipt_uploaded_suffix") if order.receipt_file_id else ""
-    )
+    method_key = ADMIN_PAYMENT_LABEL_KEYS.get(order.payment_method, "admin.payment_card")
+    if order.receipt_file_id:
+        receipt_suffix = translator("admin.receipt_uploaded_suffix")
+    elif (
+        order.payment_method != PaymentMethod.CASH
+        and order.payment_status == PaymentStatus.PAID
+    ):
+        receipt_suffix = translator("admin.paid_suffix")
+    else:
+        receipt_suffix = ""
     lines.append(
         translator(
             "admin.payment_line", method=translator(method_key), receipt_suffix=receipt_suffix

@@ -7,6 +7,7 @@ from redis.asyncio import Redis, from_url
 from app.bot.handlers import root_router
 from app.bot.middlewares.db import DbSessionMiddleware
 from app.bot.middlewares.i18n import I18nMiddleware
+from app.bot.middlewares.subscription import SubscriptionMiddleware
 from app.bot.middlewares.throttling import ThrottlingMiddleware
 from app.bot.middlewares.user_registration import UserRegistrationMiddleware
 from app.core.config import settings
@@ -31,6 +32,9 @@ def create_dispatcher(redis: Redis | None = None) -> Dispatcher:
     dp.update.outer_middleware(UserRegistrationMiddleware())
     dp.update.outer_middleware(I18nMiddleware())
     dp.update.outer_middleware(ThrottlingMiddleware(redis))
+    # Last: the gate needs `admin` (to bypass) and `_` (to localize), and sits behind
+    # throttling so a blocked user cannot spam getChatMember calls at Telegram.
+    dp.update.outer_middleware(SubscriptionMiddleware(redis))
 
     dp.include_router(root_router)
     return dp

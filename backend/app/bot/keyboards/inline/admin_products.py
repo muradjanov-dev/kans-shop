@@ -20,7 +20,15 @@ from app.db.models.enums import ProductUnit
 from app.db.models.product import Product
 from app.services.common import Page
 
-EDITABLE_FIELDS = ("name_uz", "name_ru", "description_uz", "description_ru", "price", "sku")
+EDITABLE_FIELDS = (
+    "name_uz",
+    "name_ru",
+    "description_uz",
+    "description_ru",
+    "price",
+    "sku",
+    "lot_url",
+)
 
 
 def _format_price(price: Decimal) -> str:

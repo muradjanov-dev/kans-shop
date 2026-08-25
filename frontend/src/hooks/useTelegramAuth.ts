@@ -15,30 +15,49 @@ export function useTelegramAuth(): AuthStatus {
   const setLanguage = useLanguageStore((state) => state.setLanguage);
 
   useEffect(() => {
-    initTelegramWebApp();
-    if (!isTelegramWebApp()) {
-      setStatus("unavailable");
-      return;
-    }
-
-    setLanguage(telegramLanguageCode());
-
-    if (accessToken) {
-      setStatus("ready");
-      return;
-    }
-
     let cancelled = false;
-    axios
-      .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: WebApp.initData })
-      .then(({ data }) => {
-        if (cancelled) return;
-        setTokens(data);
+
+    function authenticate() {
+      setLanguage(telegramLanguageCode());
+
+      if (accessToken) {
         setStatus("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setStatus("unavailable");
-      });
+        return;
+      }
+
+      axios
+        .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: WebApp.initData })
+        .then(({ data }) => {
+          if (cancelled) return;
+          setTokens(data);
+          setStatus("ready");
+        })
+        .catch(() => {
+          if (!cancelled) setStatus("unavailable");
+        });
+    }
+
+    // Some Telegram clients (notably Desktop) populate WebApp.initData a beat after our
+    // bundle evaluates - @twa-dev/sdk snapshots window.Telegram.WebApp once at import time,
+    // so a single early check can permanently read "not available". Poll briefly before
+    // giving up.
+    let attempts = 0;
+    const maxAttempts = 20; // ~2s at 100ms
+    function poll() {
+      if (cancelled) return;
+      initTelegramWebApp();
+      if (isTelegramWebApp()) {
+        authenticate();
+        return;
+      }
+      attempts += 1;
+      if (attempts >= maxAttempts) {
+        setStatus("unavailable");
+        return;
+      }
+      setTimeout(poll, 100);
+    }
+    poll();
 
     return () => {
       cancelled = true;

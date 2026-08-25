@@ -92,6 +92,21 @@ async def on_field_value_entered(
                 _("admin.product_invalid_price"), reply_markup=cancel_only_keyboard(_)
             )
             return
+    elif field == "lot_url":
+        # "-" clears the link, so a product can be pulled out of tender checkout again.
+        if raw == "-":
+            product.lot_url = None
+            await session.flush()
+            await state.clear()
+            await message.answer(_("admin.product_updated"))
+            await render_product_detail(message.answer, session, product, _)
+            return
+        if not raw.startswith(("http://", "https://")) or len(raw) > 512:
+            await message.answer(
+                _("admin.product_invalid_url"), reply_markup=cancel_only_keyboard(_)
+            )
+            return
+        value = raw
     elif field == "sku":
         existing = await product_repository.get_by_sku(session, raw)
         if existing is not None and existing.id != product.id:

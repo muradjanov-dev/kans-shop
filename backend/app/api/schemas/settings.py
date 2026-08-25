@@ -13,3 +13,4 @@ class PublicSettingsOut(BaseModel):
     is_shop_open: bool | None = None
     welcome_text_uz: str | None = None
     welcome_text_ru: str | None = None
+    enabled_payment_providers: list[str] = []

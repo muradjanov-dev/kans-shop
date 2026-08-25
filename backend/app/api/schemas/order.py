@@ -4,7 +4,13 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
-from app.db.models.enums import OrderStatus, OrderType, PaymentMethod, PaymentStatus
+from app.db.models.enums import (
+    OrderStatus,
+    OrderType,
+    PaymentMethod,
+    PaymentProvider,
+    PaymentStatus,
+)
 
 
 class CheckoutIn(BaseModel):
@@ -64,3 +70,21 @@ class OrderOut(BaseModel):
     completed_at: datetime | None
     cancelled_at: datetime | None
     items: list[OrderItemOut]
+
+
+class LotLinkOut(BaseModel):
+    product_name: str
+    url: str
+
+
+class LotLinksOut(BaseModel):
+    links: list[LotLinkOut]
+    missing: list[str]
+
+
+class PayIn(BaseModel):
+    provider: PaymentProvider
+
+
+class PayOut(BaseModel):
+    payment_url: str

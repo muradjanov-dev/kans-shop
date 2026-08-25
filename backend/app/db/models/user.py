@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -26,6 +26,12 @@ class User(IDMixin, TimestampMixin, Base):
         pg_enum(UserSource, "user_source"),
         server_default=UserSource.BOT.value,
         nullable=False,
+    )
+    # Which campaign deep link brought this user in — written once, on first contact.
+    traffic_source_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("traffic_sources.id", ondelete="SET NULL"),
+        index=True,
     )
 
     def __repr__(self) -> str:

@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.admin.broadcast import render_broadcast_entry
 from app.bot.handlers.admin.categories import render_categories_list
+from app.bot.handlers.admin.manage import render_admins_list
 from app.bot.handlers.admin.orders_list import render_orders_list
 from app.bot.handlers.admin.products import render_products_category_picker
 from app.bot.handlers.admin.settings import render_settings
+from app.bot.handlers.admin.sources import render_sources_list
 from app.bot.handlers.admin.stats import render_stats
 from app.bot.handlers.admin.users import render_users_list
 from app.bot.keyboards.callback_data import ROOT_CATEGORY_ID, AdminMenuCallback
@@ -19,7 +21,7 @@ from app.bot.utils.admin_guard import require_admin
 from app.bot.utils.i18n import menu_button_texts
 from app.bot.utils.messages import require_message
 from app.db.models.admin import Admin
-from app.db.models.enums import OrderStatus
+from app.db.models.enums import AdminRole, OrderStatus
 from app.db.repositories import order_repository
 
 router = Router(name="admin_menu")
@@ -32,6 +34,27 @@ async def _new_orders_count(session: AsyncSession) -> int:
     return total
 
 
+async def render_admin_menu(
+    send: Callable[..., Awaitable[object]],
+    session: AsyncSession,
+    admin: Admin | None,
+    *,
+    translator: Callable[..., str],
+) -> None:
+    if admin is None or not admin.is_active:
+        await send(translator("admin.not_admin_alert"))
+        return
+    count = await _new_orders_count(session)
+    await send(
+        translator("admin.menu_title"),
+        reply_markup=admin_menu_keyboard(
+            translator,
+            new_orders_count=count,
+            is_superadmin=admin.role == AdminRole.SUPERADMIN,
+        ),
+    )
+
+
 @router.message(Command("admin"))
 @router.message(F.text.in_(menu_button_texts("admin.menu_title")))
 async def cmd_admin(
@@ -39,10 +62,7 @@ async def cmd_admin(
 ) -> None:
     if not await require_admin(message, admin, _):
         return
-    count = await _new_orders_count(session)
-    await message.answer(
-        _("admin.menu_title"), reply_markup=admin_menu_keyboard(_, new_orders_count=count)
-    )
+    await render_admin_menu(message.answer, session, admin, translator=_)
 
 
 @router.callback_query(AdminMenuCallback.filter())
@@ -67,7 +87,12 @@ async def on_menu_section(
     if section == "menu":
         count = await _new_orders_count(session)
         await edit(
-            _("admin.menu_title"), reply_markup=admin_menu_keyboard(_, new_orders_count=count)
+            _("admin.menu_title"),
+            reply_markup=admin_menu_keyboard(
+                _,
+                new_orders_count=count,
+                is_superadmin=admin is not None and admin.role == AdminRole.SUPERADMIN,
+            ),
         )
     elif section == "orders":
         await render_orders_list(edit, session, "all", 1, _)
@@ -83,4 +108,10 @@ async def on_menu_section(
         await render_users_list(edit, session, 1, _)
     elif section == "settings":
         await render_settings(edit, session, _)
+    elif section == "sources":
+        await render_sources_list(edit, session, translator=_)
+    elif section == "admins":
+        if not await require_admin(callback, admin, _, roles=(AdminRole.SUPERADMIN,)):
+            return
+        await render_admins_list(edit, session, translator=_)
     await callback.answer()

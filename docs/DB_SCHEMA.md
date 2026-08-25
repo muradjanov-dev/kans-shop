@@ -19,6 +19,7 @@ practice, but NUMERIC avoids float rounding). Tables that are user-facing catalo
 | is_admin | BOOLEAN | default false (denormalized flag; source of truth is `admins`) |
 | last_active_at | TIMESTAMPTZ | nullable |
 | source | VARCHAR(10) | `bot` / `webapp` — how the user first registered |
+| traffic_source_id | BIGINT FK → traffic_sources.id | nullable, **ON DELETE SET NULL**, indexed. First-touch attribution: which campaign deep link brought the user in. Written once, on first contact, never overwritten. |
 
 ## admins
 | column | type | notes |
@@ -63,6 +64,7 @@ Role capability matrix (enforced in `core/security.py` + FastAPI deps + bot midd
 | is_active | BOOLEAN | default true |
 | is_featured | BOOLEAN | default false |
 | sort_order | INT | default 0 |
+| lot_url | VARCHAR(512) | nullable, tender/lot payment page for this product. Products without one are excluded from tender checkout. |
 | views_count | INT | default 0 |
 | sold_count | INT | default 0 |
 
@@ -100,7 +102,7 @@ re-snapshots at creation time), `UNIQUE(cart_id, product_id)`.
 | latitude, longitude | NUMERIC(9,6) | nullable |
 | comment | TEXT | nullable, customer note |
 | subtotal, delivery_fee, discount, total | NUMERIC(12,2) | |
-| payment_method | ENUM payment_method | `cash`,`card_transfer`,`click`,`payme` |
+| payment_method | ENUM payment_method | `cash`,`card_transfer`,`click`,`payme`,`paynet`,`tender` |
 | payment_status | ENUM payment_status | `pending`,`receipt_uploaded`,`paid`,`failed` |
 | receipt_file_id | VARCHAR(255) | nullable |
 | receipt_url | TEXT | nullable |
@@ -120,6 +122,27 @@ mandatory: price/name changes on the live product must never mutate historical o
 initial `new` row), `changed_by_admin_id` FK → admins.id nullable (null = system), `comment`
 nullable, `created_at`.
 
+## payment_transactions
+Audit trail of Click/Payme/Paynet gateway callbacks for an order. `order_id` FK → orders.id
+**ON DELETE CASCADE**, `provider` ENUM payment_provider (`click`,`payme`,`paynet`),
+`provider_transaction_id` VARCHAR(64) nullable indexed (the gateway's own transaction id —
+Click's `click_trans_id`, Payme's `id`, ...), `state` ENUM payment_tx_state
+(`created`,`pending`,`paid`,`cancelled`,`failed`), `amount` NUMERIC(12,2), `raw_payload` JSONB
+(last callback body received, for debugging/audit). `UNIQUE(provider, provider_transaction_id)`
+makes webhook handling idempotent against duplicate gateway callbacks.
+
+## traffic_sources
+Campaign deep links for lead attribution — one row per source an admin creates in the bot's
+admin panel. `code` VARCHAR(32) UNIQUE indexed (lowercase `[a-z0-9_-]{2,32}`; the shareable
+link is `t.me/<BOT_USERNAME>?start=src_<code>`), `name` VARCHAR(128) (human label, e.g.
+"Instagram"), `clicks_count` INT default 0 (every `/start` on the link, including returning
+users), `is_active` BOOLEAN default true (an inactive source stops attributing without losing
+its history).
+
+Per-source stats are computed on read by joining `users.traffic_source_id` → `orders`, so
+attributed customers, their order count and revenue never drift out of sync with the orders
+table.
+
 ## settings
 `key` VARCHAR(64) UNIQUE, `value` JSONB, `description` TEXT. Seeded keys: `delivery_fee`,
 `free_delivery_from`, `min_order_amount`, `work_hours`, `card_number`, `card_holder`,
@@ -138,10 +161,12 @@ ENUM broadcast_status (`draft`,`sending`,`completed`,`failed`), `sent_count` INT
 - `users(telegram_id)`
 - `products(category_id)`, `products(is_active)`
 - `orders(user_id)`, `orders(status)`, `orders(created_at DESC)`
+- `payment_transactions(order_id)`, `payment_transactions(provider_transaction_id)`
 - `cart_items(cart_id)`
+- `users(traffic_source_id)`, `traffic_sources(code)` UNIQUE
 - `GIN (name_uz gin_trgm_ops)`, `GIN (name_ru gin_trgm_ops)` on `products` (requires
   `CREATE EXTENSION pg_trgm`)
 
 ## Enums (Postgres native ENUM, mirrored as Python `enum.Enum`)
 `admin_role`, `product_unit`, `order_type`, `order_status`, `payment_method`, `payment_status`,
-`broadcast_target`, `broadcast_status`.
+`payment_provider`, `payment_tx_state`, `broadcast_target`, `broadcast_status`.

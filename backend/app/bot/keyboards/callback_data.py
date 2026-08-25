@@ -254,3 +254,50 @@ class StatsPeriodCallback(CallbackData, prefix="statp"):
 
 class StatsExportCallback(CallbackData, prefix="statexp"):
     period: str
+
+
+# --- Mandatory channel subscription ---
+# The one callback the subscription gate lets through, so a user who has just joined can
+# re-run the check without being blocked by the very middleware they are trying to satisfy.
+class CheckSubscriptionCallback(CallbackData, prefix="checksub"):
+    pass
+
+
+# --- Main menu (inline) ---
+# Replaces the old persistent reply keyboard; `action` mirrors the menu.* locale keys.
+class MenuCallback(CallbackData, prefix="mainmenu"):
+    action: str  # "catalog" | "cart" | "orders" | "favorites" | "about" | "contact"
+    #             | "settings" | "admin" | "menu"
+
+
+# --- Admin: traffic sources (campaign deep links) ---
+class AdminSourceDetailCallback(CallbackData, prefix="asrcd"):
+    source_id: int
+
+
+class AdminSourceActionCallback(CallbackData, prefix="asrca"):
+    source_id: int
+    action: str  # "toggle" | "delete_request" | "delete_confirm"
+
+
+class AdminSourceAddCallback(CallbackData, prefix="asrcadd"):
+    pass
+
+
+# --- Admin: managing admins themselves (superadmin only) ---
+class AdminManageDetailCallback(CallbackData, prefix="amngd"):
+    admin_id: int
+
+
+class AdminManageActionCallback(CallbackData, prefix="amnga"):
+    admin_id: int
+    action: str  # "toggle" | "remove_request" | "remove_confirm" | "role_menu"
+
+
+class AdminManageAddCallback(CallbackData, prefix="amngadd"):
+    pass
+
+
+class AdminRoleChooseCallback(CallbackData, prefix="amngrole"):
+    admin_id: int  # 0 while creating a not-yet-persisted admin
+    role: str

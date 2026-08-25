@@ -13,6 +13,14 @@
     "welcome": "Assalomu alaykum, {name}! 👋\n\nKans Shop botiga xush kelibsiz — ofis va maktab buyumlari uchun ishonchli manzil.",
     "language_set": "Til o'zbek tiliga o'rnatildi ✅"
   },
+  "subscription": {
+    "required": "🔒 <b>Botdan foydalanish uchun kanalimizga obuna bo'ling</b>\n\nQuyidagi tugma orqali kanalga qo'shiling, so'ng «Obunani tekshirish» tugmasini bosing.",
+    "join_button": "📢 Kanalga obuna bo'lish",
+    "check_button": "✅ Obunani tekshirish",
+    "not_subscribed_alert": "Siz hali kanalga obuna bo'lmagansiz.",
+    "confirmed": "✅ Obuna tasdiqlandi. Rahmat!",
+    "confirmed_alert": "✅ Obuna tasdiqlandi!"
+  },
   "menu": {
     "catalog": "🛍 Katalog",
     "cart": "🛒 Savat",
@@ -22,7 +30,14 @@
     "contact": "☎️ Aloqa",
     "webapp": "🌐 Ilovani ochish",
     "settings": "⚙️ Sozlamalar",
-    "choose_action": "Quyidagi menyudan birini tanlang 👇"
+    "choose_action": "Quyidagi menyudan birini tanlang 👇",
+    "back_to_menu": "🏠 Bosh menyu",
+    "title": "🏠 Bosh menyu"
+  },
+  "commands": {
+    "start": "Botni ishga tushirish",
+    "menu": "Bosh menyu",
+    "admin": "Admin panel"
   },
   "catalog": {
     "title": "🛍 Katalog",
@@ -94,7 +109,12 @@
     "choose_payment": "To'lov usulini tanlang:",
     "payment_cash": "💵 Naqd (yetkazishda)",
     "payment_card": "💳 Karta orqali o'tkazma",
+    "payment_click": "🔵 Click",
+    "payment_payme": "🟢 Payme",
+    "payment_paynet": "🟣 Paynet",
     "card_details": "💳 Karta raqami: <code>{card_number}</code>\n👤 Egasi: {card_holder}\n💰 Summa: {total} so'm\n\nTo'lovni amalga oshirib, chek rasmini yuboring 📸",
+    "pay_now": "To'lovni amalga oshirish uchun quyidagi tugmani bosing:",
+    "pay_button": "💳 To'lash",
     "invalid_receipt": "Iltimos, chek rasmi yoki hujjat yuboring (jpg/png/webp/pdf, 5MB gacha).",
     "receipt_too_large": "Fayl hajmi 5MB dan oshmasligi kerak.",
     "receipt_bad_type": "Fayl turi qo'llab-quvvatlanmaydi. Faqat jpg/png/webp/pdf.",
@@ -120,7 +140,11 @@
     "min_order_amount_error": "Minimal buyurtma summasi {min_amount} so'm. Hozirgi: {subtotal} so'm",
     "out_of_stock_error": "Ba'zi mahsulotlar yetarli emas. Iltimos savatni tekshiring.",
     "skip_button": "⏭ O'tkazib yuborish",
-    "preorder_note": "\n\n📞 Menejerimiz siz bilan tez orada bog'lanadi."
+    "preorder_note": "\n\n📞 Menejerimiz siz bilan tez orada bog'lanadi.",
+    "payment_tender": "📋 Tender (lot orqali)",
+    "lot_links_intro": "📋 Har bir mahsulot uchun lot havolasi quyida. To'lovni lot sahifasi orqali amalga oshiring:",
+    "lot_links_missing": "⚠️ Bu mahsulotlar uchun lot havolasi hali qo'shilmagan: {products}. Menejerimiz siz bilan bog'lanadi.",
+    "receipt_uploaded_success": "✅ Chek qabul qilindi! Buyurtma <b>#{order_number}</b> to'lovi tekshirilmoqda, tez orada tasdiqlaymiz."
   },
   "orders": {
     "title": "📦 <b>Buyurtmalarim</b>",
@@ -138,7 +162,8 @@
     "status_cancelled": "❌ Bekor qilindi",
     "status_changed_notification": "📦 Buyurtma <b>#{order_number}</b> holati o'zgardi: {status}",
     "cancelled_notification": "❌ Buyurtma <b>#{order_number}</b> bekor qilindi.\nSabab: {reason}",
-    "confirmed_notification": "✅ Buyurtma <b>#{order_number}</b> tasdiqlandi!"
+    "confirmed_notification": "✅ Buyurtma <b>#{order_number}</b> tasdiqlandi!",
+    "payment_confirmed_notification": "✅ To'lovingiz qabul qilindi! Buyurtma <b>#{order_number}</b> tasdiqlandi."
   },
   "admin": {
     "new_order_title": "🆕 YANGI BUYURTMA #{order_number}",
@@ -157,7 +182,11 @@
     "payment_line": "💳 To'lov: {method}{receipt_suffix}",
     "payment_cash": "Naqd (yetkazishda)",
     "payment_card": "Karta orqali o'tkazma",
+    "payment_click": "Click",
+    "payment_payme": "Payme",
+    "payment_paynet": "Paynet",
     "receipt_uploaded_suffix": " (chek yuborilgan)",
+    "paid_suffix": " (to'landi ✅)",
     "timestamp_line": "🕐 {value}",
     "confirm_button": "✅ Tasdiqlash",
     "cancel_button": "❌ Bekor qilish",
@@ -190,7 +219,6 @@
     "no_username": "—",
     "login_code": "🔐 Bir martalik kodingiz: <code>{code}</code>\n\n{minutes} daqiqa amal qiladi. Bu kodni web admin panelga kiritish uchun ishlating.",
     "deploy_notification": "✅ Kans Shop tizimi qayta ishga tushirildi (deploy/restart). Hammasi joyida.",
-
     "menu_title": "🛠 Admin panel",
     "menu_orders": "📦 Buyurtmalar",
     "menu_categories": "🗂 Kategoriyalar",
@@ -201,7 +229,6 @@
     "menu_settings": "⚙️ Sozlamalar",
     "menu_webapp": "🌐 Web admin panel",
     "back_to_menu": "⬅️ Admin menyuga",
-
     "categories_title": "🗂 Kategoriyalar",
     "category_add_button": "➕ Yangi kategoriya",
     "category_add_sub_button": "➕ Pastki kategoriya qo'shish",
@@ -219,7 +246,6 @@
     "category_deleted": "🗑 Kategoriya o'chirildi.",
     "category_not_found": "Kategoriya topilmadi.",
     "category_empty_list": "Kategoriyalar mavjud emas.",
-
     "products_title": "🛍 Mahsulotlar",
     "product_add_button": "➕ Yangi mahsulot",
     "product_choose_category": "Mahsulot uchun kategoriyani tanlang:",
@@ -265,11 +291,9 @@
     "product_stock_updated": "✅ Qoldiq yangilandi: {value}",
     "product_edit_button": "✏️ Tahrirlash",
     "product_card": "<b>{name_uz} / {name_ru}</b>\nSKU: <code>{sku}</code>\n💰 Narx: {price} so'm\n📦 Qoldiq: {stock} {unit}\nHolat: {status}",
-
     "orders_list_title": "📦 Buyurtmalar",
     "orders_filter_all": "Barchasi",
     "orders_empty": "Buyurtmalar topilmadi.",
-
     "stats_title": "📊 Statistika",
     "stats_period_today": "Bugun",
     "stats_period_week": "Hafta",
@@ -279,7 +303,6 @@
     "stats_top_product_line": "{index}. {name} — {sold} dona",
     "stats_export_button": "📥 Excel'ga eksport",
     "stats_export_caption": "📊 Statistika hisoboti",
-
     "users_title": "👥 Foydalanuvchilar",
     "user_line": "{name} ({username}) — {orders_count} buyurtma",
     "user_detail": "👤 <b>{name}</b>\n💬 {username}\n📱 {phone}\n🗣 Til: {language}\n📦 Buyurtmalar: {orders_count}\n🕐 Ro'yxatdan o'tgan: {created_at}\nHolat: {status}",
@@ -290,7 +313,6 @@
     "user_blocked_done": "🚫 Foydalanuvchi bloklandi.",
     "user_unblocked_done": "✅ Foydalanuvchi blokdan chiqarildi.",
     "user_not_found": "Foydalanuvchi topilmadi.",
-
     "settings_title": "⚙️ Sozlamalar",
     "setting_line": "{label}: {value}",
     "setting_enter_new_value": "Yangi qiymatni kiriting:",
@@ -304,7 +326,6 @@
     "setting_support_username": "Qo'llab-quvvatlash username",
     "setting_shop_phone": "Do'kon telefon raqami",
     "setting_is_shop_open": "Do'kon ochiqmi (true/false)",
-
     "broadcast_title": "📣 Xabar yuborish",
     "broadcast_enter_content": "Yubormoqchi bo'lgan matn yoki rasmni yuboring:",
     "broadcast_ask_button": "Tugma qo'shmoqchimisiz?",
@@ -322,6 +343,54 @@
     "broadcast_cancel_button": "❌ Bekor qilish",
     "broadcast_sending": "⏳ Yuborilmoqda... {sent}/{total}",
     "broadcast_done": "✅ Yuborish yakunlandi.\nYuborildi: {sent}\nXato: {failed}",
-    "broadcast_cancelled": "Bekor qilindi."
+    "broadcast_cancelled": "Bekor qilindi.",
+    "payment_tender": "Tender (lot)",
+    "product_field_lot_url": "Lot to'lov havolasi",
+    "product_invalid_url": "Havola http:// yoki https:// bilan boshlanishi kerak. O'chirish uchun «-» yuboring.",
+    "menu_sources": "🔗 Manbalar",
+    "sources_title": "🔗 Trafik manbalari\n\nHar bir havola bo'yicha: nomi · bosishlar soni",
+    "sources_empty": "🔗 Hali birorta manba havolasi yaratilmagan.",
+    "source_add_button": "➕ Yangi havola",
+    "source_enter_name": "Manba nomini kiriting (masalan: Instagram, Telegram kanal, Bozor):",
+    "source_enter_code": "Havola kodini kiriting (faqat lotin harflari, raqamlar, - va _).\n\nTaklif: <code>{suggested}</code>\nTaklifni qabul qilish uchun «-» yuboring.",
+    "source_invalid_code": "Kod noto'g'ri. 2-32 belgi, faqat a-z, 0-9, - va _ ishlating.",
+    "source_code_exists": "Bu kod band. Boshqasini kiriting.",
+    "source_created": "✅ Manba havolasi yaratildi.",
+    "source_not_found": "Manba topilmadi.",
+    "source_deleted": "Manba o'chirildi.",
+    "source_detail": "🔗 <b>{name}</b>\nHolat: {status}\n\nHavola:\n<code>{link}</code>\n\n👆 Bosishlar: {clicks}\n👤 Yangi mijozlar: {users}\n📦 Buyurtmalar: {orders}\n💰 Savdo: {revenue} so'm",
+    "source_status_active": "✅ Faol",
+    "source_status_inactive": "🔴 O'chirilgan",
+    "source_share_button": "📤 Havolani ulashish",
+    "source_activate_button": "✅ Faollashtirish",
+    "source_deactivate_button": "🔴 O'chirish",
+    "source_delete_button": "🗑 Butunlay o'chirish",
+    "source_delete_confirm": "«{name}» manbasini o'chirasizmi? Statistika ham yo'qoladi.",
+    "source_delete_confirm_yes": "🗑 Ha, o'chirilsin",
+    "menu_admins": "👮 Adminlar",
+    "admins_title": "👮 <b>Adminlar</b>\n\nRo'yxatdagi adminni tanlang yoki yangisini qo'shing.",
+    "admin_add_button": "➕ Admin qo'shish",
+    "admin_enter_telegram_id": "Yangi adminning Telegram ID raqamini yuboring (faqat raqam).\n\nID ni bilish uchun @userinfobot dan foydalaning.",
+    "admin_invalid_telegram_id": "Telegram ID faqat raqamlardan iborat bo'lishi kerak. Qayta yuboring.",
+    "admin_already_exists": "Bu foydalanuvchi allaqachon admin.",
+    "admin_enter_name": "Adminning ismini kiriting.\n\nTaklif: <code>{suggested}</code>\nTaklifni qabul qilish uchun «-» yuboring.",
+    "admin_choose_role": "Admin rolini tanlang:",
+    "admin_created": "✅ Yangi admin qo'shildi.",
+    "admin_not_found": "Admin topilmadi.",
+    "admin_removed": "Admin o'chirildi.",
+    "admin_detail": "👮 <b>{name}</b>\n\n🆔 Telegram ID: <code>{telegram_id}</code>\n🔗 {username}\n🎫 Rol: {role}\nHolat: {status}\n📅 Qo'shilgan: {created_at}",
+    "admin_status_active": "✅ Faol",
+    "admin_status_inactive": "🔴 O'chirilgan",
+    "admin_change_role_button": "🎫 Rolni o'zgartirish",
+    "admin_activate_button": "✅ Faollashtirish",
+    "admin_deactivate_button": "🔴 Faolsizlantirish",
+    "admin_remove_button": "🗑 Adminlikdan olib tashlash",
+    "admin_remove_confirm": "«{name}» ni adminlar ro'yxatidan o'chirasizmi?",
+    "admin_remove_confirm_yes": "🗑 Ha, o'chirilsin",
+    "admin_cannot_remove_self": "O'zingizni o'chira olmaysiz.",
+    "admin_last_superadmin": "Bu oxirgi faol superadmin — uni o'zgartirib bo'lmaydi, aks holda hech kim panelga kira olmaydi.",
+    "role_superadmin": "👑 Superadmin",
+    "role_manager": "👔 Menejer",
+    "role_operator": "🎧 Operator"
   }
 }

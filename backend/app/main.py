@@ -8,10 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.errors import register_exception_handlers
+from app.api.payments_webhooks import router as payments_webhooks_router
 from app.api.rate_limit import RateLimitMiddleware
 from app.api.v1 import router as api_v1_router
 from app.bot.loader import create_bot, create_dispatcher
 from app.bot.services.system_notifications import notify_admins_deploy
+from app.bot.utils.commands import setup_bot_commands
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.core.security import verify_webhook_secret
@@ -26,6 +28,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     bot = create_bot()
     app.state.bot = bot
     app.state.dispatcher = None
+
+    await setup_bot_commands(bot)
 
     if settings.webhook_url:
         dispatcher = create_dispatcher()
@@ -60,6 +64,7 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_v1_router)
+    app.include_router(payments_webhooks_router)
     app.mount("/media", StaticFiles(directory=settings.media_root_path), name="media")
 
     @app.get("/health")

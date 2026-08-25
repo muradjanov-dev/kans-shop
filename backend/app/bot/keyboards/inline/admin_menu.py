@@ -8,7 +8,10 @@ from app.core.config import settings
 
 
 def admin_menu_keyboard(
-    translator: Callable[..., str], *, new_orders_count: int
+    translator: Callable[..., str],
+    *,
+    new_orders_count: int,
+    is_superadmin: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     orders_label = translator("admin.menu_orders")
@@ -49,8 +52,19 @@ def admin_menu_keyboard(
         InlineKeyboardButton(
             text=translator("admin.menu_settings"),
             callback_data=AdminMenuCallback(section="settings").pack(),
-        )
+        ),
+        InlineKeyboardButton(
+            text=translator("admin.menu_sources"),
+            callback_data=AdminMenuCallback(section="sources").pack(),
+        ),
     )
+    if is_superadmin:
+        builder.row(
+            InlineKeyboardButton(
+                text=translator("admin.menu_admins"),
+                callback_data=AdminMenuCallback(section="admins").pack(),
+            )
+        )
     builder.row(
         InlineKeyboardButton(
             text=translator("admin.menu_webapp"), url=f"{settings.webapp_url}/admin"

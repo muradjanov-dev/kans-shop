@@ -100,7 +100,12 @@ def comment_step_keyboard(
     return builder.as_markup()
 
 
-def payment_method_keyboard(translator: Callable[..., str]) -> InlineKeyboardMarkup:
+def payment_method_keyboard(
+    translator: Callable[..., str],
+    *,
+    enabled_providers: set[str] = frozenset(),
+    tender_available: bool = False,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -116,6 +121,27 @@ def payment_method_keyboard(translator: Callable[..., str]) -> InlineKeyboardMar
             ).pack(),
         )
     )
+    for method, label_key in (
+        (PaymentMethod.CLICK, "checkout.payment_click"),
+        (PaymentMethod.PAYME, "checkout.payment_payme"),
+        (PaymentMethod.PAYNET, "checkout.payment_paynet"),
+    ):
+        if method.value in enabled_providers:
+            builder.row(
+                InlineKeyboardButton(
+                    text=translator(label_key),
+                    callback_data=PaymentMethodCallback(value=method.value).pack(),
+                )
+            )
+    # Tender is offered only when at least one item in the cart actually has a lot page —
+    # otherwise the customer would pick a payment method with nothing to pay against.
+    if tender_available:
+        builder.row(
+            InlineKeyboardButton(
+                text=translator("checkout.payment_tender"),
+                callback_data=PaymentMethodCallback(value=PaymentMethod.TENDER.value).pack(),
+            )
+        )
     builder.row(*_nav_row(translator, show_back=True))
     return builder.as_markup()
 

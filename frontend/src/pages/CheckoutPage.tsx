@@ -1,13 +1,21 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCart, useCheckout, usePublicSettings } from "@/hooks/queries";
+import {
+  useCart,
+  useCheckout,
+  useLotLinks,
+  usePayOrder,
+  usePublicSettings,
+} from "@/hooks/queries";
 import { Spinner } from "@/components/Spinner";
 import { useTranslate } from "@/lib/i18n";
 import { formatPrice } from "@/lib/format";
 import { isValidUzPhone, normalizeUzPhone } from "@/lib/phone";
 import { getApiErrorMessage } from "@/lib/api";
 import { WebApp } from "@/lib/telegram";
-import type { OrderType, PaymentMethod } from "@/types/api";
+import type { OrderType, PaymentMethod, PaymentProvider } from "@/types/api";
+
+const ONLINE_PROVIDERS: PaymentProvider[] = ["click", "payme", "paynet"];
 
 export function CheckoutPage() {
   const t = useTranslate();
@@ -15,6 +23,7 @@ export function CheckoutPage() {
   const { data: cart, isLoading: cartLoading } = useCart(true);
   const { data: settings } = usePublicSettings();
   const checkout = useCheckout();
+  const payOrder = usePayOrder();
 
   const [orderType, setOrderType] = useState<OrderType>("delivery");
   const [name, setName] = useState(WebApp.initDataUnsafe?.user?.first_name ?? "");
@@ -25,7 +34,29 @@ export function CheckoutPage() {
   const [comment, setComment] = useState("");
   const [phoneError, setPhoneError] = useState(false);
   const [successOrderNumber, setSuccessOrderNumber] = useState<string | null>(null);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [payError, setPayError] = useState(false);
+  const [tenderOrderId, setTenderOrderId] = useState<number | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const lotLinks = useLotLinks(tenderOrderId);
+
+  // Tender is only offered when something in the cart actually has a lot page to pay through,
+  // mirroring the same rule in the bot's checkout (backend/app/bot/handlers/user/checkout.py).
+  const tenderAvailable = useMemo(
+    () => (cart?.items ?? []).some((item) => Boolean(item.product.lot_url)),
+    [cart],
+  );
+
+  const availablePaymentMethods = useMemo<PaymentMethod[]>(
+    () => [
+      "cash",
+      "card_transfer",
+      ...ONLINE_PROVIDERS.filter((p) => settings?.enabled_payment_providers?.includes(p)),
+      ...(tenderAvailable ? (["tender"] as PaymentMethod[]) : []),
+    ],
+    [settings, tenderAvailable],
+  );
 
   const subtotal = Number(cart?.subtotal ?? 0);
   const deliveryFee = useMemo(() => {
@@ -48,9 +79,43 @@ export function CheckoutPage() {
         <p className="text-sm text-gray-500">
           {t("checkout.success_number", { number: successOrderNumber })}
         </p>
+        {payError && <p className="text-xs font-medium text-red-500">{t("checkout.pay_error")}</p>}
+        {paymentUrl && (
+          <button
+            onClick={() => WebApp.openLink(paymentUrl)}
+            className="mt-2 rounded-lg bg-brand px-6 py-2.5 text-sm font-semibold text-white"
+          >
+            {t("checkout.pay_button")}
+          </button>
+        )}
+        {tenderOrderId !== null && lotLinks.data && (
+          <div className="mt-2 flex w-full flex-col gap-2">
+            {lotLinks.data.links.length > 0 && (
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                {t("checkout.lot_links_intro")}
+              </p>
+            )}
+            {lotLinks.data.links.map((link) => (
+              <button
+                key={link.url}
+                onClick={() => WebApp.openLink(link.url)}
+                className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                📄 {link.product_name}
+              </button>
+            ))}
+            {lotLinks.data.missing.length > 0 && (
+              <p className="text-xs text-amber-600">
+                {t("checkout.lot_links_missing", {
+                  products: lotLinks.data.missing.join(", "),
+                })}
+              </p>
+            )}
+          </div>
+        )}
         <button
           onClick={() => navigate("/orders")}
-          className="mt-2 rounded-lg bg-brand px-6 py-2.5 text-sm font-semibold text-white"
+          className="mt-2 rounded-lg border border-gray-200 px-6 py-2.5 text-sm font-semibold text-gray-700"
         >
           {t("nav.orders")}
         </button>
@@ -82,7 +147,21 @@ export function CheckoutPage() {
         comment: comment.trim() || null,
       },
       {
-        onSuccess: (order) => setSuccessOrderNumber(order.order_number),
+        onSuccess: (order) => {
+          setSuccessOrderNumber(order.order_number);
+          if (paymentMethod === "tender") {
+            setTenderOrderId(order.id);
+          }
+          if ((ONLINE_PROVIDERS as string[]).includes(paymentMethod)) {
+            payOrder.mutate(
+              { orderId: order.id, provider: paymentMethod as PaymentProvider },
+              {
+                onSuccess: (res) => setPaymentUrl(res.payment_url),
+                onError: () => setPayError(true),
+              },
+            );
+          }
+        },
         onError: (error) => setSubmitError(getApiErrorMessage(error, t("common.error"))),
       },
     );
@@ -154,7 +233,7 @@ export function CheckoutPage() {
 
       <Field label={t("checkout.payment_method")}>
         <div className="grid grid-cols-2 gap-2">
-          {(["cash", "card_transfer"] as const).map((method) => (
+          {availablePaymentMethods.map((method) => (
             <button
               key={method}
               type="button"

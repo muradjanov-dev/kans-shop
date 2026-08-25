@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     admin_ids: str = Field(default="", alias="ADMIN_IDS")
     error_channel_id: int | None = Field(default=None, alias="ERROR_CHANNEL_ID")
     orders_channel_id: int | None = Field(default=None, alias="ORDERS_CHANNEL_ID")
+    # --- Mandatory channel subscription ---
+    # When set, users must be subscribed to this channel before the bot answers them.
+    # Leave empty to disable the gate entirely. The bot must be an ADMIN of the channel,
+    # otherwise getChatMember is rejected and the gate fails open (see bot/utils/subscription.py).
+    required_channel_id: int | None = Field(default=None, alias="REQUIRED_CHANNEL_ID")
+    # Public join link shown on the gate's button. Optional: left empty, it is resolved at
+    # runtime from the channel itself (@username, else a generated invite link).
+    required_channel_url: str = Field(default="", alias="REQUIRED_CHANNEL_URL")
 
     # --- Database ---
     database_url: str = Field(alias="DATABASE_URL")
@@ -48,7 +56,24 @@ class Settings(BaseSettings):
     currency: str = Field(default="UZS", alias="CURRENCY")
     debug: bool = Field(default=False, alias="DEBUG")
 
-    @field_validator("error_channel_id", "orders_channel_id", mode="before")
+    # --- Payments: Click (my.click.uz Merchant Cabinet) ---
+    click_service_id: str = Field(default="", alias="CLICK_SERVICE_ID")
+    click_merchant_id: str = Field(default="", alias="CLICK_MERCHANT_ID")
+    click_merchant_user_id: str = Field(default="", alias="CLICK_MERCHANT_USER_ID")
+    click_secret_key: str = Field(default="", alias="CLICK_SECRET_KEY")
+
+    # --- Payments: Payme (business.payme.uz) ---
+    payme_merchant_id: str = Field(default="", alias="PAYME_MERCHANT_ID")
+    payme_secret_key: str = Field(default="", alias="PAYME_SECRET_KEY")
+
+    # --- Payments: Paynet (credentials/spec provided under merchant agreement) ---
+    paynet_merchant_id: str = Field(default="", alias="PAYNET_MERCHANT_ID")
+    paynet_secret_key: str = Field(default="", alias="PAYNET_SECRET_KEY")
+    paynet_api_base_url: str = Field(default="", alias="PAYNET_API_BASE_URL")
+
+    @field_validator(
+        "error_channel_id", "orders_channel_id", "required_channel_id", mode="before"
+    )
     @classmethod
     def _blank_str_to_none(cls, value: object) -> object:
         if isinstance(value, str) and value.strip() == "":

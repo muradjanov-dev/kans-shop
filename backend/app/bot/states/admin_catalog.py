@@ -38,3 +38,14 @@ class BroadcastFormStates(StatesGroup):
 
 class SettingEditStates(StatesGroup):
     entering_value = State()
+
+
+class SourceFormStates(StatesGroup):
+    entering_name = State()
+    entering_code = State()
+
+
+class AdminManageFormStates(StatesGroup):
+    entering_telegram_id = State()
+    entering_name = State()
+    choosing_role = State()

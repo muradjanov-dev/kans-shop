@@ -48,6 +48,7 @@ class ProductOut(BaseModel):
     min_order_qty: int
     is_active: bool
     is_featured: bool
+    lot_url: str | None = None
     views_count: int
     sold_count: int
     images: list[ProductImageOut] = []

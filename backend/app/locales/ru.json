@@ -13,6 +13,14 @@
     "welcome": "Здравствуйте, {name}! 👋\n\nДобро пожаловать в Kans Shop — надёжный магазин канцтоваров для офиса и школы.",
     "language_set": "Язык изменён на русский ✅"
   },
+  "subscription": {
+    "required": "🔒 <b>Для использования бота подпишитесь на наш канал</b>\n\nПодпишитесь по кнопке ниже, затем нажмите «Проверить подписку».",
+    "join_button": "📢 Подписаться на канал",
+    "check_button": "✅ Проверить подписку",
+    "not_subscribed_alert": "Вы ещё не подписаны на канал.",
+    "confirmed": "✅ Подписка подтверждена. Спасибо!",
+    "confirmed_alert": "✅ Подписка подтверждена!"
+  },
   "menu": {
     "catalog": "🛍 Каталог",
     "cart": "🛒 Корзина",
@@ -22,7 +30,14 @@
     "contact": "☎️ Контакты",
     "webapp": "🌐 Открыть приложение",
     "settings": "⚙️ Настройки",
-    "choose_action": "Выберите действие в меню 👇"
+    "choose_action": "Выберите действие в меню 👇",
+    "back_to_menu": "🏠 Главное меню",
+    "title": "🏠 Главное меню"
+  },
+  "commands": {
+    "start": "Запустить бота",
+    "menu": "Главное меню",
+    "admin": "Админ-панель"
   },
   "catalog": {
     "title": "🛍 Каталог",
@@ -94,7 +109,12 @@
     "choose_payment": "Выберите способ оплаты:",
     "payment_cash": "💵 Наличные (при получении)",
     "payment_card": "💳 Перевод на карту",
+    "payment_click": "🔵 Click",
+    "payment_payme": "🟢 Payme",
+    "payment_paynet": "🟣 Paynet",
     "card_details": "💳 Номер карты: <code>{card_number}</code>\n👤 Получатель: {card_holder}\n💰 Сумма: {total} сум\n\nПереведите сумму и отправьте фото чека 📸",
+    "pay_now": "Нажмите кнопку ниже, чтобы оплатить:",
+    "pay_button": "💳 Оплатить",
     "invalid_receipt": "Пожалуйста, отправьте фото или файл чека (jpg/png/webp/pdf, до 5МБ).",
     "receipt_too_large": "Размер файла не должен превышать 5МБ.",
     "receipt_bad_type": "Неподдерживаемый тип файла. Только jpg/png/webp/pdf.",
@@ -120,7 +140,11 @@
     "min_order_amount_error": "Минимальная сумма заказа {min_amount} сум. Сейчас: {subtotal} сум",
     "out_of_stock_error": "Некоторых товаров не хватает. Проверьте корзину.",
     "skip_button": "⏭ Пропустить",
-    "preorder_note": "\n\n📞 Наш менеджер скоро свяжется с вами."
+    "preorder_note": "\n\n📞 Наш менеджер скоро свяжется с вами.",
+    "payment_tender": "📋 Тендер (через лот)",
+    "lot_links_intro": "📋 Ссылка на лот для каждого товара ниже. Оплатите через страницу лота:",
+    "lot_links_missing": "⚠️ Для этих товаров ссылка на лот ещё не добавлена: {products}. Менеджер свяжется с вами.",
+    "receipt_uploaded_success": "✅ Чек получен! Оплата заказа <b>#{order_number}</b> проверяется, скоро подтвердим."
   },
   "orders": {
     "title": "📦 <b>Мои заказы</b>",
@@ -138,7 +162,8 @@
     "status_cancelled": "❌ Отменён",
     "status_changed_notification": "📦 Статус заказа <b>#{order_number}</b> изменён: {status}",
     "cancelled_notification": "❌ Заказ <b>#{order_number}</b> отменён.\nПричина: {reason}",
-    "confirmed_notification": "✅ Заказ <b>#{order_number}</b> подтверждён!"
+    "confirmed_notification": "✅ Заказ <b>#{order_number}</b> подтверждён!",
+    "payment_confirmed_notification": "✅ Оплата получена! Заказ <b>#{order_number}</b> подтверждён."
   },
   "admin": {
     "new_order_title": "🆕 НОВЫЙ ЗАКАЗ #{order_number}",
@@ -157,7 +182,11 @@
     "payment_line": "💳 Оплата: {method}{receipt_suffix}",
     "payment_cash": "Наличные (при получении)",
     "payment_card": "Перевод на карту",
+    "payment_click": "Click",
+    "payment_payme": "Payme",
+    "payment_paynet": "Paynet",
     "receipt_uploaded_suffix": " (чек отправлен)",
+    "paid_suffix": " (оплачено ✅)",
     "timestamp_line": "🕐 {value}",
     "confirm_button": "✅ Подтвердить",
     "cancel_button": "❌ Отменить",
@@ -190,7 +219,6 @@
     "no_username": "—",
     "login_code": "🔐 Ваш одноразовый код: <code>{code}</code>\n\nДействителен {minutes} минут. Используйте его для входа в веб-админку.",
     "deploy_notification": "✅ Kans Shop перезапущен (деплой/рестарт). Всё работает штатно.",
-
     "menu_title": "🛠 Админ-панель",
     "menu_orders": "📦 Заказы",
     "menu_categories": "🗂 Категории",
@@ -201,7 +229,6 @@
     "menu_settings": "⚙️ Настройки",
     "menu_webapp": "🌐 Веб-админка",
     "back_to_menu": "⬅️ В меню админа",
-
     "categories_title": "🗂 Категории",
     "category_add_button": "➕ Новая категория",
     "category_add_sub_button": "➕ Добавить подкатегорию",
@@ -219,7 +246,6 @@
     "category_deleted": "🗑 Категория удалена.",
     "category_not_found": "Категория не найдена.",
     "category_empty_list": "Категорий нет.",
-
     "products_title": "🛍 Товары",
     "product_add_button": "➕ Новый товар",
     "product_choose_category": "Выберите категорию товара:",
@@ -265,11 +291,9 @@
     "product_stock_updated": "✅ Остаток обновлён: {value}",
     "product_edit_button": "✏️ Редактировать",
     "product_card": "<b>{name_uz} / {name_ru}</b>\nSKU: <code>{sku}</code>\n💰 Цена: {price} сум\n📦 Остаток: {stock} {unit}\nСтатус: {status}",
-
     "orders_list_title": "📦 Заказы",
     "orders_filter_all": "Все",
     "orders_empty": "Заказы не найдены.",
-
     "stats_title": "📊 Статистика",
     "stats_period_today": "Сегодня",
     "stats_period_week": "Неделя",
@@ -279,7 +303,6 @@
     "stats_top_product_line": "{index}. {name} — {sold} шт",
     "stats_export_button": "📥 Экспорт в Excel",
     "stats_export_caption": "📊 Отчёт по статистике",
-
     "users_title": "👥 Пользователи",
     "user_line": "{name} ({username}) — {orders_count} заказ(ов)",
     "user_detail": "👤 <b>{name}</b>\n💬 {username}\n📱 {phone}\n🗣 Язык: {language}\n📦 Заказов: {orders_count}\n🕐 Регистрация: {created_at}\nСтатус: {status}",
@@ -290,7 +313,6 @@
     "user_blocked_done": "🚫 Пользователь заблокирован.",
     "user_unblocked_done": "✅ Пользователь разблокирован.",
     "user_not_found": "Пользователь не найден.",
-
     "settings_title": "⚙️ Настройки",
     "setting_line": "{label}: {value}",
     "setting_enter_new_value": "Введите новое значение:",
@@ -304,7 +326,6 @@
     "setting_support_username": "Username поддержки",
     "setting_shop_phone": "Телефон магазина",
     "setting_is_shop_open": "Магазин открыт (true/false)",
-
     "broadcast_title": "📣 Рассылка",
     "broadcast_enter_content": "Отправьте текст или изображение для рассылки:",
     "broadcast_ask_button": "Добавить кнопку?",
@@ -322,6 +343,54 @@
     "broadcast_cancel_button": "❌ Отмена",
     "broadcast_sending": "⏳ Отправка... {sent}/{total}",
     "broadcast_done": "✅ Рассылка завершена.\nОтправлено: {sent}\nОшибок: {failed}",
-    "broadcast_cancelled": "Отменено."
+    "broadcast_cancelled": "Отменено.",
+    "payment_tender": "Тендер (лот)",
+    "product_field_lot_url": "Ссылка на лот",
+    "product_invalid_url": "Ссылка должна начинаться с http:// или https://. Отправьте «-», чтобы удалить.",
+    "menu_sources": "🔗 Источники",
+    "sources_title": "🔗 Источники трафика\n\nПо каждой ссылке: название · переходы",
+    "sources_empty": "🔗 Ссылки-источники ещё не созданы.",
+    "source_add_button": "➕ Новая ссылка",
+    "source_enter_name": "Введите название источника (например: Instagram, Telegram-канал, Рынок):",
+    "source_enter_code": "Введите код ссылки (только латиница, цифры, - и _).\n\nПредложение: <code>{suggested}</code>\nОтправьте «-», чтобы принять его.",
+    "source_invalid_code": "Неверный код. 2-32 символа, только a-z, 0-9, - и _.",
+    "source_code_exists": "Такой код уже занят. Введите другой.",
+    "source_created": "✅ Ссылка-источник создана.",
+    "source_not_found": "Источник не найден.",
+    "source_deleted": "Источник удалён.",
+    "source_detail": "🔗 <b>{name}</b>\nСтатус: {status}\n\nСсылка:\n<code>{link}</code>\n\n👆 Переходы: {clicks}\n👤 Новые клиенты: {users}\n📦 Заказы: {orders}\n💰 Выручка: {revenue} сум",
+    "source_status_active": "✅ Активна",
+    "source_status_inactive": "🔴 Отключена",
+    "source_share_button": "📤 Поделиться ссылкой",
+    "source_activate_button": "✅ Включить",
+    "source_deactivate_button": "🔴 Отключить",
+    "source_delete_button": "🗑 Удалить полностью",
+    "source_delete_confirm": "Удалить источник «{name}»? Статистика тоже пропадёт.",
+    "source_delete_confirm_yes": "🗑 Да, удалить",
+    "menu_admins": "👮 Админы",
+    "admins_title": "👮 <b>Администраторы</b>\n\nВыберите админа из списка или добавьте нового.",
+    "admin_add_button": "➕ Добавить админа",
+    "admin_enter_telegram_id": "Отправьте Telegram ID нового админа (только цифры).\n\nУзнать ID можно через @userinfobot.",
+    "admin_invalid_telegram_id": "Telegram ID должен состоять только из цифр. Отправьте ещё раз.",
+    "admin_already_exists": "Этот пользователь уже админ.",
+    "admin_enter_name": "Введите имя админа.\n\nПредложение: <code>{suggested}</code>\nОтправьте «-», чтобы принять его.",
+    "admin_choose_role": "Выберите роль админа:",
+    "admin_created": "✅ Новый админ добавлен.",
+    "admin_not_found": "Админ не найден.",
+    "admin_removed": "Админ удалён.",
+    "admin_detail": "👮 <b>{name}</b>\n\n🆔 Telegram ID: <code>{telegram_id}</code>\n🔗 {username}\n🎫 Роль: {role}\nСтатус: {status}\n📅 Добавлен: {created_at}",
+    "admin_status_active": "✅ Активен",
+    "admin_status_inactive": "🔴 Отключён",
+    "admin_change_role_button": "🎫 Изменить роль",
+    "admin_activate_button": "✅ Включить",
+    "admin_deactivate_button": "🔴 Отключить",
+    "admin_remove_button": "🗑 Убрать из админов",
+    "admin_remove_confirm": "Удалить «{name}» из списка админов?",
+    "admin_remove_confirm_yes": "🗑 Да, удалить",
+    "admin_cannot_remove_self": "Нельзя удалить самого себя.",
+    "admin_last_superadmin": "Это последний активный суперадмин — изменить нельзя, иначе в панель никто не войдёт.",
+    "role_superadmin": "👑 Суперадмин",
+    "role_manager": "👔 Менеджер",
+    "role_operator": "🎧 Оператор"
   }
 }

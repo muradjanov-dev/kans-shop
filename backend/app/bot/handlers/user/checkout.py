@@ -30,26 +30,55 @@ from app.bot.keyboards.inline.checkout import (
     order_type_keyboard,
     payment_method_keyboard,
 )
+from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
 from app.bot.keyboards.reply.checkout import location_request_keyboard, phone_request_keyboard
-from app.bot.keyboards.reply.main_menu import main_menu_keyboard
 from app.bot.services.order_notifications import notify_admins_new_order
 from app.bot.states.checkout import CheckoutStates
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.bot.utils.messages import require_message
 from app.core.config import settings
-from app.core.exceptions import CartEmptyError, MinOrderAmountError, OutOfStockError
+from app.core.exceptions import (
+    CartEmptyError,
+    MinOrderAmountError,
+    OutOfStockError,
+    PaymentNotConfiguredError,
+)
 from app.core.uploads import ALLOWED_RECEIPT_MIME_TYPES, MAX_RECEIPT_SIZE_BYTES
-from app.db.models.enums import OrderType, PaymentMethod
+from app.db.models.enums import OrderType, PaymentMethod, PaymentProvider
+from app.db.models.order import Order
 from app.db.models.user import User
 from app.db.repositories import setting_repository
-from app.services import cart_service, order_service
+from app.services import cart_service, order_service, payment_service
 
 router = Router(name="checkout")
 
 PAYMENT_LABEL_KEYS = {
     PaymentMethod.CASH.value: "checkout.payment_cash",
     PaymentMethod.CARD_TRANSFER.value: "checkout.payment_card",
+    PaymentMethod.CLICK.value: "checkout.payment_click",
+    PaymentMethod.PAYME.value: "checkout.payment_payme",
+    PaymentMethod.PAYNET.value: "checkout.payment_paynet",
+    PaymentMethod.TENDER.value: "checkout.payment_tender",
 }
+
+ONLINE_PAYMENT_METHODS = {
+    PaymentMethod.CLICK.value: PaymentProvider.CLICK,
+    PaymentMethod.PAYME.value: PaymentProvider.PAYME,
+    PaymentMethod.PAYNET.value: PaymentProvider.PAYNET,
+}
+
+
+async def _tender_available(session: AsyncSession, user_id: int) -> bool:
+    cart = await cart_service.get_cart(session, user_id)
+    return any(item.product.lot_url for item in cart.items)
+
+
+def _enabled_online_providers() -> set[str]:
+    return {
+        method
+        for method, provider in ONLINE_PAYMENT_METHODS.items()
+        if payment_service.is_provider_configured(provider)
+    }
 
 
 def _format_price(price: Decimal) -> str:
@@ -59,6 +88,38 @@ def _format_price(price: Decimal) -> str:
 def _default_name(user: User) -> str:
     parts = [user.first_name, user.last_name]
     return " ".join(p for p in parts if p)
+
+
+def _pay_link_keyboard(url: str, *, translator: Callable[..., str]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=translator("checkout.pay_button"), url=url))
+    return builder.as_markup()
+
+
+def _lot_links_keyboard(links: list[order_service.LotLink]) -> InlineKeyboardMarkup:
+    """One button per ordered product, each opening that product's tender lot page."""
+    builder = InlineKeyboardBuilder()
+    for link in links:
+        builder.row(InlineKeyboardButton(text=f"📄 {link.product_name}"[:64], url=link.url))
+    return builder.as_markup()
+
+
+async def _send_lot_links(
+    message: Message,
+    session: AsyncSession,
+    order: Order,
+    *,
+    translator: Callable[..., str],
+) -> None:
+    links, missing = await order_service.lot_links(session, order)
+    if links:
+        await message.answer(
+            translator("checkout.lot_links_intro"), reply_markup=_lot_links_keyboard(links)
+        )
+    if missing:
+        await message.answer(
+            translator("checkout.lot_links_missing", products=", ".join(missing))
+        )
 
 
 def _contact_manager_keyboard(
@@ -80,7 +141,8 @@ async def _cancel_checkout(
     await state.clear()
     await message.answer(translator("checkout.cancelled"), reply_markup=ReplyKeyboardRemove())
     await message.answer(
-        translator("menu.choose_action"), reply_markup=main_menu_keyboard(translator)
+        translator("menu.choose_action"),
+        reply_markup=main_menu_inline_keyboard(translator),
     )
 
 
@@ -409,7 +471,14 @@ async def _advance_from_comment(
         await _show_confirmation(message, session, state, lang=lang, _=_)
         return
     await state.set_state(CheckoutStates.choosing_payment)
-    await message.answer(_("checkout.choose_payment"), reply_markup=payment_method_keyboard(_))
+    await message.answer(
+        _("checkout.choose_payment"),
+        reply_markup=payment_method_keyboard(
+            _,
+            enabled_providers=_enabled_online_providers(),
+            tender_available=await _tender_available(session, data["user_id"]),
+        ),
+    )
 
 
 @router.message(CheckoutStates.entering_comment, F.text)
@@ -467,7 +536,9 @@ async def on_payment_method_chosen(
         return
     await state.update_data(payment_method=callback_data.value)
 
-    if callback_data.value == PaymentMethod.CARD_TRANSFER.value:
+    if callback_data.value in ONLINE_PAYMENT_METHODS:
+        await _show_confirmation(message, session, state, lang=lang, _=_)
+    elif callback_data.value == PaymentMethod.CARD_TRANSFER.value:
         settings_map = await setting_repository.get_all(session)
         data = await state.get_data()
         cart = await cart_service.get_cart(session, data["user_id"])
@@ -542,12 +613,22 @@ async def on_receipt_document(
 @router.callback_query(
     CheckoutStates.uploading_receipt, CheckoutNavCallback.filter(F.action == "back")
 )
-async def on_receipt_back(callback: CallbackQuery, state: FSMContext, _: Callable) -> None:
+async def on_receipt_back(
+    callback: CallbackQuery, session: AsyncSession, state: FSMContext, _: Callable
+) -> None:
     message = await require_message(callback, _)
     if message is None:
         return
     await state.set_state(CheckoutStates.choosing_payment)
-    await message.answer(_("checkout.choose_payment"), reply_markup=payment_method_keyboard(_))
+    data = await state.get_data()
+    await message.answer(
+        _("checkout.choose_payment"),
+        reply_markup=payment_method_keyboard(
+            _,
+            enabled_providers=_enabled_online_providers(),
+            tender_available=await _tender_available(session, data["user_id"]),
+        ),
+    )
     await callback.answer()
 
 
@@ -638,13 +719,28 @@ async def on_confirm(
         _("checkout.success", order_number=order.order_number, summary=summary),
         reply_markup=ReplyKeyboardRemove(),
     )
+
+    if order.payment_method == PaymentMethod.TENDER:
+        await _send_lot_links(message, session, order, translator=_)
+
+    online_provider = ONLINE_PAYMENT_METHODS.get(order.payment_method.value)
+    if online_provider is not None:
+        try:
+            pay_url = payment_service.build_pay_url(order, online_provider)
+        except PaymentNotConfiguredError:
+            pay_url = None
+        if pay_url:
+            await message.answer(
+                _("checkout.pay_now"), reply_markup=_pay_link_keyboard(pay_url, translator=_)
+            )
+
     support_username = await setting_repository.get_value(session, "support_username", None)
     if support_username:
         await message.answer(
             _("checkout.contact_manager_button"),
             reply_markup=_contact_manager_keyboard(support_username, translator=_),
         )
-    await message.answer(_("menu.choose_action"), reply_markup=main_menu_keyboard(_))
+    await message.answer(_("menu.choose_action"), reply_markup=main_menu_inline_keyboard(_))
     await callback.answer()
 
 

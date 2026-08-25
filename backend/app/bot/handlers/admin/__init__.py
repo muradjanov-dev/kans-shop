@@ -4,6 +4,7 @@ from app.bot.handlers.admin import (
     auth,
     broadcast,
     categories,
+    manage,
     menu,
     orders,
     orders_list,
@@ -11,6 +12,7 @@ from app.bot.handlers.admin import (
     products_edit,
     products_form,
     settings,
+    sources,
     stats,
     users,
 )
@@ -29,6 +31,8 @@ admin_router.include_router(products_edit.router)
 admin_router.include_router(stats.router)
 admin_router.include_router(users.router)
 admin_router.include_router(settings.router)
+admin_router.include_router(sources.router)
+admin_router.include_router(manage.router)
 admin_router.include_router(broadcast.router)
 
 __all__ = ["admin_router"]

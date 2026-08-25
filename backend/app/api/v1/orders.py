@@ -3,7 +3,14 @@ from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_db
-from app.api.schemas.order import CheckoutIn, OrderOut
+from app.api.schemas.order import (
+    CheckoutIn,
+    LotLinkOut,
+    LotLinksOut,
+    OrderOut,
+    PayIn,
+    PayOut,
+)
 from app.bot.services.order_notifications import notify_admins_new_order
 from app.core.config import settings
 from app.core.exceptions import ForbiddenError, InvalidFileError
@@ -14,7 +21,7 @@ from app.core.uploads import (
 )
 from app.db.models.user import User
 from app.db.repositories import order_repository
-from app.services import order_service
+from app.services import order_service, payment_service
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -92,3 +99,38 @@ async def upload_receipt(
 
     order = await order_service.attach_receipt(session, order, file_id=None, url=url)
     return OrderOut.model_validate(order)
+
+
+@router.post("/{order_id}/pay", response_model=PayOut)
+async def pay_order(
+    order_id: int,
+    payload: PayIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> PayOut:
+    order = await order_service.get_order(session, order_id)
+    if order.user_id != user.id:
+        raise ForbiddenError("Not your order")
+
+    payment_url = payment_service.build_pay_url(order, payload.provider)
+    return PayOut(payment_url=payment_url)
+
+
+@router.get("/{order_id}/lot-links", response_model=LotLinksOut)
+async def order_lot_links(
+    order_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> LotLinksOut:
+    """Tender checkout: where to pay each item of this order. Kept a separate call rather
+    than a field on OrderOut because it reads today's `products.lot_url`, not the order's
+    snapshot, and only tender orders ever need it."""
+    order = await order_service.get_order(session, order_id)
+    if order.user_id != user.id:
+        raise ForbiddenError("Not your order")
+
+    links, missing = await order_service.lot_links(session, order)
+    return LotLinksOut(
+        links=[LotLinkOut(product_name=link.product_name, url=link.url) for link in links],
+        missing=missing,
+    )

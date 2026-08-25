@@ -4,8 +4,11 @@ import type {
   Cart,
   Category,
   CheckoutPayload,
+  LotLinksResponse,
   Order,
   Page,
+  PayResponse,
+  PaymentProvider,
   Product,
   PublicSettings,
 } from "@/types/api";
@@ -128,6 +131,32 @@ export function useCheckout() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
+export function usePayOrder() {
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      provider,
+    }: {
+      orderId: number;
+      provider: PaymentProvider;
+    }) => {
+      const { data } = await api.post<PayResponse>(`/orders/${orderId}/pay`, { provider });
+      return data;
+    },
+  });
+}
+
+export function useLotLinks(orderId: number | null) {
+  return useQuery({
+    queryKey: ["lot-links", orderId],
+    enabled: orderId !== null,
+    queryFn: async () => {
+      const { data } = await api.get<LotLinksResponse>(`/orders/${orderId}/lot-links`);
+      return data;
     },
   });
 }

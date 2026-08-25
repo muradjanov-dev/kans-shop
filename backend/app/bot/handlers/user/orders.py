@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from decimal import Decimal
 
 from aiogram import F, Router
@@ -28,19 +28,30 @@ def _format_price(price: Decimal) -> str:
     return f"{price:,.0f}".replace(",", " ")
 
 
+async def render_orders(
+    send: Callable[..., Awaitable[object]],
+    session: AsyncSession,
+    user_id: int,
+    *,
+    translator: Callable[..., str],
+) -> None:
+    orders, _total = await order_repository.list_by_user(
+        session, user_id, page=1, limit=ORDER_HISTORY_LIMIT
+    )
+    if not orders:
+        await send(translator("orders.empty"))
+        return
+    await send(
+        translator("orders.title"),
+        reply_markup=order_list_keyboard(orders, translator=translator),
+    )
+
+
 @router.message(StateFilter(None), F.text.in_(menu_button_texts("menu.orders")))
 async def open_orders(
     message: Message, session: AsyncSession, user: User, _: Callable
 ) -> None:
-    orders, _total = await order_repository.list_by_user(
-        session, user.id, page=1, limit=ORDER_HISTORY_LIMIT
-    )
-    if not orders:
-        await message.answer(_("orders.empty"))
-        return
-    await message.answer(
-        _("orders.title"), reply_markup=order_list_keyboard(orders, translator=_)
-    )
+    await render_orders(message.answer, session, user.id, translator=_)
 
 
 @router.callback_query(OrderDetailCallback.filter())

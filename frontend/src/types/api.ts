@@ -11,7 +11,14 @@ export type OrderStatus =
   | "delivering"
   | "completed"
   | "cancelled";
-export type PaymentMethod = "cash" | "card_transfer" | "click" | "payme";
+export type PaymentMethod =
+  | "cash"
+  | "card_transfer"
+  | "click"
+  | "payme"
+  | "paynet"
+  | "tender";
+export type PaymentProvider = "click" | "payme" | "paynet";
 export type PaymentStatus = "pending" | "receipt_uploaded" | "paid" | "failed";
 
 export interface Page<T> {
@@ -59,6 +66,7 @@ export interface Product {
   min_order_qty: number;
   is_active: boolean;
   is_featured: boolean;
+  lot_url: string | null;
   views_count: number;
   sold_count: number;
   images: ProductImage[];
@@ -125,6 +133,20 @@ export interface CheckoutPayload {
   comment?: string | null;
 }
 
+export interface PayResponse {
+  payment_url: string;
+}
+
+export interface LotLink {
+  product_name: string;
+  url: string;
+}
+
+export interface LotLinksResponse {
+  links: LotLink[];
+  missing: string[];
+}
+
 export interface PublicSettings {
   delivery_fee: number | null;
   free_delivery_from: number | null;
@@ -137,6 +159,7 @@ export interface PublicSettings {
   is_shop_open: boolean | null;
   welcome_text_uz: string | null;
   welcome_text_ru: string | null;
+  enabled_payment_providers: PaymentProvider[];
 }
 
 export interface TokenPair {

@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -155,6 +157,47 @@ async def attach_receipt(
     order.payment_status = PaymentStatus.RECEIPT_UPLOADED
     await session.flush()
     return order
+
+
+async def mark_paid(session: AsyncSession, order: Order) -> Order:
+    """Called once a gateway (Click/Payme/Paynet) confirms payment. Unlike card_transfer, this
+    is a server-verified confirmation, so the order is auto-advanced past manual admin review.
+    """
+    if order.payment_status == PaymentStatus.PAID:
+        return order
+
+    order.payment_status = PaymentStatus.PAID
+    if order.status == OrderStatus.NEW:
+        order = await advance_status(session, order, OrderStatus.CONFIRMED)
+    await session.flush()
+    return order
+
+
+@dataclass(frozen=True)
+class LotLink:
+    product_name: str
+    url: str
+
+
+async def lot_links(session: AsyncSession, order: Order) -> tuple[list[LotLink], list[str]]:
+    """Tender checkout: the lot page for each ordered product. Returns (links, missing) —
+    `missing` names the items whose product has no `lot_url` set (or whose product row is
+    gone), so the customer is told which ones an admin still has to send a link for."""
+    product_ids = [item.product_id for item in order.items if item.product_id is not None]
+    products = {}
+    if product_ids:
+        rows = await session.scalars(select(Product).where(Product.id.in_(product_ids)))
+        products = {product.id: product for product in rows}
+
+    links: list[LotLink] = []
+    missing: list[str] = []
+    for item in order.items:
+        product = products.get(item.product_id) if item.product_id is not None else None
+        if product is not None and product.lot_url:
+            links.append(LotLink(item.product_name_snapshot, product.lot_url))
+        else:
+            missing.append(item.product_name_snapshot)
+    return links, missing
 
 
 async def get_order(session: AsyncSession, order_id: int) -> Order:

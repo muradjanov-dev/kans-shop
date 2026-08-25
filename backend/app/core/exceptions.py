@@ -80,3 +80,32 @@ class CategoryInUseError(KansShopError):
 class SkuAlreadyExistsError(KansShopError):
     code = "SKU_ALREADY_EXISTS"
     http_status = 409
+
+
+class PaymentGatewayError(KansShopError):
+    code = "PAYMENT_GATEWAY_ERROR"
+    http_status = 502
+
+
+class InvalidSignatureError(KansShopError):
+    code = "INVALID_SIGNATURE"
+    http_status = 401
+
+
+class TransactionNotFoundError(NotFoundError):
+    code = "TRANSACTION_NOT_FOUND"
+
+
+class AmountMismatchError(KansShopError):
+    code = "AMOUNT_MISMATCH"
+    http_status = 400
+
+
+class PaymentAlreadyProcessedError(KansShopError):
+    code = "PAYMENT_ALREADY_PROCESSED"
+    http_status = 409
+
+
+class PaymentNotConfiguredError(KansShopError):
+    code = "PAYMENT_NOT_CONFIGURED"
+    http_status = 400
