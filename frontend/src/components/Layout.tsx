@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useTranslate } from "@/lib/i18n";
 import { useCart } from "@/hooks/queries";
 import { useAuthStore } from "@/store/auth";
@@ -34,13 +34,28 @@ export function Layout() {
   const isAuthenticated = Boolean(useAuthStore((state) => state.accessToken));
   const { data: cart } = useCart(isAuthenticated);
   const itemsCount = cart?.items_count ?? 0;
+  const location = useLocation();
+  
+  const isProductPage = location.pathname.startsWith('/product/');
+  const isCheckoutPage = location.pathname.startsWith('/checkout');
+  const hideNav = isProductPage || isCheckoutPage;
 
   return (
     <div className="mx-auto flex min-h-screen max-w-lg flex-col">
       <main className="flex-1 pb-24">
         <Outlet />
       </main>
-      <nav className="fixed bottom-4 left-0 right-0 z-50 mx-auto flex w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-2xl glass-panel">
+      
+      <button 
+        onClick={() => document.documentElement.classList.toggle('dark')}
+        className="fixed top-4 right-4 z-50 flex size-10 items-center justify-center rounded-full glass-panel text-gray-700 dark:text-gray-300 shadow-md"
+      >
+        <span className="dark:hidden">🌙</span>
+        <span className="hidden dark:block">☀️</span>
+      </button>
+
+      {!hideNav && (
+        <nav className="fixed bottom-4 left-0 right-0 z-50 mx-auto flex w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-2xl glass-panel">
         <NavItem to="/" icon="🛍" label={t("nav.catalog")} />
         <div className="relative flex flex-1">
           <NavItem to="/cart" icon="🛒" label={t("nav.cart")} />
@@ -52,6 +67,7 @@ export function Layout() {
         </div>
         <NavItem to="/orders" icon="📦" label={t("nav.orders")} />
       </nav>
+      )}
     </div>
   );
 }
