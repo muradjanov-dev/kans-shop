@@ -40,7 +40,7 @@ export function Layout() {
       <main className="flex-1 pb-24">
         <Outlet />
       </main>
-      <nav className="fixed bottom-0 mx-auto flex w-full max-w-lg border-t border-gray-200 bg-white/95 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur dark:border-white/10 dark:bg-[#14161b]/95">
+      <nav className="fixed bottom-4 left-0 right-0 z-50 mx-auto flex w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-2xl glass-panel">
         <NavItem to="/" icon="🛍" label={t("nav.catalog")} />
         <div className="relative flex flex-1">
           <NavItem to="/cart" icon="🛒" label={t("nav.cart")} />

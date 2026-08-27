@@ -166,6 +166,8 @@
     "payment_confirmed_notification": "✅ To'lovingiz qabul qilindi! Buyurtma <b>#{order_number}</b> tasdiqlandi."
   },
   "admin": {
+    "new_users_batch_notification": "👥 Tizimga yana 5 ta yangi mijoz qo'shildi!\n\nJami foydalanuvchilar soni: {total} ta.",
+    "product_image_required": "Iltimos, kamida bitta rasm yuklang!",
     "new_order_title": "🆕 YANGI BUYURTMA #{order_number}",
     "divider": "━━━━━━━━━━━━━━━━━━━",
     "customer_label": "👤 Mijoz: {name}",

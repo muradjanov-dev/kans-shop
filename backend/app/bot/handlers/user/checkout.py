@@ -476,7 +476,7 @@ async def _advance_from_comment(
         reply_markup=payment_method_keyboard(
             _,
             enabled_providers=_enabled_online_providers(),
-            tender_available=await _tender_available(session, data["user_id"]),
+            tender_available=True,
         ),
     )
 
@@ -626,7 +626,7 @@ async def on_receipt_back(
         reply_markup=payment_method_keyboard(
             _,
             enabled_providers=_enabled_online_providers(),
-            tender_available=await _tender_available(session, data["user_id"]),
+            tender_available=True,
         ),
     )
     await callback.answer()

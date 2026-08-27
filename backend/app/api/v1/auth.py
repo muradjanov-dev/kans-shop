@@ -1,7 +1,8 @@
+from aiogram import Bot
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_bot, get_db
 from app.api.schemas.auth import BotCodeAuthIn, RefreshIn, TelegramAuthIn, TokenOut
 from app.bot.handlers.admin.auth import ADMIN_LOGIN_KEY_PREFIX
 from app.core.config import settings
@@ -33,7 +34,9 @@ async def _issue_tokens(session: AsyncSession, telegram_id: int) -> TokenOut:
 
 @router.post("/telegram", response_model=TokenOut)
 async def auth_telegram(
-    payload: TelegramAuthIn, session: AsyncSession = Depends(get_db)
+    payload: TelegramAuthIn,
+    session: AsyncSession = Depends(get_db),
+    bot: Bot = Depends(get_bot)
 ) -> TokenOut:
     """Validates Telegram WebApp `initData` (Mini App) and issues a JWT pair."""
     data = verify_telegram_init_data(payload.init_data, bot_token=settings.bot_token)
@@ -46,6 +49,9 @@ async def auth_telegram(
         username=tg_user.get("username"),
         source=UserSource.WEBAPP,
     )
+    if _created:
+        from app.bot.services.user_notifications import notify_admins_new_users_batch
+        await notify_admins_new_users_batch(bot, session, user)
     await user_repository.touch_last_active(session, user)
     return await _issue_tokens(session, user.telegram_id)
 

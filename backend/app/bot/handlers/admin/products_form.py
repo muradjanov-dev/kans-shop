@@ -180,6 +180,10 @@ async def on_images_finish(
     message = await require_message(callback, _)
     if message is None:
         return
+    data = await state.get_data()
+    if not data.get("images"):
+        await callback.answer(_("admin.product_image_required"), show_alert=True)
+        return
     await state.set_state(ProductFormStates.reviewing)
     text = await _build_review_text(session, state, lang, _)
     await message.edit_text(text, reply_markup=review_keyboard(_))

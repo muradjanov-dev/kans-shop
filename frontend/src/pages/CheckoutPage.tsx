@@ -41,21 +41,15 @@ export function CheckoutPage() {
 
   const lotLinks = useLotLinks(tenderOrderId);
 
-  // Tender is only offered when something in the cart actually has a lot page to pay through,
-  // mirroring the same rule in the bot's checkout (backend/app/bot/handlers/user/checkout.py).
-  const tenderAvailable = useMemo(
-    () => (cart?.items ?? []).some((item) => Boolean(item.product.lot_url)),
-    [cart],
-  );
 
   const availablePaymentMethods = useMemo<PaymentMethod[]>(
     () => [
       "cash",
       "card_transfer",
       ...ONLINE_PROVIDERS.filter((p) => settings?.enabled_payment_providers?.includes(p)),
-      ...(tenderAvailable ? (["tender"] as PaymentMethod[]) : []),
+      "tender",
     ],
-    [settings, tenderAvailable],
+    [settings],
   );
 
   const subtotal = Number(cart?.subtotal ?? 0);

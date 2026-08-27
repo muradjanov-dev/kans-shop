@@ -166,6 +166,8 @@
     "payment_confirmed_notification": "✅ Оплата получена! Заказ <b>#{order_number}</b> подтверждён."
   },
   "admin": {
+    "new_users_batch_notification": "👥 К системе присоединились еще 5 новых клиентов!\n\nОбщее количество пользователей: {total}.",
+    "product_image_required": "Пожалуйста, загрузите хотя бы одно фото!",
     "new_order_title": "🆕 НОВЫЙ ЗАКАЗ #{order_number}",
     "divider": "━━━━━━━━━━━━━━━━━━━",
     "customer_label": "👤 Клиент: {name}",
