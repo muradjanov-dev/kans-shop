@@ -4,7 +4,10 @@ import WebApp from "@twa-dev/sdk";
 // our bundle evaluates, so this must be read fresh at call time rather than cached as a
 // module-level const - otherwise a slow-to-initialize WebView permanently reads as "false".
 export function isTelegramWebApp(): boolean {
-  return Boolean(WebApp.initData);
+  // Read directly from window object to avoid any snapshotting issues from the SDK
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawWebApp = (window as any).Telegram?.WebApp;
+  return Boolean(rawWebApp?.initData || WebApp.initData);
 }
 
 function applyColorScheme(): void {

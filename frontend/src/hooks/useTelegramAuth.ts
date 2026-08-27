@@ -25,8 +25,12 @@ export function useTelegramAuth(): AuthStatus {
         return;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawWebApp = (window as any).Telegram?.WebApp;
+      const initData = rawWebApp?.initData || WebApp.initData;
+
       axios
-        .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: WebApp.initData })
+        .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: initData })
         .then(({ data }) => {
           if (cancelled) return;
           setTokens(data);
