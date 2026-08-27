@@ -20,9 +20,9 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <Link
       to={`/product/${product.id}`}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-1 hover:shadow-lg dark:border-white/10 dark:bg-[#1e293b]/70 dark:backdrop-blur-sm"
+      className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/20 dark:border-white/10 dark:bg-[#131b2c]/60 dark:backdrop-blur-xl dark:hover:border-brand/40 dark:hover:shadow-[0_0_30px_rgba(99,102,241,0.2)]"
     >
-      <div className="relative flex aspect-square items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-white/5 dark:to-transparent">
+      <div className="relative flex aspect-square items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-brand/10 dark:to-transparent">
         {image?.url ? (
           <img src={image.url} alt={name} className="size-full object-cover" />
         ) : (

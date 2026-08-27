@@ -18,9 +18,9 @@ body,
 body {
   /* Premium bright mode aesthetic */
   background: 
-    radial-gradient(circle at 15% 50%, rgba(79, 70, 229, 0.08), transparent 45%),
-    radial-gradient(circle at 85% 10%, rgba(236, 72, 153, 0.06), transparent 50%),
-    #ffffff;
+    radial-gradient(circle at 15% 50%, rgba(79, 70, 229, 0.15), transparent 45%),
+    radial-gradient(circle at 85% 10%, rgba(236, 72, 153, 0.15), transparent 50%),
+    #f8fafc;
   background-attachment: fixed;
   color: #1e293b;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -29,20 +29,21 @@ body {
 }
 
 html.dark body {
-  /* Premium dark mode aesthetic */
+  /* Vibrant & Premium dark mode aesthetic with glowing neon vibes */
   background: 
-    radial-gradient(circle at 15% 50%, rgba(79, 70, 229, 0.15), transparent 45%),
-    radial-gradient(circle at 85% 10%, rgba(236, 72, 153, 0.12), transparent 50%),
-    #0f172a;
+    radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.3), transparent 40%),
+    radial-gradient(circle at 100% 100%, rgba(236, 72, 153, 0.25), transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.15), transparent 60%),
+    #0b0f19;
   color-scheme: dark;
   color: #f8fafc;
 }
 
 /* Base custom utility classes for smooth animations and aesthetics */
 .glass-panel {
-  @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-[0_4px_24px_rgba(0,0,0,0.04)];
+  @apply bg-white/60 backdrop-blur-xl border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.08)];
 }
 
 .dark .glass-panel {
-  @apply bg-[#1e293b]/70 border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.2)];
+  @apply bg-[#131b2c]/60 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)];
 }

@@ -17,7 +17,7 @@ function NavItem({ to, icon, label }: { to: string; icon: string; label: string 
         <>
           <span
             className={`flex size-11 items-center justify-center rounded-2xl text-2xl transition-all ${
-              isActive ? "scale-105 bg-brand/10" : "bg-transparent"
+              isActive ? "scale-110 bg-brand/15 text-brand shadow-[0_0_15px_rgba(79,70,229,0.4)] dark:shadow-[0_0_20px_rgba(99,102,241,0.6)]" : "bg-transparent text-gray-500 dark:text-gray-400"
             }`}
           >
             {icon}
