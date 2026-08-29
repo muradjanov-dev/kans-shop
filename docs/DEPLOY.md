@@ -88,7 +88,33 @@ bot in Telegram (to every configured admin) confirming the app came up, right af
 - [ ] Seed the catalog if this is a fresh database: `railway run --service api python -m app.db.seed`
       (or open a shell on the service via the Railway dashboard).
 
-## 7. Deploying from the CLI (exact commands)
+## 7. Persistent storage for uploads (required)
+
+`MEDIA_ROOT` (`/app/media`) holds product images and payment receipts. A Railway container's
+filesystem is **ephemeral** — without a volume mounted there, every deploy silently discards
+all of it and the storefront renders each product with a broken image, while the API still
+returns 200 for the catalog. Nothing in the logs reports this.
+
+The `api` service therefore has a volume (`api-volume`) mounted at `/app/media`. If you
+recreate the service, recreate the volume too:
+
+```bash
+railway service link api
+railway volume add --mount-path /app/media
+```
+
+A freshly mounted volume starts empty. Because the bot stores every uploaded photo's Telegram
+`file_id` in the database, the files can be pulled back from Telegram rather than re-uploaded
+by hand:
+
+```bash
+railway ssh --service api "python -m app.db.restore_media --receipts"
+```
+
+It is idempotent (existing files are skipped; `--force` overwrites), so it is also the recovery
+step after any future media loss.
+
+## 8. Deploying from the CLI (exact commands)
 
 `railway up` archives the **linked project directory** (the repo root), not your shell's
 current directory — `cd backend && railway up` uploads the repo root all the same. Since
@@ -117,8 +143,8 @@ Both services have `RAILWAY_DOCKERFILE_PATH=Dockerfile` set to match. Do not set
 `/Dockerfile` from Git Bash on Windows — MSYS rewrites the leading slash and it arrives as
 `C:/Program Files/Git/Dockerfile`. Use PowerShell, or a path with no leading slash.
 
-## 8. Redeploying
+## 9. Redeploying
 
 Railway redeploys automatically on push if you've connected the GitHub repo, or manually via
-the `railway up` commands in section 7 / the dashboard's "Deploy" button. Every deploy re-runs Alembic migrations
+the `railway up` commands in section 8 / the dashboard's "Deploy" button. Every deploy re-runs Alembic migrations
 automatically and re-notifies admins on startup — no extra steps.
