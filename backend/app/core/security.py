@@ -60,7 +60,14 @@ def verify_telegram_init_data(
 
     https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
     """
-    pairs = dict(parse_qsl(init_data, strict_parsing=True))
+    # strict_parsing raises on anything that isn't a well-formed query string - including the
+    # empty string a non-Telegram browser sends. That's an untrusted request body, so it has to
+    # surface as 401 rather than escaping as an unhandled 500 (and paging the error channel).
+    try:
+        pairs = dict(parse_qsl(init_data, strict_parsing=True))
+    except ValueError as exc:
+        raise UnauthorizedError("initData is malformed") from exc
+
     received_hash = pairs.pop("hash", None)
     if not received_hash:
         raise UnauthorizedError("initData missing hash")
@@ -83,7 +90,12 @@ def verify_telegram_init_data(
 
     result = dict(pairs)
     if "user" in result:
-        result["user"] = json.loads(result["user"])
+        # Signature already verified above, so this is well-formed in practice - but it is
+        # still attacker-supplied bytes, and a decode error must not become a 500.
+        try:
+            result["user"] = json.loads(result["user"])
+        except json.JSONDecodeError as exc:
+            raise UnauthorizedError("initData user payload is malformed") from exc
     return result
 
 

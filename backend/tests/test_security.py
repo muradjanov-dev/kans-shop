@@ -63,6 +63,35 @@ def test_missing_hash_is_rejected() -> None:
         verify_telegram_init_data("auth_date=123&query_id=x", bot_token=settings.bot_token)
 
 
+@pytest.mark.parametrize(
+    "init_data",
+    [
+        "",              # a plain browser: WebApp.initData is the empty string
+        "x",             # not a key=value pair at all
+        "&&",            # separators with no fields
+        "auth_date",     # key with no value
+    ],
+)
+def test_malformed_init_data_is_rejected_not_crashed(init_data: str) -> None:
+    """Regression: parse_qsl(strict_parsing=True) raises ValueError on all of these, which
+    escaped as a 500 (and paged the error channel) instead of a 401."""
+    with pytest.raises(UnauthorizedError):
+        verify_telegram_init_data(init_data, bot_token=settings.bot_token)
+
+
+def test_malformed_user_payload_is_rejected_not_crashed() -> None:
+    """A correctly signed payload whose `user` field is not valid JSON must still 401."""
+    params = {
+        "auth_date": str(int(time.time())),
+        "query_id": "AAA",
+        "user": "{not-json",
+    }
+    init_data = _sign_init_data(params, settings.bot_token)
+
+    with pytest.raises(UnauthorizedError):
+        verify_telegram_init_data(init_data, bot_token=settings.bot_token)
+
+
 def test_access_token_round_trip() -> None:
     token = create_access_token(user_id=42, telegram_id=917456291, is_admin=True)
     payload = decode_token(token, expected_type="access")
