@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
-import { initTelegramWebApp, isTelegramWebApp, telegramLanguageCode, WebApp } from "@/lib/telegram";
+import {
+  initTelegramWebApp,
+  isTelegramWebApp,
+  telegramInitData,
+  telegramLanguageCode,
+} from "@/lib/telegram";
 import { useAuthStore } from "@/store/auth";
 import { useLanguageStore } from "@/store/language";
 import type { TokenPair } from "@/types/api";
@@ -25,12 +30,8 @@ export function useTelegramAuth(): AuthStatus {
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rawWebApp = (window as any).Telegram?.WebApp;
-      const initData = rawWebApp?.initData || WebApp.initData;
-
       axios
-        .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: initData })
+        .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: telegramInitData() })
         .then(({ data }) => {
           if (cancelled) return;
           setTokens(data);
@@ -41,17 +42,26 @@ export function useTelegramAuth(): AuthStatus {
         });
     }
 
-    // Some Telegram clients (notably Desktop) populate WebApp.initData a beat after our
-    // bundle evaluates - @twa-dev/sdk snapshots window.Telegram.WebApp once at import time,
-    // so a single early check can permanently read "not available". Poll briefly before
-    // giving up.
+    // Some Telegram clients (notably Desktop) populate initData a beat after our bundle
+    // evaluates, so a single early check can read "not available" for a session that is in
+    // fact inside Telegram. Poll briefly before giving up.
+    //
+    // Every iteration is wrapped: an exception escaping here used to leave `status` pinned to
+    // "pending" forever, which renders nothing but a spinner and never recovers. Falling
+    // through to "unavailable" keeps the storefront browsable instead.
     let attempts = 0;
     const maxAttempts = 20; // ~2s at 100ms
     function poll() {
       if (cancelled) return;
-      initTelegramWebApp();
-      if (isTelegramWebApp()) {
-        authenticate();
+      try {
+        initTelegramWebApp();
+        if (isTelegramWebApp()) {
+          authenticate();
+          return;
+        }
+      } catch (error) {
+        console.error("Telegram init check failed", error);
+        setStatus("unavailable");
         return;
       }
       attempts += 1;
