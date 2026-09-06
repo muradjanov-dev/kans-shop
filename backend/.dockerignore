@@ -7,3 +7,6 @@ __pycache__
 media
 .env
 .git
+
+# Not needed at runtime; keeps the production image smaller.
+tests
