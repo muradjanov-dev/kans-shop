@@ -620,7 +620,6 @@ async def on_receipt_back(
     if message is None:
         return
     await state.set_state(CheckoutStates.choosing_payment)
-    data = await state.get_data()
     await message.answer(
         _("checkout.choose_payment"),
         reply_markup=payment_method_keyboard(

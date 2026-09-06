@@ -66,10 +66,10 @@ def test_missing_hash_is_rejected() -> None:
 @pytest.mark.parametrize(
     "init_data",
     [
-        "",              # a plain browser: WebApp.initData is the empty string
-        "x",             # not a key=value pair at all
-        "&&",            # separators with no fields
-        "auth_date",     # key with no value
+        "",  # a plain browser: WebApp.initData is the empty string
+        "x",  # not a key=value pair at all
+        "&&",  # separators with no fields
+        "auth_date",  # key with no value
     ],
 )
 def test_malformed_init_data_is_rejected_not_crashed(init_data: str) -> None:

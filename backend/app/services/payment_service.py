@@ -421,7 +421,7 @@ async def payme_handle_rpc(session: AsyncSession, body: dict) -> dict:
     params = body.get("params") or {}
     request_id = body.get("id")
 
-    handler = PAYME_METHODS.get(method)
+    handler = PAYME_METHODS.get(method) if isinstance(method, str) else None
     if handler is None:
         return {
             "jsonrpc": "2.0",

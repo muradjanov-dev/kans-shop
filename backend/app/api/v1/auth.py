@@ -36,7 +36,7 @@ async def _issue_tokens(session: AsyncSession, telegram_id: int) -> TokenOut:
 async def auth_telegram(
     payload: TelegramAuthIn,
     session: AsyncSession = Depends(get_db),
-    bot: Bot = Depends(get_bot)
+    bot: Bot = Depends(get_bot),
 ) -> TokenOut:
     """Validates Telegram WebApp `initData` (Mini App) and issues a JWT pair."""
     data = verify_telegram_init_data(payload.init_data, bot_token=settings.bot_token)
@@ -51,6 +51,7 @@ async def auth_telegram(
     )
     if _created:
         from app.bot.services.user_notifications import notify_admins_new_users_batch
+
         await notify_admins_new_users_batch(bot, session, user)
     await user_repository.touch_last_active(session, user)
     return await _issue_tokens(session, user.telegram_id)

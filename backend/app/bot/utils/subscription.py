@@ -49,7 +49,8 @@ async def is_subscribed(bot: Bot, telegram_id: int, redis: Redis | None = None) 
     Positive answers are cached in Redis for `_CACHE_TTL_SECONDS`; negative ones never are,
     so a user who has just joined is unblocked by their very next tap.
     """
-    if not is_gate_enabled():
+    channel_id = settings.required_channel_id
+    if channel_id is None:
         return True
 
     cache_key = f"{_CACHE_PREFIX}{telegram_id}"
@@ -57,15 +58,13 @@ async def is_subscribed(bot: Bot, telegram_id: int, redis: Redis | None = None) 
         return True
 
     try:
-        member = await bot.get_chat_member(
-            chat_id=settings.required_channel_id, user_id=telegram_id
-        )
+        member = await bot.get_chat_member(chat_id=channel_id, user_id=telegram_id)
     except TelegramBadRequest as exc:
         if any(marker in str(exc).lower() for marker in _USER_UNKNOWN_MARKERS):
             return False
         log.error(
             "subscription_check_misconfigured",
-            channel_id=settings.required_channel_id,
+            channel_id=channel_id,
             telegram_id=telegram_id,
             error=str(exc),
         )
@@ -73,7 +72,7 @@ async def is_subscribed(bot: Bot, telegram_id: int, redis: Redis | None = None) 
     except TelegramAPIError as exc:
         log.error(
             "subscription_check_failed",
-            channel_id=settings.required_channel_id,
+            channel_id=channel_id,
             telegram_id=telegram_id,
             error=str(exc),
         )
@@ -104,15 +103,16 @@ async def channel_url(bot: Bot) -> str | None:
         return settings.required_channel_url
     if _cached_channel_url is not None:
         return _cached_channel_url
-    if not is_gate_enabled():
+    channel_id = settings.required_channel_id
+    if channel_id is None:
         return None
 
     try:
-        chat = await bot.get_chat(settings.required_channel_id)
+        chat = await bot.get_chat(channel_id)
     except TelegramAPIError as exc:
         log.error(
             "subscription_channel_lookup_failed",
-            channel_id=settings.required_channel_id,
+            channel_id=channel_id,
             error=str(exc),
         )
         return None
@@ -123,13 +123,11 @@ async def channel_url(bot: Bot) -> str | None:
         _cached_channel_url = chat.invite_link
     else:
         try:
-            _cached_channel_url = await bot.export_chat_invite_link(
-                settings.required_channel_id
-            )
+            _cached_channel_url = await bot.export_chat_invite_link(channel_id)
         except TelegramAPIError as exc:
             log.error(
                 "subscription_invite_link_failed",
-                channel_id=settings.required_channel_id,
+                channel_id=channel_id,
                 error=str(exc),
             )
             return None

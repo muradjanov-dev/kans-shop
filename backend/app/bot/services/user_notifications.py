@@ -1,12 +1,13 @@
-import asyncio
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+import contextlib
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User
-from app.db.repositories import admin_repository, user_repository
 from app.bot.services.order_notifications import translator_for_admin
+from app.db.models.user import User
+from app.db.repositories import admin_repository
 
 
 async def notify_admins_new_users_batch(
@@ -25,8 +26,7 @@ async def notify_admins_new_users_batch(
         for admin in admins:
             translator = await translator_for_admin(session, admin.telegram_id)
             text = translator("admin.new_users_batch_notification", total=total_users)
-            try:
+            # An admin who blocked the bot or deleted their chat must not stop
+            # the rest of the admins from being told.
+            with contextlib.suppress(TelegramBadRequest, TelegramForbiddenError):
                 await bot.send_message(admin.telegram_id, text)
-            except (TelegramBadRequest, TelegramForbiddenError):
-                pass
-

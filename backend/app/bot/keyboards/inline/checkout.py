@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from collections.abc import Set as AbstractSet
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -103,7 +104,7 @@ def comment_step_keyboard(
 def payment_method_keyboard(
     translator: Callable[..., str],
     *,
-    enabled_providers: set[str] = frozenset(),
+    enabled_providers: AbstractSet[str] = frozenset(),
     tender_available: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()

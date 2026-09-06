@@ -37,6 +37,7 @@ class UserRegistrationMiddleware(BaseMiddleware):
             await user_repository.touch_last_active(session, user)
         else:
             from app.bot.services.user_notifications import notify_admins_new_users_batch
+
             bot = data.get("bot")
             if bot:
                 await notify_admins_new_users_batch(bot, session, user)
