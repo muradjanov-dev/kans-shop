@@ -69,7 +69,10 @@ make format   # ruff --fix + black (backend)
 
 ## Deploying to production
 
-See [docs/DEPLOY.md](docs/DEPLOY.md) for the Railway deployment steps.
+Push to `main` runs the GitHub CI, builds GHCR images, and deploys to netcup
+through `.github/workflows/deploy.yml`. The deployment waits for healthy
+containers. [docs/DEPLOY.md](docs/DEPLOY.md) describes the former Railway path
+and is historical.
 
 ## Project layout
 
