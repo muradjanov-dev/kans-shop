@@ -16,7 +16,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together
 - **Mini App**: React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query, Zustand,
   react-router-dom, @twa-dev/sdk.
 - **Infra**: Docker Compose (`postgres`, `redis`, `api`, `nginx` serving the built Mini App +
-  reverse-proxying `/api`), Railway for hosting.
+  reverse-proxying `/api`); pushes to `main` run GitHub Actions, which builds and pushes images
+  to GHCR before deploying them to netcup.
 
 ## Quick start (Docker)
 
