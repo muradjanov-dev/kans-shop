@@ -6,6 +6,18 @@ current business model. Parts of `README.md` and `docs/DEPLOY.md` still describe
 Railway; production deploys from `main` through `.github/workflows/deploy.yml`
 to netcup.
 
+## Working style
+
+- Understand the request, repository guidance and relevant code before editing.
+  Ask one focused question if a material product decision is unclear; otherwise
+  state the assumption.
+- Prefer the simplest change that meets the task; avoid unrelated refactors and
+  dependencies.
+- Keep edits within the requested behavior and preserve existing business,
+  safety and release rules.
+- Run relevant checks and report what changed, what passed, and anything that
+  could not be verified.
+
 ## Checks and boundaries
 
 - `backend/app/services/` owns order, cart, catalog and payment rules shared by
