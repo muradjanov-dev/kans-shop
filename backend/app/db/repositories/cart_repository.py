@@ -12,7 +12,11 @@ async def get_active_cart(session: AsyncSession, user_id: int) -> Cart | None:
     stmt = (
         select(Cart)
         .where(Cart.user_id == user_id, Cart.is_active.is_(True))
-        .options(selectinload(Cart.items).selectinload(CartItem.product))
+        .options(
+            selectinload(Cart.items)
+            .selectinload(CartItem.product)
+            .selectinload(Product.images)
+        )
         # Without this, a Cart already in the identity map keeps its stale in-memory `items`
         # collection even after a sibling CartItem was deleted+flushed through a separate
         # query (e.g. remove_item/clear) — force this call to always reflect current DB state.
@@ -25,7 +29,7 @@ async def get_or_create_active_cart(session: AsyncSession, user_id: int) -> Cart
     cart = await get_active_cart(session, user_id)
     if cart is not None:
         return cart
-    cart = Cart(user_id=user_id)
+    cart = Cart(user_id=user_id, items=[])
     session.add(cart)
     await session.flush()
     return cart

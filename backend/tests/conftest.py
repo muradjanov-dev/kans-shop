@@ -1,7 +1,8 @@
+import ipaddress
 import os
 from collections.abc import AsyncIterator
 from decimal import Decimal
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 import pytest_asyncio
 from sqlalchemy import text
@@ -23,6 +24,26 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://kansshop:kansshop@localhost:5432/kansshop_test",
 )
+
+
+def _validate_test_database_url() -> None:
+    parts = urlsplit(TEST_DATABASE_URL)
+    hostname = parts.hostname
+    try:
+        is_loopback = bool(hostname) and ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        is_loopback = hostname is not None and hostname.casefold() == "localhost"
+
+    database_name = unquote(parts.path.lstrip("/"))
+    if not is_loopback:
+        raise RuntimeError(
+            "TEST_DATABASE_URL must target a loopback host; refusing test schema setup."
+        )
+    if not database_name.startswith("kansshop_test"):
+        raise RuntimeError(
+            "TEST_DATABASE_URL database name must start with 'kansshop_test'; "
+            "refusing test schema setup."
+        )
 
 
 async def _ensure_test_database_exists() -> None:
@@ -47,6 +68,7 @@ async def _ensure_test_database_exists() -> None:
 
 @pytest_asyncio.fixture(scope="session")
 async def test_engine() -> AsyncIterator[AsyncEngine]:
+    _validate_test_database_url()
     await _ensure_test_database_exists()
     engine = create_async_engine(TEST_DATABASE_URL)
     async with engine.begin() as conn:
