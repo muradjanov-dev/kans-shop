@@ -55,11 +55,23 @@ def _dt_to_ms(dt: datetime | None) -> int:
 
 def is_provider_configured(provider: PaymentProvider) -> bool:
     if provider == PaymentProvider.CLICK:
-        return bool(settings.click_service_id and settings.click_merchant_id)
+        return all(
+            value.strip()
+            for value in (
+                settings.click_service_id,
+                settings.click_merchant_id,
+                settings.click_merchant_user_id,
+                settings.click_secret_key,
+            )
+        )
     if provider == PaymentProvider.PAYME:
-        return bool(settings.payme_merchant_id)
+        return all(
+            value.strip() for value in (settings.payme_merchant_id, settings.payme_secret_key)
+        )
     if provider == PaymentProvider.PAYNET:
-        return bool(settings.paynet_merchant_id and settings.paynet_api_base_url)
+        # The current URL builder is only a placeholder until the merchant API contract is
+        # verified, so config values alone must never make Paynet available for checkout.
+        return False
     return False
 
 

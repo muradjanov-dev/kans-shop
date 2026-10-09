@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_db
+from app.api.schemas.checkout import CheckoutQuoteIn, CheckoutQuoteOut
 from app.api.schemas.order import (
     CheckoutIn,
     LotLinkOut,
@@ -22,8 +23,32 @@ from app.core.uploads import (
 from app.db.models.user import User
 from app.db.repositories import order_repository
 from app.services import order_service, payment_service
+from app.services.checkout_quote import quote_checkout
 
 router = APIRouter(prefix="/orders", tags=["orders"])
+
+
+@router.post("/quote", response_model=CheckoutQuoteOut)
+async def quote_order(
+    payload: CheckoutQuoteIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> CheckoutQuoteOut:
+    quote = await quote_checkout(
+        session,
+        user_id=user.id,
+        order_type=payload.order_type,
+        payment_method=payload.payment_method,
+    )
+    return CheckoutQuoteOut(
+        subtotal=quote.subtotal,
+        delivery_fee=quote.delivery_fee,
+        total=quote.total,
+        payment_methods=quote.payment_methods,
+        ready=quote.ready,
+        reasons=quote.reasons,
+        quote_fingerprint=quote.quote_fingerprint,
+    )
 
 
 @router.post("", response_model=OrderOut, status_code=201)

@@ -119,3 +119,8 @@ class PaymentAlreadyProcessedError(KansShopError):
 class PaymentNotConfiguredError(KansShopError):
     code = "PAYMENT_NOT_CONFIGURED"
     http_status = 400
+
+
+class CheckoutUnavailableError(KansShopError):
+    code = "CHECKOUT_UNAVAILABLE"
+    http_status = 409
