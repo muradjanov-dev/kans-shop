@@ -34,3 +34,7 @@ Thumbs.db
 
 # Docker
 *.log
+
+# Agent execution artifacts
+.superpowers/
+.worktrees/
