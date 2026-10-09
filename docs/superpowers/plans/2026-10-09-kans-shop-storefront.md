@@ -199,8 +199,8 @@
   expect(unexpectedExternalRequests).toEqual([]);
   expect(touchTargetBox.width).toBeGreaterThanOrEqual(44);
   ```
-- [ ] Run `cd frontend && npm run test:e2e:storefront`. Expected red should be an unmet behavior assertion, not browser startup or network setup.
-- [ ] Capture mobile/desktop light/dark screenshots as CI artifacts for visual review; keep fixtures free of fake promotions, fabricated support, invented prices, and demo products. Run `./scripts/test-purchase.sh -q`, backend `ruff check app tests`, `black --check app tests`, `mypy app`, `npm ci`, `npm test`, `npm run typecheck`, `npm run build`, and `npm run test:e2e:storefront`.
+- [ ] Run `cd frontend && npm run test:e2e:storefront`. Record real unmet behavior if discovered; fixture or startup failures are not product RED evidence, and already-passing prerequisite features need no fabricated defect.
+- [ ] Capture mobile/desktop light/dark screenshots as CI artifacts for visual review; keep fixtures explicitly synthetic and never seed or contact production. Test-only products/prices and configured example contacts may exercise the approved contracts; never present them as real shop data or invent promotions/bestseller claims. Run `./scripts/test-purchase.sh -q`, backend `ruff check app tests`, `black --check app tests`, `mypy app`, `npm ci`, `npm test`, `npm run typecheck`, `npm run build`, and `npm run test:e2e:storefront`.
 - [ ] Expected result: all functional checks pass; no frontend/backend contract drift, forbidden public data, cross-account cache leakage or fabricated content. Record any environment limitation explicitly; screenshot comparison complements but does not replace functional checks.
 - [ ] Commit `test: cover storefront and customer cabinet journeys`.
 
