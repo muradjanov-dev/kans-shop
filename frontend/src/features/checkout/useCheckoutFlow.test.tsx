@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { formatExactPrice } from "@/lib/format";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import { useAuthStore } from "@/store/auth";
-import type { Cart, CheckoutQuote, Order, PublicSettings } from "@/types/api";
+import type { Cart, CheckoutQuote, Order, Product, PublicSettings } from "@/types/api";
 
 const cart: Cart = {
   items: [],
@@ -85,6 +85,41 @@ function requestPayload(config: Parameters<AxiosAdapter>[0]): Record<string, str
   return typeof config.data === "string"
     ? JSON.parse(config.data) as Record<string, string>
     : config.data as Record<string, string>;
+}
+
+const pricedProduct: Product = {
+  id: 1,
+  category_id: 2,
+  name_uz: "Daftar",
+  name_ru: "Тетрадь",
+  description_uz: null,
+  description_ru: null,
+  sku: "NB-1",
+  price: "100.00",
+  old_price: null,
+  stock_qty: 12,
+  unit: "dona",
+  min_order_qty: 1,
+  is_active: true,
+  is_featured: false,
+  lot_url: "https://lots.invalid/1",
+  views_count: 0,
+  sold_count: 0,
+  images: [],
+};
+
+function cartAtPrice(price: string): Cart {
+  return {
+    items: [{
+      id: 7,
+      product_id: pricedProduct.id,
+      quantity: 1,
+      price_snapshot: price,
+      product: { ...pricedProduct, price },
+    }],
+    subtotal: price,
+    items_count: 1,
+  };
 }
 
 function apiError(config: Parameters<AxiosAdapter>[0], code: string, status = 409): Promise<never> {
@@ -361,6 +396,7 @@ describe("quote-based checkout flow", () => {
     signedIn();
     originalAdapter = api.defaults.adapter;
     const quoteRequests: Array<Record<string, string>> = [];
+    const checkoutRequests: Array<Record<string, string>> = [];
     api.defaults.adapter = async (config) => {
       if (config.url === "/cart") return response(config, { ...cart, items_count: 1, items: [{ id: 1, product_id: 1, quantity: 1, price_snapshot: "1000", product: {} }] });
       if (config.url === "/settings/public") return response(config, settings);
@@ -373,6 +409,10 @@ describe("quote-based checkout flow", () => {
           payment_methods: ["cash", "card_transfer", "tender"],
           reasons: payload.payment_method === "tender" ? ["Some tender lots have no link."] : [],
         });
+      }
+      if (config.url === "/orders" && config.method === "post") {
+        checkoutRequests.push(requestPayload(config));
+        return response(config, { ...order, order_type: "preorder", address: null, address_comment: null }, 201);
       }
       throw new Error(`Unexpected request: ${config.method} ${config.url}`);
     };
@@ -398,5 +438,103 @@ describe("quote-based checkout flow", () => {
     expect(screen.queryByLabelText("Manzil")).not.toBeInTheDocument();
     expect(screen.queryByText("To'lov usuli")).not.toBeInTheDocument();
     expect(screen.queryByText("Yetkazib berish narxi")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Buyurtmani tasdiqlash" }));
+    await screen.findByRole("link", { name: /KANS-000081/ });
+    expect(checkoutRequests[0]).toMatchObject({
+      order_type: "preorder",
+      payment_method: "cash",
+      address: null,
+      address_comment: null,
+    });
+  });
+
+  it("disables checkout when a ready quote omits the selected method, including preorder's cash placeholder", async () => {
+    signedIn();
+    originalAdapter = api.defaults.adapter;
+    const quoteRequests: Array<Record<string, string>> = [];
+    let orderPosts = 0;
+    api.defaults.adapter = async (config) => {
+      if (config.url === "/cart") return response(config, cartAtPrice("1000.00"));
+      if (config.url === "/settings/public") return response(config, settings);
+      if (config.url === "/orders/quote") {
+        const payload = requestPayload(config);
+        quoteRequests.push(payload);
+        return response(config, {
+          ...readyQuote,
+          ready: true,
+          payment_methods: payload.order_type === "preorder" ? ["tender"] : [],
+        });
+      }
+      if (config.url === "/orders" && config.method === "post") {
+        orderPosts += 1;
+        return response(config, order, 201);
+      }
+      throw new Error(`Unexpected request: ${config.method} ${config.url}`);
+    };
+    const user = userEvent.setup();
+
+    renderWithProviders(<CheckoutPage />, "/checkout", true);
+    await fillDeliveryForm(user);
+    await waitFor(() => expect(quoteRequests).toHaveLength(1));
+    expect(quoteRequests[0]).toMatchObject({ order_type: "delivery", payment_method: "cash" });
+    expect(screen.getByRole("button", { name: "Buyurtmani tasdiqlash" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Olib ketish" }));
+    await waitFor(() => expect(quoteRequests).toHaveLength(2));
+    expect(quoteRequests[1]).toMatchObject({ order_type: "pickup", payment_method: "cash" });
+    expect(screen.getByRole("button", { name: "Buyurtmani tasdiqlash" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Oldindan buyurtma" }));
+    await waitFor(() => expect(quoteRequests).toHaveLength(3));
+    expect(quoteRequests[2]).toMatchObject({ order_type: "preorder", payment_method: "cash" });
+    expect(screen.queryByText("To'lov usuli")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Bu buyurtma uchun to'lov usuli mavjud emas.");
+    expect(screen.getByRole("button", { name: "Buyurtmani tasdiqlash" })).toBeDisabled();
+    expect(orderPosts).toBe(0);
+  });
+
+  it("fetches a fresh quote when cart price and subtotal change with the same product and quantity", async () => {
+    signedIn();
+    originalAdapter = api.defaults.adapter;
+    let cartVersion = 0;
+    let quoteCalls = 0;
+    let releaseUpdatedQuote!: () => void;
+    let startUpdatedQuote!: () => void;
+    const updatedQuoteGate = new Promise<void>((resolve) => { releaseUpdatedQuote = resolve; });
+    const updatedQuoteStarted = new Promise<void>((resolve) => { startUpdatedQuote = resolve; });
+    api.defaults.adapter = async (config) => {
+      if (config.url === "/cart") return response(config, cartVersion === 0 ? cartAtPrice("100.00") : cartAtPrice("101.00"));
+      if (config.url === "/settings/public") return response(config, settings);
+      if (config.url === "/orders/quote") {
+        quoteCalls += 1;
+        if (quoteCalls === 1) return response(config, { ...readyQuote, subtotal: "100.00", total: "100.00" });
+        startUpdatedQuote();
+        await updatedQuoteGate;
+        return response(config, {
+          ...readyQuote,
+          subtotal: "101.00",
+          total: "101.00",
+          quote_fingerprint: "price-changed-quote",
+        });
+      }
+      throw new Error(`Unexpected request: ${config.method} ${config.url}`);
+    };
+    const user = userEvent.setup();
+    const rendered = renderWithProviders(<CheckoutPage />, "/checkout", true);
+
+    await fillDeliveryForm(user);
+    const submit = await screen.findByRole("button", { name: "Buyurtmani tasdiqlash" });
+    await waitFor(() => expect(quoteCalls).toBe(1));
+    expect(submit).toBeEnabled();
+
+    cartVersion = 1;
+    rendered.queryClient.setQueryData(["cart", "42"], cartAtPrice("101.00"));
+    await updatedQuoteStarted;
+    expect(quoteCalls).toBe(2);
+    expect(submit).toBeDisabled();
+    releaseUpdatedQuote();
+
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(screen.getAllByText(/101/)).toHaveLength(2);
   });
 });

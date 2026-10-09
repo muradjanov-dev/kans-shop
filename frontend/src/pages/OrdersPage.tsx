@@ -5,6 +5,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { useTranslate, type TranslationKey } from "@/lib/i18n";
 import { formatPrice } from "@/lib/format";
 import { useAuthStore } from "@/store/auth";
+import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 import type { OrderStatus } from "@/types/api";
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
@@ -19,10 +20,22 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
 export function OrdersPage() {
   const t = useTranslate();
   const isAuthenticated = Boolean(useAuthStore((state) => state.accessToken));
+  const { openLogin } = useCustomerAuth();
   const { data: orders, isLoading, isError, refetch } = useOrders(isAuthenticated);
 
   if (!isAuthenticated) {
-    return <p className="p-6 text-center text-sm text-gray-500">{t("orders.open_telegram")}</p>;
+    return (
+      <div className="flex flex-col items-center gap-3 p-6 text-center">
+        <p className="text-sm text-gray-500">{t("orders.open_telegram")}</p>
+        <button
+          type="button"
+          onClick={openLogin}
+          className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white"
+        >
+          {t("auth.sign_in")}
+        </button>
+      </div>
+    );
   }
   if (isLoading) return <Spinner />;
   if (isError) return <ErrorState onRetry={() => refetch()} />;

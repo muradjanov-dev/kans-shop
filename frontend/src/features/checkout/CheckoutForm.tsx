@@ -105,6 +105,9 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
           )}
         </Field>
       )}
+      {isPreorder && quote?.ready && !flow.quoteMethodAvailable && (
+        <p role="alert" className="mb-3 text-xs text-red-600">{t("checkout.no_payment_methods")}</p>
+      )}
 
       <Field label={t("checkout.comment")}>
         <textarea

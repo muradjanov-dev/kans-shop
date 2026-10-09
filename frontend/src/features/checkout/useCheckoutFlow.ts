@@ -110,10 +110,21 @@ export function useCheckoutFlow() {
   const [confirmedQuoteFingerprint, setConfirmedQuoteFingerprint] = useState<string | null>(null);
   const ownerRef = useRef({ userId, authEpoch });
 
-  const cartRevision = cart?.items
-    .map((item) => `${item.product_id}:${item.quantity}`)
-    .sort()
-    .join(",") ?? "no-cart";
+  const cartRevision = cart
+    ? JSON.stringify({
+        subtotal: cart.subtotal,
+        items: cart.items
+          .map((item) => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+            price: item.product?.price ?? null,
+            is_active: item.product?.is_active ?? null,
+            stock_qty: item.product?.stock_qty ?? null,
+            lot_url: item.product?.lot_url ?? null,
+          }))
+          .sort((left, right) => left.product_id - right.product_id),
+      })
+    : "no-cart";
   const quoteQuery = useCheckoutQuote(
     orderType,
     paymentMethod,
@@ -121,6 +132,8 @@ export function useCheckoutFlow() {
     isAuthenticated && !createdOrder && !recoveryRecord && !cartLoading && (cart?.items.length ?? 0) > 0,
   );
   const quote = quoteQuery.isFetching || quoteQuery.isError ? undefined : quoteQuery.data;
+  const quotePaymentMethod = orderType === "preorder" ? "cash" : paymentMethod;
+  const quoteOffersPaymentMethod = Boolean(quote?.payment_methods?.includes(quotePaymentMethod));
 
   useEffect(() => {
     const previous = ownerRef.current;
@@ -249,7 +262,7 @@ export function useCheckoutFlow() {
     setSubmitAttempted(true);
     const validation = getErrors({ name, phone, address }, orderType);
     if (Object.keys(validation).length) return;
-    if (!quote?.ready || quote.total === null || !quote.quote_fingerprint) return;
+    if (!quote?.ready || !quoteOffersPaymentMethod || quote.total === null || !quote.quote_fingerprint) return;
     if (quoteConfirmationRequired && confirmedQuoteFingerprint !== quote.quote_fingerprint) return;
     if ((cart?.items.length ?? 0) === 0) return;
 
@@ -257,7 +270,7 @@ export function useCheckoutFlow() {
       order_type: orderType,
       customer_name: name.trim(),
       customer_phone: normalizeUzPhone(phone),
-      payment_method: orderType === "preorder" ? "cash" : paymentMethod,
+      payment_method: quotePaymentMethod,
       address: orderType === "delivery" ? address.trim() : null,
       address_comment: orderType === "delivery" ? addressComment.trim() || null : null,
       comment: comment.trim() || null,
@@ -294,6 +307,8 @@ export function useCheckoutFlow() {
     quote,
     quoteConfirmationRequired,
     userId,
+    quoteOffersPaymentMethod,
+    quotePaymentMethod,
   ]);
 
   const retryUnknown = useCallback(() => {
@@ -301,7 +316,7 @@ export function useCheckoutFlow() {
   }, [attempt, performAttempt]);
 
   const confirmUpdatedQuote = useCallback(() => {
-    if (!quote?.ready || quote.total === null || !quote.quote_fingerprint || locked) return;
+    if (!quote?.ready || !quoteOffersPaymentMethod || quote.total === null || !quote.quote_fingerprint || locked) return;
     setConfirmedQuoteFingerprint(quote.quote_fingerprint);
     setQuoteConfirmationRequired(false);
     setSubmitError(null);
@@ -314,7 +329,7 @@ export function useCheckoutFlow() {
       order_type: orderType,
       customer_name: name.trim(),
       customer_phone: normalizeUzPhone(phone),
-      payment_method: orderType === "preorder" ? "cash" : paymentMethod,
+      payment_method: quotePaymentMethod,
       address: orderType === "delivery" ? address.trim() : null,
       address_comment: orderType === "delivery" ? addressComment.trim() || null : null,
       comment: comment.trim() || null,
@@ -334,9 +349,11 @@ export function useCheckoutFlow() {
     }
     setAttempt(nextAttempt);
     void performAttempt(nextAttempt);
-  }, [address, addressComment, comment, locked, name, orderType, paymentMethod, performAttempt, phone, quote, userId]);
+  }, [address, addressComment, comment, locked, name, orderType, performAttempt, phone, quote, quoteOffersPaymentMethod, quotePaymentMethod, userId]);
 
-  const quoteCanSubmit = Boolean(quote?.ready && quote.total !== null && quote.quote_fingerprint);
+  const quoteCanSubmit = Boolean(
+    quote?.ready && quoteOffersPaymentMethod && quote.total !== null && quote.quote_fingerprint,
+  );
   const quoteConfirmationPassed = !quoteConfirmationRequired || confirmedQuoteFingerprint === quote?.quote_fingerprint;
   const canSubmit = Boolean(
     isAuthenticated &&
@@ -371,6 +388,7 @@ export function useCheckoutFlow() {
     cart,
     cartLoading,
     quote,
+    quoteMethodAvailable: quoteOffersPaymentMethod,
     quoteLoading: quoteQuery.isLoading || quoteQuery.isFetching,
     quoteError: quoteQuery.isError,
     refreshQuote: () => void quoteQuery.refetch(),
