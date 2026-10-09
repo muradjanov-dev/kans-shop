@@ -103,6 +103,75 @@ def test_current_migration_from_phase1_head(monkeypatch: pytest.MonkeyPatch) -> 
         assert _version(engine) == CURRENT_HEAD
 
 
+def test_broadcast_launch_checkpoints_are_nullable_and_preserve_legacy_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _migration_database(monkeypatch) as (config, engine):
+        command.upgrade(config, PHASE1_HEAD)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (telegram_id, first_name) "
+                    "VALUES (9000000000000011, 'Legacy Broadcast User')"
+                )
+            )
+            admin_id = connection.execute(
+                text(
+                    "INSERT INTO admins (telegram_id, full_name, role) "
+                    "VALUES (9000000000000012, 'Legacy Broadcast Admin', 'superadmin') "
+                    "RETURNING id"
+                )
+            ).scalar_one()
+            broadcast_id = connection.execute(
+                text(
+                    "INSERT INTO broadcasts (admin_id, text, target, status) "
+                    "VALUES (:admin_id, 'Legacy draft', 'all', 'sending') RETURNING id"
+                ),
+                {"admin_id": admin_id},
+            ).scalar_one()
+
+        command.upgrade(config, "head")
+
+        with engine.begin() as connection:
+            columns = dict(
+                connection.execute(
+                    text(
+                        "SELECT column_name, is_nullable FROM information_schema.columns "
+                        "WHERE table_name = 'broadcasts' AND column_name IN ("
+                        "'preview_content_fingerprint', "
+                        "'launch_idempotency_key', 'launch_fingerprint', 'launch_count', "
+                        "'launcher_auth_epoch', 'launched_at')"
+                    )
+                ).all()
+            )
+            assert columns == {
+                "preview_content_fingerprint": "YES",
+                "launch_idempotency_key": "YES",
+                "launch_fingerprint": "YES",
+                "launch_count": "YES",
+                "launcher_auth_epoch": "YES",
+                "launched_at": "YES",
+            }
+            legacy = connection.execute(
+                text(
+                    "SELECT status, preview_content_fingerprint, launch_idempotency_key, "
+                    "launch_fingerprint, launch_count, launcher_auth_epoch, launched_at "
+                    "FROM broadcasts WHERE id = :broadcast_id"
+                ),
+                {"broadcast_id": broadcast_id},
+            ).one()
+            assert legacy == ("sending", None, None, None, None, None, None)
+            unique_constraint = connection.scalar(
+                text(
+                    "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conname = 'uq_broadcasts_launch_idempotency_key'"
+                )
+            )
+            assert unique_constraint == "UNIQUE (launch_idempotency_key)"
+
+        command.downgrade(config, PHASE1_HEAD)
+
+
 def test_current_upgrade_preserves_orders_receipts_and_media_refs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

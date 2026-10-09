@@ -24,6 +24,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.redis import get_redis
 from app.core.security import verify_webhook_secret
 from app.db.session import async_session_maker
+from app.services.broadcast_worker import run_broadcast_worker
 from app.services.notification_outbox_worker import run_outbox_worker
 
 log = get_logger(__name__)
@@ -67,13 +68,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.bot = bot
     app.state.dispatcher = None
     stop_outbox_worker = asyncio.Event()
+    stop_broadcast_worker = asyncio.Event()
     session_maker = getattr(app.state, "session_maker", async_session_maker)
+    redis = get_redis()
     worker_task = asyncio.create_task(
-        run_outbox_worker(bot, session_maker, get_redis(), stop_outbox_worker),
+        run_outbox_worker(bot, session_maker, redis, stop_outbox_worker),
         name="notification-outbox-worker",
+    )
+    broadcast_worker_task = asyncio.create_task(
+        run_broadcast_worker(bot, session_maker, redis, stop_broadcast_worker),
+        name="broadcast-worker",
     )
     app.state.notification_outbox_stop = stop_outbox_worker
     app.state.notification_outbox_task = worker_task
+    app.state.broadcast_worker_stop = stop_broadcast_worker
+    app.state.broadcast_worker_task = broadcast_worker_task
 
     try:
         await setup_bot_commands(bot)
@@ -96,7 +105,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         stop_outbox_worker.set()
-        await worker_task
+        stop_broadcast_worker.set()
+        await asyncio.gather(worker_task, broadcast_worker_task)
         await bot.session.close()
 
 

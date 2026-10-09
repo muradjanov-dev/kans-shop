@@ -121,6 +121,11 @@ class InvalidFileError(KansShopError):
     http_status = 400
 
 
+class BroadcastMediaTooLargeError(KansShopError):
+    code = "BROADCAST_MEDIA_TOO_LARGE"
+    http_status = 413
+
+
 class OrderAlreadyProcessedError(KansShopError):
     code = "ORDER_ALREADY_PROCESSED"
     http_status = 409

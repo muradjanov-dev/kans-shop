@@ -296,11 +296,58 @@ class AdminAcceptPaymentIn(BaseModel):
 
 
 class BroadcastCreateIn(BaseModel):
-    text: str
-    photo_file_id: str | None = None
-    button_text: str | None = None
-    button_url: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
     target: BroadcastTarget
+    text: str = Field(max_length=4096)
+    photo_storage_key: str | None = Field(default=None, min_length=36, max_length=36)
+    photo_file_id: str | None = Field(default=None, max_length=255)
+    button_text: str | None = Field(default=None, max_length=64)
+    button_url: str | None = Field(default=None, max_length=512)
+
+    @model_validator(mode="after")
+    def validate_broadcast_content(self) -> BroadcastCreateIn:
+        if not self.text.strip() and not (self.photo_storage_key or self.photo_file_id):
+            raise ValueError("text must not be blank unless a photo is attached")
+        if self.photo_storage_key is not None and self.photo_file_id is not None:
+            raise ValueError("provide only one photo source")
+        if (self.button_text is None) != (self.button_url is None):
+            raise ValueError("button_text and button_url must be provided together")
+        if self.button_url is not None:
+            from urllib.parse import urlsplit
+
+            parsed = urlsplit(self.button_url)
+            if parsed.scheme != "https" or not parsed.hostname or parsed.username:
+                raise ValueError("button_url must be a valid HTTPS URL")
+        return self
+
+
+class BroadcastPreviewIn(BroadcastCreateIn):
+    pass
+
+
+class BroadcastDraftIn(BroadcastCreateIn):
+    preview_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preview_content_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preview_count: int = Field(ge=0, strict=True)
+
+
+class BroadcastPreviewOut(BaseModel):
+    preview_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preview_content_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preview_count: int = Field(ge=0)
+
+
+class BroadcastLaunchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    preview_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preview_count: int = Field(ge=0, strict=True)
+    idempotency_key: UUID
+
+
+class BroadcastPhotoOut(BaseModel):
+    photo_storage_key: str = Field(min_length=36, max_length=36)
 
 
 class BroadcastOut(BaseModel):
@@ -309,13 +356,18 @@ class BroadcastOut(BaseModel):
     id: int
     text: str
     photo_file_id: str | None
+    photo_storage_key: str | None
     button_text: str | None
     button_url: str | None
     target: BroadcastTarget
     status: BroadcastStatus
     sent_count: int
     failed_count: int
+    pending_count: int = Field(default=0, ge=0)
+    sending_count: int = Field(default=0, ge=0)
+    cancelled_count: int = Field(default=0, ge=0)
     created_at: datetime
+    launched_at: datetime | None
 
 
 class UserOut(BaseModel):

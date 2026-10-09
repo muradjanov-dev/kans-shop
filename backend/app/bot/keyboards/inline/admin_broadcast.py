@@ -56,7 +56,7 @@ def broadcast_confirm_keyboard(translator: Callable[..., str]) -> InlineKeyboard
     builder.row(
         InlineKeyboardButton(
             text=translator("admin.broadcast_confirm_send"),
-            callback_data=BroadcastConfirmCallback(action="send").pack(),
+            callback_data=BroadcastConfirmCallback(action="launch").pack(),
         )
     )
     builder.row(

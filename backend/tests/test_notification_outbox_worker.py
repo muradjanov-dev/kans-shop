@@ -726,7 +726,7 @@ async def test_shared_pacing_caps_all_worker_instances_at_twenty_per_second() ->
         await asyncio.gather(*(redis.aclose() for redis in redis_clients))
 
 
-async def test_lifespan_starts_and_stops_one_outbox_task(monkeypatch) -> None:
+async def test_lifespan_starts_and_stops_delivery_tasks(monkeypatch) -> None:
     from app.main import create_app
 
     class _BotSession:
@@ -760,6 +760,7 @@ async def test_lifespan_starts_and_stops_one_outbox_task(monkeypatch) -> None:
     monkeypatch.setattr("app.main.get_redis", lambda: redis)
     monkeypatch.setattr("app.main.setup_bot_commands", no_setup)
     monkeypatch.setattr("app.main.run_outbox_worker", fake_worker)
+    monkeypatch.setattr("app.main.run_broadcast_worker", fake_worker)
     app = create_app()
     app.state.session_maker = session_maker
 
@@ -767,6 +768,9 @@ async def test_lifespan_starts_and_stops_one_outbox_task(monkeypatch) -> None:
         await started.wait()
         assert not worker_stop_seen.is_set()
         assert app.state.notification_outbox_task.done() is False
+        assert app.state.broadcast_worker_task.done() is False
 
     assert worker_stop_seen.is_set()
+    assert app.state.broadcast_worker_stop.is_set()
+    assert app.state.broadcast_worker_task.done()
     assert bot.session.closed is True

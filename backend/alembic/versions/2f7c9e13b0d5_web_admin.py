@@ -32,6 +32,28 @@ def upgrade() -> None:
         sa.Column("edit_version", sa.Integer(), server_default="0", nullable=False),
     )
     op.add_column("broadcasts", sa.Column("photo_storage_key", sa.String(length=512)))
+    op.add_column("broadcasts", sa.Column("preview_content_fingerprint", sa.String(length=64)))
+    op.add_column(
+        "broadcasts",
+        sa.Column("launch_idempotency_key", postgresql.UUID(as_uuid=True), nullable=True),
+    )
+    op.add_column("broadcasts", sa.Column("launch_fingerprint", sa.String(length=64)))
+    op.add_column("broadcasts", sa.Column("launch_count", sa.Integer(), nullable=True))
+    op.add_column("broadcasts", sa.Column("launcher_auth_epoch", sa.Integer(), nullable=True))
+    op.add_column("broadcasts", sa.Column("launched_at", sa.DateTime(timezone=True)))
+    op.create_unique_constraint(
+        "uq_broadcasts_launch_idempotency_key", "broadcasts", ["launch_idempotency_key"]
+    )
+    op.create_check_constraint(
+        op.f("ck_broadcasts_launch_count_nonnegative"),
+        "broadcasts",
+        "launch_count IS NULL OR launch_count >= 0",
+    )
+    op.create_check_constraint(
+        op.f("ck_broadcasts_launcher_auth_epoch_nonnegative"),
+        "broadcasts",
+        "launcher_auth_epoch IS NULL OR launcher_auth_epoch >= 0",
+    )
 
     # Existing broadcast status values and rows remain intact; this only widens the enum.
     op.execute("ALTER TYPE broadcast_status ADD VALUE IF NOT EXISTS 'cancelled'")
@@ -44,7 +66,12 @@ def upgrade() -> None:
         "('pending', 'sending', 'sent', 'failed', 'cancelled')"
     )
     notification_status = postgresql.ENUM(
-        "pending", "sending", "sent", "failed", name="notification_outbox_status", create_type=False
+        "pending",
+        "sending",
+        "sent",
+        "failed",
+        name="notification_outbox_status",
+        create_type=False,
     )
     recipient_status = postgresql.ENUM(
         "pending",
@@ -67,10 +94,16 @@ def upgrade() -> None:
         sa.Column("revoked_at", sa.DateTime(timezone=True)),
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.CheckConstraint(
             "token_hash ~ '^[0-9a-f]{64}$'",
@@ -107,10 +140,16 @@ def upgrade() -> None:
         sa.Column("after_json", postgresql.JSONB(astext_type=sa.Text())),
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["actor_admin_id"],
@@ -153,10 +192,16 @@ def upgrade() -> None:
         sa.Column("last_error", sa.String(length=512)),
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.CheckConstraint(
             "(recipient_user_id IS NOT NULL) <> (recipient_admin_id IS NOT NULL)",
@@ -208,7 +253,10 @@ def upgrade() -> None:
         sa.Column("idempotency_key", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.CheckConstraint(
             "length(btrim(text)) > 0", name=op.f("ck_admin_order_messages_text_not_blank")
@@ -258,10 +306,16 @@ def upgrade() -> None:
         sa.Column("last_error", sa.String(length=512)),
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.CheckConstraint(
             "attempts >= 0", name=op.f("ck_broadcast_recipients_attempts_nonnegative")
@@ -306,10 +360,16 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), server_default="1", autoincrement=False, nullable=False),
         sa.Column("settings_version", sa.Integer(), server_default="0", nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.CheckConstraint("id = 1", name=op.f("ck_store_state_singleton_id")),
         sa.CheckConstraint(
@@ -323,9 +383,13 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("store_state")
 
-    op.drop_index(op.f("ix_broadcast_recipients_next_available_at"), table_name="broadcast_recipients")
+    op.drop_index(
+        op.f("ix_broadcast_recipients_next_available_at"), table_name="broadcast_recipients"
+    )
     op.drop_index(op.f("ix_broadcast_recipients_user_id"), table_name="broadcast_recipients")
-    op.drop_index(op.f("ix_broadcast_recipients_broadcast_id"), table_name="broadcast_recipients")
+    op.drop_index(
+        op.f("ix_broadcast_recipients_broadcast_id"), table_name="broadcast_recipients"
+    )
     op.drop_table("broadcast_recipients")
 
     op.drop_index(op.f("ix_admin_order_messages_order_id"), table_name="admin_order_messages")
@@ -346,14 +410,25 @@ def downgrade() -> None:
     op.drop_index(
         op.f("ix_admin_audit_events_actor_admin_id"), table_name="admin_audit_events"
     )
-    op.drop_index(
-        op.f("ix_admin_audit_events_request_id"), table_name="admin_audit_events"
-    )
+    op.drop_index(op.f("ix_admin_audit_events_request_id"), table_name="admin_audit_events")
     op.drop_table("admin_audit_events")
 
     op.drop_index(op.f("ix_admin_sessions_admin_id"), table_name="admin_sessions")
     op.drop_table("admin_sessions")
 
+    op.drop_constraint(
+        op.f("ck_broadcasts_launcher_auth_epoch_nonnegative"), "broadcasts", type_="check"
+    )
+    op.drop_constraint(
+        op.f("ck_broadcasts_launch_count_nonnegative"), "broadcasts", type_="check"
+    )
+    op.drop_constraint("uq_broadcasts_launch_idempotency_key", "broadcasts", type_="unique")
+    op.drop_column("broadcasts", "launched_at")
+    op.drop_column("broadcasts", "launcher_auth_epoch")
+    op.drop_column("broadcasts", "launch_count")
+    op.drop_column("broadcasts", "launch_fingerprint")
+    op.drop_column("broadcasts", "launch_idempotency_key")
+    op.drop_column("broadcasts", "preview_content_fingerprint")
     op.drop_column("broadcasts", "photo_storage_key")
     op.drop_column("categories", "edit_version")
     op.drop_column("products", "edit_version")
