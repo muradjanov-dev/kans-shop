@@ -5,15 +5,17 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
 from io import BytesIO
-from secrets import token_urlsafe
+from secrets import token_hex, token_urlsafe
 
 import pytest
+from fastapi.routing import APIRoute
 from PIL import Image
 from pydantic import ValidationError
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.api.admin_security import ADMIN_COOKIE_NAME
+from app.api.deps import get_db
 from app.api.schemas.admin import (
     CategoryCreateIn,
     CategoryUpdateIn,
@@ -132,6 +134,109 @@ async def test_shared_catalog_service_rechecks_live_actor(
         await admin_catalog_service.create_product(
             db_session, admin_id=admin.id, values=values
         )
+
+
+@pytest.mark.asyncio
+async def test_product_audit_records_description_and_unit_changes(
+    db_session: AsyncSession, admin, product
+) -> None:
+    changes = ProductUpdateIn(
+        expected_edit_version=product.edit_version,
+        description_uz="New Uzbek description",
+        unit=ProductUnit.QUTI,
+    )
+    await admin_catalog_service.update_product(
+        db_session,
+        admin_id=admin.id,
+        product_id=product.id,
+        expected_edit_version=product.edit_version,
+        changes=changes,
+    )
+    event = await db_session.scalar(
+        select(AdminAuditEvent)
+        .where(
+            AdminAuditEvent.actor_admin_id == admin.id,
+            AdminAuditEvent.resource_type == "product",
+            AdminAuditEvent.resource_id == str(product.id),
+            AdminAuditEvent.action == "update",
+        )
+        .order_by(AdminAuditEvent.id.desc())
+    )
+    assert event is not None
+    assert event.before_json is not None and event.after_json is not None
+    assert event.before_json["description_uz"] is None
+    assert event.after_json["description_uz"] == "New Uzbek description"
+    assert event.before_json["unit"] == ProductUnit.DONA.value
+    assert event.after_json["unit"] == ProductUnit.QUTI.value
+
+
+def test_catalog_routes_use_function_scoped_db_dependencies() -> None:
+    from app.api.v1.admin import categories, products
+
+    for router in (categories.router, products.router):
+        for route in router.routes:
+            if not isinstance(route, APIRoute):
+                continue
+            dependencies = [dep for dep in route.dependant.dependencies if dep.call is get_db]
+            assert len(dependencies) == 1, route.path
+            assert dependencies[0].scope == "function", route.path
+
+
+@pytest.mark.asyncio
+async def test_category_move_requires_parent_field_but_accepts_null_root(
+    test_engine: AsyncEngine,
+) -> None:
+    suffix = token_hex(4)
+    async with (
+        make_api_case(test_engine, base_url="https://testserver") as case,
+        _admin_cookie(case) as (_admin, csrf_token),
+    ):
+        async with case.session_maker() as session:
+            parent = Category(
+                name_uz="Move parent",
+                name_ru="Move parent",
+                slug=f"move-parent-{suffix}",
+            )
+            session.add(parent)
+            await session.flush()
+            child = Category(
+                name_uz="Move child",
+                name_ru="Move child",
+                slug=f"move-child-{suffix}",
+                parent_id=parent.id,
+            )
+            session.add(child)
+            await session.commit()
+            parent_id, child_id = parent.id, child.id
+
+        headers = {
+            "Origin": settings.webapp_origin,
+            "X-CSRF-Token": csrf_token,
+        }
+        try:
+            missing_parent = await case.client.patch(
+                f"/api/v1/admin/categories/{child_id}/move",
+                headers=headers,
+                json={"expected_edit_version": 0},
+            )
+            assert missing_parent.status_code == 422
+            async with case.session_maker() as session:
+                child_after_missing = await session.get(Category, child_id)
+            assert child_after_missing is not None
+            assert child_after_missing.parent_id == parent_id
+
+            move_to_root = await case.client.patch(
+                f"/api/v1/admin/categories/{child_id}/move",
+                headers=headers,
+                json={"expected_edit_version": 0, "parent_id": None},
+            )
+            assert move_to_root.status_code == 200
+            assert move_to_root.json()["parent_id"] is None
+        finally:
+            async with case.session_maker() as session:
+                await session.execute(delete(Category).where(Category.id == child_id))
+                await session.execute(delete(Category).where(Category.id == parent_id))
+                await session.commit()
 
 
 @pytest.mark.asyncio

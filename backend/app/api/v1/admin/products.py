@@ -40,7 +40,7 @@ async def list_products(
     category_id: int = Query(...),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=DEFAULT_CATALOG_PAGE_SIZE, ge=1, le=100),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
     items, total = await product_repository.list_by_category(
         session, category_id, page=page, limit=limit, active_only=False
@@ -53,7 +53,7 @@ async def list_products(
 @router.post("", response_model=ProductOut, status_code=201)
 async def create_product(
     payload: ProductCreateIn,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> ProductOut:
     product = await admin_catalog_service.create_product(
@@ -67,7 +67,7 @@ async def create_product(
 async def update_product(
     product_id: int,
     payload: ProductUpdateIn,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> ProductOut:
     product = await admin_catalog_service.update_product(
@@ -83,7 +83,7 @@ async def update_product(
 @router.delete("/{product_id}", status_code=204)
 async def delete_product(
     product_id: int,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> None:
     await admin_catalog_service.delete_product(
@@ -95,7 +95,7 @@ async def delete_product(
 async def upload_product_image(
     product_id: int,
     file: UploadFile = File(...),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> ProductOut:
     await admin_catalog_service.add_product_image(
@@ -114,7 +114,7 @@ async def update_product_image(
     image_id: int,
     is_main: bool = Body(...),
     sort_order: int = Body(..., ge=0),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> ProductOut:
     await admin_catalog_service.set_product_image(
@@ -132,7 +132,7 @@ async def update_product_image(
 async def delete_product_image(
     product_id: int,
     image_id: int,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> ProductOut:
     product = await admin_catalog_service.delete_product_image(

@@ -41,6 +41,11 @@ class CategoryUpdateIn(BaseModel):
         return self
 
 
+class CategoryMoveIn(BaseModel):
+    expected_edit_version: int = Field(ge=0)
+    parent_id: int | None = Field(ge=1)
+
+
 class ProductCreateIn(BaseModel):
     category_id: int = Field(ge=1)
     name_uz: str = Field(min_length=1, max_length=255)

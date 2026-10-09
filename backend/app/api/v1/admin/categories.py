@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import MANAGEMENT_ROLES, get_current_admin, get_db, require_admin_roles
-from app.api.schemas.admin import CategoryCreateIn, CategoryUpdateIn
+from app.api.schemas.admin import CategoryCreateIn, CategoryMoveIn, CategoryUpdateIn
 from app.api.schemas.catalog import CategoryOut
 from app.core.exceptions import InvalidFileError
 from app.db.models.admin import Admin
@@ -26,7 +26,9 @@ async def _read_image(file: UploadFile) -> bytes:
 
 
 @router.get("", response_model=list[CategoryOut])
-async def list_categories(session: AsyncSession = Depends(get_db)) -> list[CategoryOut]:
+async def list_categories(
+    session: AsyncSession = Depends(get_db, scope="function"),
+) -> list[CategoryOut]:
     categories = await category_repository.list_all(session, active_only=False)
     return [CategoryOut.model_validate(category) for category in categories]
 
@@ -34,7 +36,7 @@ async def list_categories(session: AsyncSession = Depends(get_db)) -> list[Categ
 @router.post("", response_model=CategoryOut, status_code=201)
 async def create_category(
     payload: CategoryCreateIn,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> CategoryOut:
     category = await admin_catalog_service.create_category(
@@ -47,7 +49,7 @@ async def create_category(
 async def update_category(
     category_id: int,
     payload: CategoryUpdateIn,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> CategoryOut:
     category = await admin_catalog_service.update_category(
@@ -63,8 +65,8 @@ async def update_category(
 @router.patch("/{category_id}/move", response_model=CategoryOut)
 async def move_category(
     category_id: int,
-    payload: CategoryUpdateIn,
-    session: AsyncSession = Depends(get_db),
+    payload: CategoryMoveIn,
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> CategoryOut:
     category = await admin_catalog_service.move_category(
@@ -80,7 +82,7 @@ async def move_category(
 @router.delete("/{category_id}", status_code=204)
 async def delete_category(
     category_id: int,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> None:
     await admin_catalog_service.delete_category(
@@ -92,7 +94,7 @@ async def delete_category(
 async def upload_category_image(
     category_id: int,
     file: UploadFile = File(...),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> CategoryOut:
     category = await admin_catalog_service.set_category_image(
@@ -108,7 +110,7 @@ async def upload_category_image(
 @router.delete("/{category_id}/image", response_model=CategoryOut)
 async def delete_category_image(
     category_id: int,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
 ) -> CategoryOut:
     category = await admin_catalog_service.delete_category_image(
