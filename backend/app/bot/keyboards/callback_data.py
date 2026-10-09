@@ -282,7 +282,7 @@ class AdminSourceDetailCallback(CallbackData, prefix="asrcd"):
 
 class AdminSourceActionCallback(CallbackData, prefix="asrca"):
     source_id: int
-    action: str  # "toggle" | "delete_request" | "delete_confirm"
+    action: str  # "toggle"
 
 
 class AdminSourceAddCallback(CallbackData, prefix="asrcadd"):

@@ -141,6 +141,25 @@ class CategoryInUseError(KansShopError):
     http_status = 409
 
 
+class TrafficSourceNotFoundError(NotFoundError):
+    code = "TRAFFIC_SOURCE_NOT_FOUND"
+
+
+class TrafficSourceCodeConflictError(KansShopError):
+    code = "TRAFFIC_SOURCE_CODE_EXISTS"
+    http_status = 409
+
+
+class TrafficSourceInUseError(KansShopError):
+    code = "TRAFFIC_SOURCE_IN_USE"
+    http_status = 409
+
+
+class TrafficSourceValidationError(KansShopError):
+    code = "INVALID_TRAFFIC_SOURCE"
+    http_status = 422
+
+
 class CatalogEditConflictError(KansShopError):
     code = "ENTITY_CONFLICT"
     http_status = 409

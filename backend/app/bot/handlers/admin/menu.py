@@ -74,7 +74,7 @@ async def on_menu_section(
     state: FSMContext,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _):
+    if not await require_admin(callback, admin, _, session=session):
         return
     message = await require_message(callback, _)
     if message is None:
@@ -101,7 +101,9 @@ async def on_menu_section(
     elif section == "products":
         await render_products_category_picker(edit, session, _)
     elif section == "stats":
-        await render_stats(edit, session, "today", _)
+        if admin is None:
+            return
+        await render_stats(edit, session, admin, "today", _)
     elif section == "broadcast":
         await render_broadcast_entry(message, state, _)
     elif section == "users":
@@ -121,7 +123,13 @@ async def on_menu_section(
             return
         await render_settings(edit, session, _, admin_id=admin.id)
     elif section == "sources":
-        await render_sources_list(edit, session, translator=_)
+        if not await require_admin(
+            callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+        ):
+            return
+        if admin is None:
+            return
+        await render_sources_list(edit, session, admin_id=admin.id, translator=_)
     elif section == "admins":
         if not await require_admin(callback, admin, _, roles=(AdminRole.SUPERADMIN,)):
             return

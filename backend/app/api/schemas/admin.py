@@ -422,10 +422,82 @@ class TopProductOut(BaseModel):
 class StatsOverviewOut(BaseModel):
     period: str
     orders_count: int
+    order_value: Decimal
+    paid_amount: Decimal
+    # Compatibility field retained for clients of the first admin stats response.
     revenue: Decimal
     avg_check: Decimal
     new_users: int
     top_products: list[TopProductOut]
+
+
+class TrafficSourceCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=128)
+    code: str = Field(min_length=2, max_length=32, pattern=r"^[a-zA-Z0-9_-]+$")
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("name must not be empty")
+        return normalized
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class TrafficSourcePatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    active: bool | None = Field(default=None, strict=True)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("name must not be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_change(self) -> TrafficSourcePatchIn:
+        if not self.model_fields_set:
+            raise ValueError("at least one source field must be provided")
+        if any(getattr(self, field_name) is None for field_name in self.model_fields_set):
+            raise ValueError("source fields cannot be null")
+        return self
+
+
+class TrafficSourceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    code: str
+    is_active: bool
+    clicks_count: int
+    created_at: datetime
+
+
+class TrafficSourceDetailOut(BaseModel):
+    id: int
+    name: str
+    code: str
+    is_active: bool
+    bot_link: str
+    clicks: int
+    first_touch_users: int
+    orders_count: int
+    order_value: Decimal
+    created_at: datetime
 
 
 class AdminAuditEventOut(BaseModel):

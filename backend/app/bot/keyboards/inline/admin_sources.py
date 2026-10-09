@@ -61,37 +61,8 @@ def admin_source_detail_keyboard(
     )
     builder.row(
         InlineKeyboardButton(
-            text=translator("admin.source_delete_button"),
-            callback_data=AdminSourceActionCallback(
-                source_id=source.id, action="delete_request"
-            ).pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
             text=translator("common.back"),
             callback_data=AdminMenuCallback(section="sources").pack(),
-        )
-    )
-    return builder.as_markup()
-
-
-def admin_source_delete_confirm_keyboard(
-    source: TrafficSource, *, translator: Callable[..., str]
-) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text=translator("admin.source_delete_confirm_yes"),
-            callback_data=AdminSourceActionCallback(
-                source_id=source.id, action="delete_confirm"
-            ).pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text=translator("common.back"),
-            callback_data=AdminSourceDetailCallback(source_id=source.id).pack(),
         )
     )
     return builder.as_markup()

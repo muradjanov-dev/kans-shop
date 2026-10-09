@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from aiogram import Bot, Router
@@ -9,9 +10,8 @@ from app.bot.keyboards.callback_data import StatsExportCallback, StatsPeriodCall
 from app.bot.keyboards.inline.admin_stats import stats_keyboard
 from app.bot.utils.admin_guard import require_admin
 from app.bot.utils.messages import require_message
-from app.bot.utils.stats_export import build_stats_workbook
 from app.db.models.admin import Admin
-from app.services.stats_service import StatsResult, get_stats
+from app.services.stats_service import AdminStats, export_admin_stats_xlsx, get_admin_stats
 
 router = Router(name="admin_stats")
 
@@ -28,12 +28,15 @@ def _format_price(value: Decimal) -> str:
     return f"{value:,.0f}".replace(",", " ")
 
 
-def _render_stats_text(stats: StatsResult, translator: Callable[..., str]) -> str:
+def _render_stats_text(stats: AdminStats, translator: Callable[..., str]) -> str:
     text = translator(
         "admin.stats_summary",
         period=translator(PERIOD_LABEL_KEYS[stats.period]),
         orders_count=stats.orders_count,
-        revenue=_format_price(stats.revenue),
+        order_value_label=translator("admin.stats_order_value_label"),
+        order_value=_format_price(stats.order_value),
+        paid_amount_label=translator("admin.stats_paid_amount_label"),
+        paid_amount=_format_price(stats.paid_amount),
         avg_check=_format_price(stats.avg_check),
         new_users=stats.new_users,
     )
@@ -47,9 +50,15 @@ def _render_stats_text(stats: StatsResult, translator: Callable[..., str]) -> st
 
 
 async def render_stats(
-    send: Sender, session: AsyncSession, period: str, translator: Callable[..., str]
+    send: Sender,
+    session: AsyncSession,
+    admin: Admin,
+    period: str,
+    translator: Callable[..., str],
 ) -> None:
-    stats = await get_stats(session, period)
+    stats = await get_admin_stats(
+        session, admin_id=admin.id, period=period, now=datetime.now(UTC)
+    )
     await send(
         _render_stats_text(stats, translator),
         reply_markup=stats_keyboard(translator, period=period),
@@ -64,12 +73,12 @@ async def on_stats_period(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _):
+    if admin is None or not await require_admin(callback, admin, _, session=session):
         return
     message = await require_message(callback, _)
     if message is None:
         return
-    await render_stats(message.edit_text, session, callback_data.period, _)
+    await render_stats(message.edit_text, session, admin, callback_data.period, _)
     await callback.answer()
 
 
@@ -82,18 +91,22 @@ async def on_stats_export(
     bot: Bot,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _):
+    if admin is None or not await require_admin(callback, admin, _, session=session):
         return
     message = await require_message(callback, _)
     if message is None:
         return
 
-    stats = await get_stats(session, callback_data.period)
-    buffer = build_stats_workbook(stats)
+    workbook = await export_admin_stats_xlsx(
+        session,
+        admin_id=admin.id,
+        period=callback_data.period,
+        now=datetime.now(UTC),
+    )
     filename = f"stats_{callback_data.period}.xlsx"
     await bot.send_document(
         message.chat.id,
-        BufferedInputFile(buffer.read(), filename=filename),
+        BufferedInputFile(workbook, filename=filename),
         caption=_("admin.stats_export_caption"),
     )
     await callback.answer()

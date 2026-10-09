@@ -8,6 +8,7 @@ from app.api.v1.admin import (
     payments,
     products,
     settings,
+    sources,
     stats,
     team,
     users,
@@ -20,6 +21,7 @@ router.include_router(orders.router)
 router.include_router(payments.router)
 router.include_router(users.router)
 router.include_router(settings.router)
+router.include_router(sources.router)
 router.include_router(stats.router)
 router.include_router(broadcasts.router)
 router.include_router(audit.router)
