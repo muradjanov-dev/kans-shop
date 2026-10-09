@@ -19,6 +19,7 @@ class Category(IDMixin, TimestampMixin, Base):
     image_url: Mapped[str | None] = mapped_column(Text)
     image_file_id: Mapped[str | None] = mapped_column(String(255))
     sort_order: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    edit_version: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
     products_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
 

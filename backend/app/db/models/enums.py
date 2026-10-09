@@ -92,3 +92,19 @@ class BroadcastStatus(enum.StrEnum):
     SENDING = "sending"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class NotificationOutboxStatus(enum.StrEnum):
+    PENDING = "pending"
+    SENDING = "sending"
+    SENT = "sent"
+    FAILED = "failed"
+
+
+class BroadcastRecipientStatus(enum.StrEnum):
+    PENDING = "pending"
+    SENDING = "sending"
+    SENT = "sent"
+    FAILED = "failed"
+    CANCELLED = "cancelled"

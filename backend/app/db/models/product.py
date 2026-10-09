@@ -43,6 +43,7 @@ class Product(IDMixin, TimestampMixin, Base):
     # Tender/lot checkout: the public lot page a buyer pays this product through. Set per
     # product by an admin; products without one simply can't be paid the tender way.
     lot_url: Mapped[str | None] = mapped_column(String(512))
+    edit_version: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     views_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     sold_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
 

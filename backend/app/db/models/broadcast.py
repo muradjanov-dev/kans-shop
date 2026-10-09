@@ -14,6 +14,7 @@ class Broadcast(IDMixin, TimestampMixin, Base):
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
     photo_file_id: Mapped[str | None] = mapped_column(String(255))
+    photo_storage_key: Mapped[str | None] = mapped_column(String(512))
     button_text: Mapped[str | None] = mapped_column(String(64))
     button_url: Mapped[str | None] = mapped_column(Text)
     target: Mapped[BroadcastTarget] = mapped_column(
