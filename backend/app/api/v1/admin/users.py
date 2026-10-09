@@ -23,7 +23,7 @@ class UserNotFoundError(NotFoundError):
 async def list_users(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[UserOut]:
     items, total = await user_repository.list_all(session, page=page, limit=limit)
     return PageOut[UserOut].from_page(Page(items=items, total=total, page=page, limit=limit))
@@ -31,7 +31,9 @@ async def list_users(
 
 @router.patch("/{user_id}/block", response_model=UserOut)
 async def set_user_blocked(
-    user_id: int, payload: UserBlockIn, session: AsyncSession = Depends(get_db)
+    user_id: int,
+    payload: UserBlockIn,
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> UserOut:
     user = await user_repository.get_by_id(session, user_id)
     if user is None:

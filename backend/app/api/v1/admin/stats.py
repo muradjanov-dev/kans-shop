@@ -17,7 +17,7 @@ router = APIRouter(
 @router.get("/overview", response_model=StatsOverviewOut)
 async def get_stats_overview(
     period: Literal["today", "week", "month"] = Query(default="today"),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> StatsOverviewOut:
     result = await stats_service.get_stats(session, period)
     return StatsOverviewOut(

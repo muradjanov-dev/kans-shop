@@ -14,7 +14,7 @@ from app.api.schemas.order import (
     PayIn,
     PayOut,
 )
-from app.bot.services.order_notifications import notify_admins_new_order
+from app.bot.services.order_notifications import register_new_order_notification
 from app.core.config import settings
 from app.core.exceptions import (
     CheckoutValidationError,
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 async def quote_order(
     payload: CheckoutQuoteIn,
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CheckoutQuoteOut:
     quote = await quote_checkout(
         session,
@@ -65,7 +65,7 @@ async def checkout(
     response: Response,
     checkout_key: UUID | None = Header(default=None, alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     bot: Bot = Depends(get_bot),
 ) -> OrderOut:
     if payload.payment_method == PaymentMethod.CARD_TRANSFER and (
@@ -101,14 +101,15 @@ async def checkout(
         lang=user.language,
     )
     if result.created:
-        await notify_admins_new_order(bot, session, result.order)
+        register_new_order_notification(session, bot, result.order.id)
     response.status_code = 201 if result.created else 200
     return OrderOut.model_validate(result.order)
 
 
 @router.get("", response_model=list[OrderOut])
 async def list_my_orders(
-    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> list[OrderOut]:
     orders, _total = await order_repository.list_by_user(session, user.id, page=1, limit=50)
     return [OrderOut.model_validate(o) for o in orders]
@@ -118,7 +119,7 @@ async def list_my_orders(
 async def get_order(
     order_id: int,
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> OrderOut:
     order = await order_service.get_order(session, order_id)
     if order.user_id != user.id:
@@ -131,7 +132,7 @@ async def upload_receipt(
     order_id: int,
     file: UploadFile,
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> OrderOut:
     order = await order_service.get_order(session, order_id)
     if order.user_id != user.id:
@@ -160,9 +161,11 @@ async def pay_order(
     order_id: int,
     payload: PayIn,
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PayOut:
-    order = await order_service.get_order(session, order_id)
+    order = await order_repository.get_by_id_for_update(session, order_id)
+    if order is None:
+        order = await order_service.get_order(session, order_id)
     if order.user_id != user.id:
         raise ForbiddenError("Not your order")
 
@@ -174,7 +177,7 @@ async def pay_order(
 async def order_lot_links(
     order_id: int,
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> LotLinksOut:
     """Tender checkout: where to pay each item of this order. Kept a separate call rather
     than a field on OrderOut because it reads today's `products.lot_url`, not the order's

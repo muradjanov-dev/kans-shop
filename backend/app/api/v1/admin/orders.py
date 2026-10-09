@@ -11,8 +11,7 @@ from app.api.schemas.order import OrderOut
 from app.bot.services.order_notifications import (
     ACTION_KEY_BY_STATUS,
     STATUS_LABEL_KEYS,
-    notify_customer_status_change,
-    sync_admin_cards,
+    register_order_status_notifications,
 )
 from app.db.models.admin import Admin
 from app.db.models.enums import OrderStatus
@@ -31,7 +30,7 @@ async def list_orders(
     date_to: date | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     _admin: Admin = Depends(get_current_admin),
 ) -> PageOut[OrderOut]:
     items, total = await order_repository.list_for_admin(
@@ -49,7 +48,7 @@ async def list_orders(
 @router.get("/{order_id}", response_model=OrderOut)
 async def get_order(
     order_id: int,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     _admin: Admin = Depends(get_current_admin),
 ) -> OrderOut:
     order = await order_service.get_order(session, order_id)
@@ -60,7 +59,7 @@ async def get_order(
 async def update_order_status(
     order_id: int,
     payload: AdminOrderStatusUpdateIn,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
     bot: Bot = Depends(get_bot),
 ) -> OrderOut:
@@ -77,33 +76,28 @@ async def update_order_status(
             session, order, payload.status, admin_id=admin.id, comment=payload.comment
         )
 
-    await sync_admin_cards(
-        bot,
+    if payload.status == OrderStatus.CANCELLED:
+        notification_key = "orders.cancelled_notification"
+        reason = order.cancel_reason or ""
+        status_key = None
+    elif payload.status == OrderStatus.CONFIRMED:
+        notification_key = "orders.confirmed_notification"
+        reason = None
+        status_key = None
+    else:
+        notification_key = "orders.status_changed_notification"
+        reason = None
+        status_key = STATUS_LABEL_KEYS[payload.status]
+
+    register_order_status_notifications(
         session,
-        order,
+        bot,
+        order.id,
+        notification_key,
+        status_key=status_key,
         action_key=ACTION_KEY_BY_STATUS[payload.status],
         admin_name=admin.full_name,
-        reason=payload.comment,
+        reason=reason,
     )
-    if payload.status == OrderStatus.CANCELLED:
-        await notify_customer_status_change(
-            bot,
-            session,
-            order,
-            "orders.cancelled_notification",
-            reason=order.cancel_reason or "",
-        )
-    elif payload.status == OrderStatus.CONFIRMED:
-        await notify_customer_status_change(
-            bot, session, order, "orders.confirmed_notification"
-        )
-    else:
-        await notify_customer_status_change(
-            bot,
-            session,
-            order,
-            "orders.status_changed_notification",
-            status_key=STATUS_LABEL_KEYS[payload.status],
-        )
 
     return OrderOut.model_validate(order)

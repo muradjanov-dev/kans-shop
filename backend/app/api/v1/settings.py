@@ -28,7 +28,9 @@ def _checkout_type_readiness(checkout: CheckoutSettings) -> dict[str, bool]:
 
 
 @router.get("/public", response_model=PublicSettingsOut)
-async def get_public_settings(session: AsyncSession = Depends(get_db)) -> PublicSettingsOut:
+async def get_public_settings(
+    session: AsyncSession = Depends(get_db, scope="function")
+) -> PublicSettingsOut:
     settings_map = await setting_repository.get_all(session)
     checkout = await load_checkout_settings(session)
     enabled_providers = [

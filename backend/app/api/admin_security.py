@@ -63,7 +63,7 @@ def _session_out(admin: Admin, principal: AdminSessionPrincipal) -> AdminSession
 async def exchange_admin_code(
     request: Request,
     response: Response,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> AdminSessionOut:
     _require_exact_origin(request)
     content_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].strip()
@@ -121,7 +121,7 @@ async def refresh_admin_session_endpoint(
     response: Response,
     principal: AdminSessionPrincipal = Depends(get_admin_session_principal),
     admin: Admin = Depends(get_current_admin),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> AdminSessionOut:
     try:
         await refresh_admin_session(session, principal=principal, now=datetime.now(UTC))
@@ -136,7 +136,7 @@ async def refresh_admin_session_endpoint(
 async def logout_admin(
     response: Response,
     principal: AdminSessionPrincipal = Depends(get_admin_session_principal),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> dict[str, bool]:
     await revoke_admin_session(session, principal=principal, now=datetime.now(UTC))
     response.delete_cookie(
@@ -154,7 +154,7 @@ async def logout_admin(
 async def logout_all_admin_sessions(
     response: Response,
     admin: Admin = Depends(get_current_admin),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> dict[str, bool]:
     await revoke_all_admin_sessions(session, admin=admin, now=datetime.now(UTC))
     response.delete_cookie(

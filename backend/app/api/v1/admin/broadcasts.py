@@ -61,7 +61,7 @@ async def _send_and_finish(broadcast_id: int, bot: Bot) -> None:
 async def create_broadcast(
     payload: BroadcastCreateIn,
     background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
     bot: Bot = Depends(get_bot),
 ) -> BroadcastOut:
@@ -80,7 +80,7 @@ async def create_broadcast(
 
 @router.get("/{broadcast_id}", response_model=BroadcastOut)
 async def get_broadcast(
-    broadcast_id: int, session: AsyncSession = Depends(get_db)
+    broadcast_id: int, session: AsyncSession = Depends(get_db, scope="function")
 ) -> BroadcastOut:
     broadcast = await broadcast_repository.get_by_id(session, broadcast_id)
     if broadcast is None:

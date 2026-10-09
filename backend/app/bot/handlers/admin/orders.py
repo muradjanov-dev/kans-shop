@@ -26,8 +26,7 @@ from app.bot.keyboards.inline.admin_orders import (
 from app.bot.services.order_notifications import (
     ACTION_KEY_BY_STATUS,
     STATUS_LABEL_KEYS,
-    notify_customer_status_change,
-    sync_admin_cards,
+    register_order_status_notifications,
 )
 from app.bot.states.admin import AdminOrderStates
 from app.bot.utils.admin_order_card import build_admin_order_keyboard, build_admin_order_text
@@ -39,6 +38,7 @@ from app.db.models.enums import OrderStatus
 from app.db.models.order import Order
 from app.db.repositories import admin_repository, user_repository
 from app.services import order_service
+from app.services.after_commit import commit_with_after_commit
 
 router = Router(name="admin_orders")
 
@@ -118,14 +118,15 @@ async def on_confirm_order(
         await _already_processed_alert(callback, session, order, _)
         return
 
-    await sync_admin_cards(
-        bot,
+    register_order_status_notifications(
         session,
-        order,
+        bot,
+        order.id,
+        "orders.confirmed_notification",
         action_key=ACTION_KEY_BY_STATUS[OrderStatus.CONFIRMED],
         admin_name=admin.full_name,
     )
-    await notify_customer_status_change(bot, session, order, "orders.confirmed_notification")
+    await commit_with_after_commit(session)
     await callback.answer()
 
 
@@ -157,20 +158,16 @@ async def on_advance_status(
         await _already_processed_alert(callback, session, order, _)
         return
 
-    await sync_admin_cards(
-        bot,
+    register_order_status_notifications(
         session,
-        order,
+        bot,
+        order.id,
+        "orders.status_changed_notification",
+        status_key=STATUS_LABEL_KEYS[to_status],
         action_key=ACTION_KEY_BY_STATUS[to_status],
         admin_name=admin.full_name,
     )
-    await notify_customer_status_change(
-        bot,
-        session,
-        order,
-        "orders.status_changed_notification",
-        status_key=STATUS_LABEL_KEYS[to_status],
-    )
+    await commit_with_after_commit(session)
     await callback.answer()
 
 
@@ -250,17 +247,16 @@ async def on_custom_cancel_reason(
     order = await order_service.cancel_order(
         session, order, admin_id=admin.id, reason=reason_text
     )
-    await sync_admin_cards(
-        bot,
+    register_order_status_notifications(
         session,
-        order,
+        bot,
+        order.id,
+        "orders.cancelled_notification",
         action_key=ACTION_KEY_BY_STATUS[OrderStatus.CANCELLED],
         admin_name=admin.full_name,
         reason=reason_text,
     )
-    await notify_customer_status_change(
-        bot, session, order, "orders.cancelled_notification", reason=reason_text
-    )
+    await commit_with_after_commit(session)
     await message.answer(
         _("admin.back_button"), reply_markup=back_to_order_keyboard(order_id, _)
     )
@@ -287,17 +283,16 @@ async def _finalize_cancel(
         await _already_processed_alert(callback, session, order, _)
         return
 
-    await sync_admin_cards(
-        bot,
+    register_order_status_notifications(
         session,
-        order,
+        bot,
+        order.id,
+        "orders.cancelled_notification",
         action_key=ACTION_KEY_BY_STATUS[OrderStatus.CANCELLED],
         admin_name=admin.full_name,
         reason=reason_text,
     )
-    await notify_customer_status_change(
-        bot, session, order, "orders.cancelled_notification", reason=reason_text
-    )
+    await commit_with_after_commit(session)
     await callback.answer()
 
 

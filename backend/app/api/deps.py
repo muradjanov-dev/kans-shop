@@ -24,13 +24,14 @@ from app.services.admin_session_service import (
     AdminSessionPrincipal,
     resolve_admin_session,
 )
+from app.services.after_commit import commit_with_after_commit
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         try:
             yield session
-            await session.commit()
+            await commit_with_after_commit(session)
         except Exception:
             await session.rollback()
             raise
@@ -38,7 +39,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_current_user(
     authorization: str | None = Header(default=None),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> User:
     if not authorization or not authorization.startswith("Bearer "):
         raise UnauthorizedError("Missing bearer token")
@@ -55,7 +56,7 @@ async def get_current_user(
 async def get_admin_session_principal(
     request: Request,
     response: Response,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> AdminSessionPrincipal:
     try:
         raw_cookie = request.cookies.get("__Host-kans-admin")
@@ -89,7 +90,7 @@ async def get_admin_session_principal(
 
 async def get_current_admin(
     principal: AdminSessionPrincipal = Depends(get_admin_session_principal),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> Admin:
     admin = await session.get(Admin, principal.admin_id)
     if admin is None or not admin.is_active:

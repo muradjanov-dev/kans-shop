@@ -12,8 +12,10 @@ from app.bot.utils.i18n import translate
 from app.core.config import settings
 from app.db.models.enums import OrderStatus
 from app.db.models.order import Order
-from app.db.repositories import admin_repository, user_repository
+from app.db.repositories import admin_repository, order_repository, user_repository
+from app.db.session import async_session_maker
 from app.services import order_service
+from app.services.after_commit import register_after_commit
 
 STATUS_LABEL_KEYS = {
     OrderStatus.NEW: "orders.status_new",
@@ -77,6 +79,61 @@ async def notify_admins_new_order(bot: Bot, session: AsyncSession, order: Order)
                     )
             except (TelegramBadRequest, TelegramForbiddenError):
                 pass
+
+
+def register_new_order_notification(session: AsyncSession, bot: Bot, order_id: int) -> None:
+    """Queue an admin order card after commit, using only the order ID across the boundary."""
+
+    async def notify_after_commit() -> None:
+        async with async_session_maker() as notification_session:
+            order = await order_repository.get_by_id(notification_session, order_id)
+            if order is None:
+                return
+            await notify_admins_new_order(bot, notification_session, order)
+            await notification_session.commit()
+
+    notify_after_commit.after_commit_event_id = f"order:{order_id}:new_order"  # type: ignore[attr-defined]
+    register_after_commit(session, notify_after_commit)
+
+
+def register_order_status_notifications(
+    session: AsyncSession,
+    bot: Bot,
+    order_id: int,
+    notification_key: str,
+    *,
+    status_key: str | None = None,
+    action_key: str | None = None,
+    admin_name: str | None = None,
+    reason: str | None = None,
+) -> None:
+    """Queue customer/admin status messages after commit without retaining the Order ORM row."""
+
+    async def notify_after_commit() -> None:
+        async with async_session_maker() as notification_session:
+            order = await order_repository.get_by_id(notification_session, order_id)
+            if order is None:
+                return
+            await sync_admin_cards(
+                bot,
+                notification_session,
+                order,
+                action_key=action_key,
+                admin_name=admin_name,
+                reason=reason,
+            )
+            await notify_customer_status_change(
+                bot,
+                notification_session,
+                order,
+                notification_key,
+                status_key=status_key,
+                **({"reason": reason} if reason is not None else {}),
+            )
+
+    event_name = action_key or notification_key
+    notify_after_commit.after_commit_event_id = f"order:{order_id}:{event_name}"  # type: ignore[attr-defined]
+    register_after_commit(session, notify_after_commit)
 
 
 async def sync_admin_cards(

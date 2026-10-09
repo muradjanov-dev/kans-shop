@@ -5,6 +5,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 
 from app.db.session import async_session_maker
+from app.services.after_commit import commit_with_after_commit
 
 
 class DbSessionMiddleware(BaseMiddleware):
@@ -23,5 +24,5 @@ class DbSessionMiddleware(BaseMiddleware):
             except Exception:
                 await session.rollback()
                 raise
-            await session.commit()
+            await commit_with_after_commit(session)
             return result

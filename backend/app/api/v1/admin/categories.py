@@ -34,7 +34,9 @@ async def _unique_slug(session: AsyncSession, base: str) -> str:
 
 
 @router.get("", response_model=list[CategoryOut])
-async def list_categories(session: AsyncSession = Depends(get_db)) -> list[CategoryOut]:
+async def list_categories(
+    session: AsyncSession = Depends(get_db, scope="function")
+) -> list[CategoryOut]:
     categories = await category_repository.list_all(session, active_only=False)
     return [CategoryOut.model_validate(c) for c in categories]
 
@@ -42,7 +44,7 @@ async def list_categories(session: AsyncSession = Depends(get_db)) -> list[Categ
 @router.post("", response_model=CategoryOut, status_code=201)
 async def create_category(
     payload: CategoryCreateIn,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CategoryOut:
     slug = await _unique_slug(session, _slugify(payload.name_uz))
     category = Category(
@@ -58,7 +60,9 @@ async def create_category(
 
 @router.patch("/{category_id}", response_model=CategoryOut)
 async def update_category(
-    category_id: int, payload: CategoryUpdateIn, session: AsyncSession = Depends(get_db)
+    category_id: int,
+    payload: CategoryUpdateIn,
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CategoryOut:
     category = await category_repository.get_by_id(session, category_id)
     if category is None:
@@ -70,7 +74,9 @@ async def update_category(
 
 
 @router.delete("/{category_id}", status_code=204)
-async def delete_category(category_id: int, session: AsyncSession = Depends(get_db)) -> None:
+async def delete_category(
+    category_id: int, session: AsyncSession = Depends(get_db, scope="function")
+) -> None:
     category = await category_repository.get_by_id(session, category_id)
     if category is None:
         raise CategoryNotFoundError(f"Category {category_id} not found")

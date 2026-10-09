@@ -38,7 +38,8 @@ def _catalog_filters(
 
 @router.get("/categories", response_model=list[CategoryOut])
 async def list_categories(
-    parent_id: int | None = Query(default=None), session: AsyncSession = Depends(get_db)
+    parent_id: int | None = Query(default=None),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> list[CategoryOut]:
     if parent_id is None:
         categories = await catalog_service.list_root_categories(session)
@@ -53,7 +54,7 @@ async def list_category_products(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=DEFAULT_CATALOG_PAGE_SIZE, ge=1, le=50),
     options: catalog_service.CatalogFilters = Depends(_catalog_options),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
     result = await catalog_service.list_products(
         session, category_id, page=page, limit=limit, filters=options
@@ -67,7 +68,7 @@ async def list_all_products(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=PUBLIC_CATALOG_PAGE_SIZE, ge=1, le=50),
     filters: catalog_service.CatalogFilters = Depends(_catalog_filters),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
     result = await catalog_service.list_public_products(
         session, query=q, filters=filters, page=page, limit=limit
@@ -78,14 +79,16 @@ async def list_all_products(
 @router.get("/featured", response_model=list[ProductOut])
 async def list_featured_products(
     limit: int = Query(default=10, ge=1, le=50),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> list[ProductOut]:
     products = await catalog_service.list_featured_products(session, limit=limit)
     return [ProductOut.model_validate(product) for product in products]
 
 
 @router.get("/products/{product_id}", response_model=ProductOut)
-async def get_product(product_id: int, session: AsyncSession = Depends(get_db)) -> ProductOut:
+async def get_product(
+    product_id: int, session: AsyncSession = Depends(get_db, scope="function")
+) -> ProductOut:
     product = await catalog_service.get_product(session, product_id, track_view=True)
     return ProductOut.model_validate(product)
 
@@ -96,7 +99,7 @@ async def search_products(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=DEFAULT_CATALOG_PAGE_SIZE, ge=1, le=50),
     filters: catalog_service.CatalogFilters = Depends(_catalog_filters),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
     result = await catalog_service.list_public_products(
         session, query=q, filters=filters, page=page, limit=limit

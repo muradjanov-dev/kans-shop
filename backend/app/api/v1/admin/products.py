@@ -36,7 +36,7 @@ async def list_products(
     category_id: int = Query(...),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=DEFAULT_CATALOG_PAGE_SIZE, ge=1, le=100),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
     items, total = await product_repository.list_by_category(
         session, category_id, page=page, limit=limit, active_only=False
@@ -48,7 +48,7 @@ async def list_products(
 
 @router.post("", response_model=ProductOut, status_code=201)
 async def create_product(
-    payload: ProductCreateIn, session: AsyncSession = Depends(get_db)
+    payload: ProductCreateIn, session: AsyncSession = Depends(get_db, scope="function")
 ) -> ProductOut:
     if await product_repository.get_by_sku(session, payload.sku) is not None:
         raise SkuAlreadyExistsError(f"SKU {payload.sku} already exists")
@@ -66,7 +66,9 @@ async def create_product(
 
 @router.patch("/{product_id}", response_model=ProductOut)
 async def update_product(
-    product_id: int, payload: ProductUpdateIn, session: AsyncSession = Depends(get_db)
+    product_id: int,
+    payload: ProductUpdateIn,
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> ProductOut:
     product = await _get_product_or_404(session, product_id)
     changes = payload.model_dump(exclude_unset=True)
@@ -93,7 +95,9 @@ async def update_product(
 
 
 @router.delete("/{product_id}", status_code=204)
-async def delete_product(product_id: int, session: AsyncSession = Depends(get_db)) -> None:
+async def delete_product(
+    product_id: int, session: AsyncSession = Depends(get_db, scope="function")
+) -> None:
     product = await _get_product_or_404(session, product_id)
     category = await category_repository.get_by_id(session, product.category_id)
     if category is not None and category.products_count > 0:
@@ -104,7 +108,9 @@ async def delete_product(product_id: int, session: AsyncSession = Depends(get_db
 
 @router.post("/{product_id}/images", response_model=ProductOut, status_code=201)
 async def upload_product_image(
-    product_id: int, file: UploadFile, session: AsyncSession = Depends(get_db)
+    product_id: int,
+    file: UploadFile,
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> ProductOut:
     product = await _get_product_or_404(session, product_id)
 

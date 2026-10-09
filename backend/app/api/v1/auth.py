@@ -47,7 +47,7 @@ async def _issue_tokens(session: AsyncSession, telegram_id: int) -> TokenOut:
 @router.post("/telegram", response_model=TokenOut)
 async def auth_telegram(
     payload: TelegramAuthIn,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
     bot: Bot = Depends(get_bot),
 ) -> TokenOut:
     """Validates Telegram WebApp `initData` (Mini App) and issues a JWT pair."""
@@ -77,7 +77,7 @@ async def auth_bot_code(_payload: BotCodeAuthIn) -> None:
 
 @router.post("/customer/code", response_model=TokenOut)
 async def auth_customer_code(
-    payload: CustomerCodeAuthIn, session: AsyncSession = Depends(get_db)
+    payload: CustomerCodeAuthIn, session: AsyncSession = Depends(get_db, scope="function")
 ) -> TokenOut:
     """Exchange a private customer code from the bot for a JWT pair."""
     telegram_id = await consume_customer_code(get_redis(), payload.code)
@@ -89,7 +89,7 @@ async def auth_customer_code(
 
 @router.post("/refresh", response_model=TokenOut)
 async def refresh_token(
-    payload: RefreshIn, session: AsyncSession = Depends(get_db)
+    payload: RefreshIn, session: AsyncSession = Depends(get_db, scope="function")
 ) -> TokenOut:
     data = decode_token(payload.refresh_token, expected_type="refresh")
     return await _issue_tokens(session, data["telegram_id"])

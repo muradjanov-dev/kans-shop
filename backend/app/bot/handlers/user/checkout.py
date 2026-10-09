@@ -33,7 +33,7 @@ from app.bot.keyboards.inline.checkout import (
 )
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
 from app.bot.keyboards.reply.checkout import location_request_keyboard, phone_request_keyboard
-from app.bot.services.order_notifications import notify_admins_new_order
+from app.bot.services.order_notifications import register_new_order_notification
 from app.bot.states.checkout import CheckoutStates
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.bot.utils.messages import require_message
@@ -54,6 +54,7 @@ from app.db.models.order import Order
 from app.db.models.user import User
 from app.db.repositories import setting_repository
 from app.services import cart_service, order_service, payment_service, purchase_service
+from app.services.after_commit import commit_with_after_commit
 from app.services.checkout_quote import CheckoutQuote, quote_checkout
 
 router = Router(name="checkout")
@@ -856,7 +857,9 @@ async def on_confirm(
                 session, order, file_id=receipt_file_id, url=receipt_url
             )
 
-        await notify_admins_new_order(bot, session, order)
+        register_new_order_notification(session, bot, order.id)
+
+    await commit_with_after_commit(session)
 
     summary = _build_order_summary(order, translator=_)
     await state.clear()
