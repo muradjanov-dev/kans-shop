@@ -104,8 +104,9 @@ export function CatalogPage() {
   const catalog = useCatalog({ ...query, q: debouncedQuery, category: query.category });
   const lastCatalogPage = catalog.pages.at(-1);
   useEffect(() => {
-    if (lastCatalogPage && query.page > lastCatalogPage.total_pages) {
-      updateParams({ page: lastCatalogPage.total_pages });
+    const lastAvailablePage = lastCatalogPage ? Math.max(1, lastCatalogPage.total_pages) : null;
+    if (lastAvailablePage !== null && query.page > lastAvailablePage) {
+      updateParams({ page: lastAvailablePage });
     }
   }, [lastCatalogPage, query.page, updateParams]);
   const featuredQuery = useFeaturedProducts();

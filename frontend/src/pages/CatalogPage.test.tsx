@@ -131,6 +131,7 @@ describe("CatalogPage", () => {
   });
 
   it("test_catalog_debounce_abort_and_back_navigation", async () => {
+    vi.useFakeTimers();
     const oldRequest = deferred<never>();
     const newRequest = deferred<never>();
     const productRequests: Array<{ query: unknown; signal: AbortSignal | undefined }> = [];
@@ -150,7 +151,7 @@ describe("CatalogPage", () => {
     });
 
     renderCatalog("/?q=old&category=3&min_price=4.50&in_stock=true&sort=newest&page=1");
-    await waitFor(() => expect(productRequests.map(({ query }) => query)).toContain("old"));
+    await vi.waitFor(() => expect(productRequests.map(({ query }) => query)).toContain("old"));
     const oldSignal = productRequests.find(({ query }) => query === "old")?.signal;
     expect(oldSignal).toBeDefined();
 
@@ -158,12 +159,13 @@ describe("CatalogPage", () => {
       target: { value: "new" },
     });
     expect(productRequests.filter(({ query }) => query === "new")).toHaveLength(0);
-    await new Promise((resolve) => window.setTimeout(resolve, 299));
+    await act(async () => { await vi.advanceTimersByTimeAsync(299); });
     expect(productRequests.filter(({ query }) => query === "new")).toHaveLength(0);
 
-    await new Promise((resolve) => window.setTimeout(resolve, 10));
-    await waitFor(() => expect(productRequests.filter(({ query }) => query === "new")).toHaveLength(1));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await vi.waitFor(() => expect(productRequests.filter(({ query }) => query === "new")).toHaveLength(1));
     expect(oldSignal?.aborted).toBe(true);
+    vi.useRealTimers();
 
     await act(async () => {
       newRequest.resolve(response(productPage([product(7, "Newest result")])));
@@ -261,6 +263,45 @@ describe("CatalogPage", () => {
     renderCatalog("/?category=999&page=3");
     await waitFor(() => expect(screen.getByTestId("route-location")).not.toHaveTextContent("category=999"));
     expect(screen.getByTestId("route-location")).toHaveTextContent("page=1");
+  });
+
+  it.each([
+    ["fractional page", { page: 1.5 }],
+    ["zero page", { page: 0 }],
+    ["negative total pages", { total_pages: -1 }],
+    ["fractional total pages", { total_pages: 1.5 }],
+    ["zero total pages for nonempty data", { total_pages: 0 }],
+  ])("shows a recoverable error for %s metadata", async (_label, metadata) => {
+    const malformed = { ...productPage([product(1)], 1, 1), ...metadata };
+    get.mockImplementation(async (url: string, config?: AxiosRequestConfig) => {
+      if (url === "/catalog/categories") return response(categoryChildren(config?.params?.parent_id));
+      if (url === "/catalog/featured") return response([]);
+      if (url === "/settings/public") return response(publicSettings());
+      if (url === "/catalog/products") return response(malformed);
+      throw new Error(`Unexpected GET ${url}`);
+    });
+
+    renderCatalog();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Xatolik yuz berdi");
+    expect(screen.queryByText("Product 1")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Qayta urinish" })).toBeInTheDocument();
+  });
+
+  it("accepts zero total pages for an empty catalog response", async () => {
+    get.mockImplementation(async (url: string, config?: AxiosRequestConfig) => {
+      if (url === "/catalog/categories") return response(categoryChildren(config?.params?.parent_id));
+      if (url === "/catalog/featured") return response([]);
+      if (url === "/settings/public") return response(publicSettings());
+      if (url === "/catalog/products") {
+        return response({ items: [], total: 0, page: 1, limit: 24, total_pages: 0 });
+      }
+      throw new Error(`Unexpected GET ${url}`);
+    });
+
+    renderCatalog("/?page=3");
+    expect(await screen.findByText("Bu kategoriyada mahsulot yo'q")).toBeInTheDocument();
+    expect(screen.getByTestId("route-location")).toHaveTextContent("page=1");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("test_featured_hidden_when_empty", async () => {

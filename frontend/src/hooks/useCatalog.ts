@@ -29,6 +29,31 @@ function normalizeDecimal(value: string): string {
   return `${sign}${whole}${fraction ? `.${fraction}` : ""}`;
 }
 
+function isValidCatalogPage(page: Page<Product>): boolean {
+  if (
+    !Array.isArray(page.items) ||
+    !Number.isInteger(page.total) ||
+    page.total < 0 ||
+    !Number.isInteger(page.page) ||
+    page.page < 1 ||
+    !Number.isInteger(page.limit) ||
+    page.limit !== CATALOG_PAGE_SIZE ||
+    !Number.isInteger(page.total_pages) ||
+    page.total_pages < 0 ||
+    page.items.length > page.limit ||
+    page.items.length > page.total
+  ) {
+    return false;
+  }
+
+  if (page.total_pages === 0) {
+    return page.total === 0 && page.items.length === 0 && page.page === 1;
+  }
+
+  const expectedTotalPages = Math.max(1, Math.ceil(page.total / page.limit));
+  return page.total_pages === expectedTotalPages && page.page <= page.total_pages;
+}
+
 export function useCatalog(query: CatalogQuery) {
   const normalized = useMemo(() => normalizeCatalogQuery(query), [
     query.q,
@@ -59,12 +84,7 @@ export function useCatalog(query: CatalogQuery) {
         },
         signal,
       });
-      if (
-        !data ||
-        !Array.isArray(data.items) ||
-        !Number.isFinite(data.page) ||
-        !Number.isFinite(data.total_pages)
-      ) {
+      if (!data || !isValidCatalogPage(data)) {
         throw new Error("Catalog response did not match the paginated products contract");
       }
       return data;
@@ -92,9 +112,9 @@ export function useCatalog(query: CatalogQuery) {
   ]);
 
   const knownTotalPages = catalog.data?.pages.at(-1)?.total_pages;
-  const visiblePageCount = knownTotalPages
-    ? Math.min(normalized.page, knownTotalPages)
-    : normalized.page;
+  const visiblePageCount = knownTotalPages === undefined
+    ? normalized.page
+    : Math.min(normalized.page, Math.max(1, knownTotalPages));
   const pages = catalog.data?.pages.slice(0, visiblePageCount) ?? [];
   const currentPage = pages.at(-1);
   const hasMore = Boolean(currentPage && visiblePageCount < currentPage.total_pages);

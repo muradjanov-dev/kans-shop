@@ -7,34 +7,8 @@ import { useProduct } from "@/hooks/queries";
 import { useCartActions } from "@/hooks/useCartActions";
 import { formatExactPrice, localizedField } from "@/lib/format";
 import { useTranslate } from "@/lib/i18n";
+import { hasHigherOldPrice, productUnitTranslationKey } from "@/lib/productDisplay";
 import { useLanguageStore } from "@/store/language";
-import type { ProductUnit } from "@/types/api";
-
-const unitTranslationKey: Record<ProductUnit, "product.unit.dona" | "product.unit.quti" | "product.unit.paket" | "product.unit.komplekt"> = {
-  dona: "product.unit.dona",
-  quti: "product.unit.quti",
-  paket: "product.unit.paket",
-  komplekt: "product.unit.komplekt",
-};
-
-function hasHigherOldPrice(oldPrice: string | null, price: string): boolean {
-  if (!oldPrice) return false;
-  const parse = (value: string): { whole: string; fraction: string } | null => {
-    const match = /^(\d+)(?:\.(\d+))?$/.exec(value.trim());
-    if (!match) return null;
-    return {
-      whole: (match[1] ?? "0").replace(/^0+(?=\d)/, ""),
-      fraction: match[2] ?? "",
-    };
-  };
-  const current = parse(price);
-  const previous = parse(oldPrice);
-  if (!current || !previous) return false;
-  const scale = Math.max(current.fraction.length, previous.fraction.length);
-  const currentValue = BigInt(`${current.whole}${current.fraction.padEnd(scale, "0")}`);
-  const previousValue = BigInt(`${previous.whole}${previous.fraction.padEnd(scale, "0")}`);
-  return previousValue > currentValue;
-}
 
 function savedCatalogUrl(value: unknown): string {
   if (
@@ -117,7 +91,7 @@ export function ProductPage() {
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {t("product.stock", {
               qty: product.stock_qty,
-              unit: t(unitTranslationKey[product.unit]),
+              unit: t(productUnitTranslationKey[product.unit]),
             })}
           </p>
           <p className="text-sm text-slate-600 dark:text-slate-300">
