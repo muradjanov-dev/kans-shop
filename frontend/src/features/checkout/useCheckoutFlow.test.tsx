@@ -81,6 +81,14 @@ function response<T>(config: Parameters<AxiosAdapter>[0], data: T, status = 200)
   return { data, status, statusText: "OK", headers: new AxiosHeaders(), config };
 }
 
+function customerReadResponse(config: Parameters<AxiosAdapter>[0]): AxiosResponse | null {
+  if (config.method === "get" && config.url === "/profile") {
+    return response(config, { display_name: "", phone: null, language: "uz" });
+  }
+  if (config.method === "get" && config.url === "/addresses") return response(config, []);
+  return null;
+}
+
 function requestPayload(config: Parameters<AxiosAdapter>[0]): Record<string, string> {
   return typeof config.data === "string"
     ? JSON.parse(config.data) as Record<string, string>
@@ -140,8 +148,12 @@ function signedIn(): void {
 }
 
 async function fillDeliveryForm(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.type(await screen.findByLabelText("Ismingiz"), "Ali");
-  await user.type(await screen.findByLabelText("Telefon raqamingiz"), "+998901234567");
+  const name = await screen.findByLabelText("Ismingiz");
+  await user.clear(name);
+  await user.type(name, "Ali");
+  const phone = await screen.findByLabelText("Telefon raqamingiz");
+  await user.clear(phone);
+  await user.type(phone, "+998901234567");
   await user.type(await screen.findByLabelText("Manzil"), "Tashkent");
 }
 
@@ -169,6 +181,8 @@ describe("quote-based checkout flow", () => {
     const quoteResponse = new Promise<void>((resolve) => { releaseQuote = resolve; });
     const user = userEvent.setup();
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, { ...cart, items_count: 1, items: [{ id: 1, product_id: 1, quantity: 1, price_snapshot: "1000", product: {} }] });
       if (config.url === "/settings/public") return response(config, settings);
       if (config.url === "/orders/quote") {
@@ -192,6 +206,8 @@ describe("quote-based checkout flow", () => {
     originalAdapter = api.defaults.adapter;
     const requests: Array<{ payload: Record<string, unknown>; key: string | undefined }> = [];
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, { ...cart, items_count: 1, items: [{ id: 1, product_id: 1, quantity: 1, price_snapshot: "1000", product: {} }] });
       if (config.url === "/settings/public") return response(config, settings);
       if (config.url === "/orders/quote") return response(config, readyQuote);
@@ -208,8 +224,11 @@ describe("quote-based checkout flow", () => {
     await user.click(name);
     await user.tab();
     expect(await screen.findByText("Ismingizni kiriting")).toBeInTheDocument();
+    await user.clear(name);
     await user.type(name, "Ali");
-    await user.type(screen.getByPlaceholderText("+998901234567"), "+998901234567");
+    const phone = screen.getByPlaceholderText("+998901234567");
+    await user.clear(phone);
+    await user.type(phone, "+998901234567");
     await user.type(await screen.findByLabelText("Manzil"), "Tashkent");
 
     expect(screen.getByText(/1 000\.01/)).toBeInTheDocument();
@@ -232,6 +251,8 @@ describe("quote-based checkout flow", () => {
     const keys: string[] = [];
     let checkoutCalls = 0;
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, { ...cart, items_count: 1, items: [{ id: 1, product_id: 1, quantity: 1, price_snapshot: "1000", product: {} }] });
       if (config.url === "/settings/public") return response(config, settings);
       if (config.url === "/orders/quote") return response(config, readyQuote);
@@ -271,6 +292,8 @@ describe("quote-based checkout flow", () => {
     originalAdapter = api.defaults.adapter;
     let orderPosts = 0;
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, cart);
       if (config.url === "/orders" && config.method === "post") orderPosts += 1;
       throw new Error(`Unexpected request: ${config.method} ${config.url}`);
@@ -292,6 +315,8 @@ describe("quote-based checkout flow", () => {
     let quoteRequests = 0;
     let checkoutCalls = 0;
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, { ...cart, items_count: 1, items: [{ id: 1, product_id: 1, quantity: 1, price_snapshot: "1000", product: {} }] });
       if (config.url === "/settings/public") return response(config, settings);
       if (config.url === "/orders/quote") {
@@ -325,6 +350,8 @@ describe("quote-based checkout flow", () => {
     let orderPosts = 0;
     const payRequests: Array<{ url: string | undefined; provider: string }> = [];
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, { ...cart, items_count: 1, items: [{ id: 1, product_id: 1, quantity: 1, price_snapshot: "1000", product: {} }] });
       if (config.url === "/settings/public") return response(config, settings);
       if (config.url === "/orders/quote") return response(config, { ...readyQuote, payment_methods: ["cash", "click"] });
@@ -366,6 +393,8 @@ describe("quote-based checkout flow", () => {
       originalAdapter = api.defaults.adapter;
       const keys: string[] = [];
       api.defaults.adapter = async (config) => {
+        const customerResponse = customerReadResponse(config);
+        if (customerResponse) return customerResponse;
         if (config.url === "/cart") return response(config, { ...cart, items_count: 1, items: [{ id: 1, product_id: 1, quantity: 1, price_snapshot: "1000", product: {} }] });
         if (config.url === "/settings/public") return response(config, settings);
         if (config.url === "/orders/quote") return response(config, readyQuote);
@@ -398,6 +427,8 @@ describe("quote-based checkout flow", () => {
     const quoteRequests: Array<Record<string, string>> = [];
     const checkoutRequests: Array<Record<string, string>> = [];
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, { ...cart, items_count: 1, items: [{ id: 1, product_id: 1, quantity: 1, price_snapshot: "1000", product: {} }] });
       if (config.url === "/settings/public") return response(config, settings);
       if (config.url === "/orders/quote") {
@@ -440,12 +471,9 @@ describe("quote-based checkout flow", () => {
     expect(screen.queryByText("Yetkazib berish narxi")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Buyurtmani tasdiqlash" }));
     await screen.findByRole("link", { name: /KANS-000081/ });
-    expect(checkoutRequests[0]).toMatchObject({
-      order_type: "preorder",
-      payment_method: "cash",
-      address: null,
-      address_comment: null,
-    });
+    expect(checkoutRequests[0]).toMatchObject({ order_type: "preorder", payment_method: "cash" });
+    expect(checkoutRequests[0]).not.toHaveProperty("address");
+    expect(checkoutRequests[0]).not.toHaveProperty("address_comment");
   });
 
   it("disables checkout when a ready quote omits the selected method, including preorder's cash placeholder", async () => {
@@ -454,6 +482,8 @@ describe("quote-based checkout flow", () => {
     const quoteRequests: Array<Record<string, string>> = [];
     let orderPosts = 0;
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, cartAtPrice("1000.00"));
       if (config.url === "/settings/public") return response(config, settings);
       if (config.url === "/orders/quote") {
@@ -503,6 +533,8 @@ describe("quote-based checkout flow", () => {
     const updatedQuoteGate = new Promise<void>((resolve) => { releaseUpdatedQuote = resolve; });
     const updatedQuoteStarted = new Promise<void>((resolve) => { startUpdatedQuote = resolve; });
     api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
       if (config.url === "/cart") return response(config, cartVersion === 0 ? cartAtPrice("100.00") : cartAtPrice("101.00"));
       if (config.url === "/settings/public") return response(config, settings);
       if (config.url === "/orders/quote") {

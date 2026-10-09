@@ -5,6 +5,7 @@ import { formatExactPrice, localizedField } from "@/lib/format";
 import { useTranslate } from "@/lib/i18n";
 import { hasHigherOldPrice, productUnitTranslationKey } from "@/lib/productDisplay";
 import { useCartActions } from "@/hooks/useCartActions";
+import { FavoriteButton } from "@/components/storefront/FavoriteButton";
 import type { Product } from "@/types/api";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -56,6 +57,11 @@ export function ProductCard({ product }: { product: Product }) {
             </span>
           )}
         </Link>
+        <FavoriteButton
+          className="absolute right-2 top-2 z-10"
+          productId={product.id}
+          productName={name}
+        />
         {!outOfStock && (
           <button
             aria-label={t("product.add_to_cart")}

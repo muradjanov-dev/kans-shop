@@ -68,7 +68,7 @@ function failureResponse(config: Parameters<AxiosAdapter>[0]): AxiosResponse {
 describe("customer code dialog", () => {
   it("opens bot instructions when a browser guest tries to add an item", async () => {
     renderWithProviders(<ProductCard product={product} />, "/", true);
-    const addButton = screen.getByRole("button");
+    const addButton = screen.getByRole("button", { name: "Savatga qo'shish" });
 
     expect(addButton).toBeEnabled();
     fireEvent.click(addButton);

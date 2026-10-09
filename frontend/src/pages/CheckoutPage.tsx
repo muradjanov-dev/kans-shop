@@ -4,12 +4,19 @@ import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 import { CheckoutForm } from "@/features/checkout/CheckoutForm";
 import { CheckoutSuccess } from "@/features/checkout/CheckoutSuccess";
 import { useCheckoutFlow } from "@/features/checkout/useCheckoutFlow";
+import { useAddressMutations, useAddresses, type AddressInput } from "@/hooks/customer";
 import { useTranslate } from "@/lib/i18n";
 
 export function CheckoutPage() {
   const t = useTranslate();
   const flow = useCheckoutFlow();
   const { openLogin } = useCustomerAuth();
+  const addresses = useAddresses(flow.isAuthenticated && flow.orderType === "delivery");
+  const addressMutations = useAddressMutations();
+
+  function saveAddress(address: AddressInput) {
+    return addressMutations.createAddress.mutateAsync(address);
+  }
 
   if (flow.isResettingOwner) return <Spinner />;
 
@@ -43,5 +50,14 @@ export function CheckoutPage() {
 
   if (flow.cartLoading) return <Spinner />;
 
-  return <CheckoutForm flow={flow} />;
+  return (
+    <CheckoutForm
+      flow={flow}
+      addresses={addresses.data ?? []}
+      addressesError={addresses.isError}
+      retryAddresses={() => void addresses.refetch()}
+      saveAddress={saveAddress}
+      savingAddress={addressMutations.createAddress.isPending}
+    />
+  );
 }

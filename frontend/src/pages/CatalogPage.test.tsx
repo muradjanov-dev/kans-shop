@@ -300,7 +300,7 @@ describe("CatalogPage", () => {
 
     renderCatalog("/?page=3");
     expect(await screen.findByText("Bu kategoriyada mahsulot yo'q")).toBeInTheDocument();
-    expect(screen.getByTestId("route-location")).toHaveTextContent("page=1");
+    await waitFor(() => expect(screen.getByTestId("route-location")).toHaveTextContent("page=1"));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 

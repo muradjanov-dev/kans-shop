@@ -14,6 +14,14 @@ import type {
   PublicSettings,
 } from "@/types/api";
 
+export const customerQueryKeys = {
+  profile: (userId: string | null) => ["profile", userId] as const,
+  addresses: (userId: string | null) => ["addresses", userId] as const,
+  favoritesRoot: (userId: string | null) => ["favorites", userId] as const,
+  favorites: (userId: string | null, page: number) => ["favorites", userId, page] as const,
+  favoriteState: (userId: string | null, productId: number) => ["favorite-state", userId, productId] as const,
+};
+
 export function useCategories(parentId?: number) {
   return useQuery({
     queryKey: ["categories", parentId ?? null],

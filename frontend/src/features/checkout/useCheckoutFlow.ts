@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useCart, useCheckout } from "@/hooks/queries";
+import { useCustomerProfile } from "@/hooks/customer";
 import { useCheckoutQuote } from "@/hooks/checkout";
 import { getApiErrorCode, getApiErrorMessage } from "@/lib/api";
 import { isValidUzPhone, normalizeUzPhone } from "@/lib/phone";
@@ -91,6 +92,7 @@ export function useCheckoutFlow() {
   const authEpoch = useAuthStore((state) => state.authEpoch);
   const isAuthenticated = Boolean(useAuthStore((state) => state.accessToken) && userId);
   const { data: cart, isLoading: cartLoading } = useCart(isAuthenticated);
+  const profile = useCustomerProfile();
   const checkout = useCheckout();
 
   const [orderType, setOrderTypeState] = useState<OrderType>("delivery");
@@ -109,6 +111,9 @@ export function useCheckoutFlow() {
   const [quoteConfirmationRequired, setQuoteConfirmationRequired] = useState(false);
   const [confirmedQuoteFingerprint, setConfirmedQuoteFingerprint] = useState<string | null>(null);
   const ownerRef = useRef({ userId, authEpoch });
+  const profileOwnerRef = useRef<string | null>(null);
+  const nameEditedRef = useRef(false);
+  const phoneEditedRef = useRef(false);
 
   const cartRevision = cart
     ? JSON.stringify({
@@ -142,6 +147,9 @@ export function useCheckoutFlow() {
     setOrderTypeState("delivery");
     setNameState(WebApp.initDataUnsafe?.user?.first_name ?? "");
     setPhoneState("");
+    profileOwnerRef.current = null;
+    nameEditedRef.current = false;
+    phoneEditedRef.current = false;
     setAddressState("");
     setAddressCommentState("");
     setPaymentMethodState("cash");
@@ -155,6 +163,13 @@ export function useCheckoutFlow() {
     setQuoteConfirmationRequired(false);
     setConfirmedQuoteFingerprint(null);
   }, [authEpoch, userId]);
+
+  useEffect(() => {
+    if (!userId || !profile.data || profileOwnerRef.current === userId) return;
+    if (!nameEditedRef.current) setNameState(profile.data.display_name);
+    if (!phoneEditedRef.current) setPhoneState(profile.data.phone ?? "");
+    profileOwnerRef.current = userId;
+  }, [profile.data, userId]);
 
   useEffect(() => {
     const available = quote?.payment_methods;
@@ -200,8 +215,14 @@ export function useCheckoutFlow() {
     setConfirmedQuoteFingerprint(null);
   }, [locked]);
 
-  const setName = useCallback((value: string) => updateField(setNameState, value), [updateField]);
-  const setPhone = useCallback((value: string) => updateField(setPhoneState, value), [updateField]);
+  const setName = useCallback((value: string) => {
+    nameEditedRef.current = true;
+    updateField(setNameState, value);
+  }, [updateField]);
+  const setPhone = useCallback((value: string) => {
+    phoneEditedRef.current = true;
+    updateField(setPhoneState, value);
+  }, [updateField]);
   const setAddress = useCallback((value: string) => updateField(setAddressState, value), [updateField]);
   const setAddressComment = useCallback((value: string) => updateField(setAddressCommentState, value), [updateField]);
   const setComment = useCallback((value: string) => updateField(setCommentState, value), [updateField]);
@@ -266,13 +287,15 @@ export function useCheckoutFlow() {
     if (quoteConfirmationRequired && confirmedQuoteFingerprint !== quote.quote_fingerprint) return;
     if ((cart?.items.length ?? 0) === 0) return;
 
+    const addressSnapshot = orderType === "delivery"
+      ? { address: address.trim(), address_comment: addressComment.trim() || null }
+      : {};
     const payload: CheckoutPayload = {
       order_type: orderType,
       customer_name: name.trim(),
       customer_phone: normalizeUzPhone(phone),
       payment_method: quotePaymentMethod,
-      address: orderType === "delivery" ? address.trim() : null,
-      address_comment: orderType === "delivery" ? addressComment.trim() || null : null,
+      ...addressSnapshot,
       comment: comment.trim() || null,
       purchase_contract_version: 1,
       expected_total: quote.total,
@@ -325,13 +348,15 @@ export function useCheckoutFlow() {
       setSubmitAttempted(true);
       return;
     }
+    const addressSnapshot = orderType === "delivery"
+      ? { address: address.trim(), address_comment: addressComment.trim() || null }
+      : {};
     const payload: CheckoutPayload = {
       order_type: orderType,
       customer_name: name.trim(),
       customer_phone: normalizeUzPhone(phone),
       payment_method: quotePaymentMethod,
-      address: orderType === "delivery" ? address.trim() : null,
-      address_comment: orderType === "delivery" ? addressComment.trim() || null : null,
+      ...addressSnapshot,
       comment: comment.trim() || null,
       purchase_contract_version: 1,
       expected_total: quote.total,
@@ -369,6 +394,8 @@ export function useCheckoutFlow() {
   return {
     isResettingOwner: ownerRef.current.userId !== userId || ownerRef.current.authEpoch !== authEpoch,
     isAuthenticated,
+    profileLoadError: profile.isError,
+    retryProfile: () => void profile.refetch(),
     orderType,
     setOrderType,
     name,

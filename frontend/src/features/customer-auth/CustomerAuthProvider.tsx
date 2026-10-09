@@ -10,13 +10,14 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, cancelAuthenticatedRequests, getApiErrorCode } from "@/lib/api";
+import { customerQueryKeys } from "@/hooks/queries";
 import { useTranslate } from "@/lib/i18n";
 import {
   clearPendingAdd,
   isPendingAddFresh,
   readPendingAdd,
   writePendingAdd,
-  type PendingCartAdd,
+  type PendingCustomerAction,
 } from "@/lib/pendingCartAdd";
 import { useAuthStore } from "@/store/auth";
 import type { Cart } from "@/types/api";
@@ -25,6 +26,7 @@ import { useCustomerCodeLogin } from "@/features/customer-auth/useCustomerCodeLo
 
 interface CustomerAuthContextValue {
   add: (productId: number, quantity: number, origin: string) => void;
+  addFavorite: (productId: number) => void;
   retry: () => void;
   cancelLogin: () => void;
   pending: boolean;
@@ -37,7 +39,8 @@ const CustomerAuthContext = createContext<CustomerAuthContextValue | null>(null)
 
 function isPrivateQuery(queryKey: readonly unknown[]): boolean {
   const root = queryKey[0];
-  return root === "cart" || root === "orders" || root === "order" || root === "lot-links";
+  return root === "cart" || root === "orders" || root === "order" || root === "lot-links" ||
+    root === "profile" || root === "addresses" || root === "favorites" || root === "favorite-state";
 }
 
 function discardPrivateData(
@@ -71,21 +74,21 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const userId = useAuthStore((state) => state.userId);
   const authEpoch = useAuthStore((state) => state.authEpoch);
   const login = useCustomerCodeLogin();
-  const [pendingIntent, setPendingIntent] = useState<PendingCartAdd | null>(() => readPendingAdd(Date.now()));
+  const [pendingIntent, setPendingIntent] = useState<PendingCustomerAction | null>(() => readPendingAdd(Date.now()));
   const [dialogOpen, setDialogOpen] = useState(
     () => !useAuthStore.getState().accessToken && readPendingAdd(Date.now()) !== null,
   );
   const [actionPending, setActionPending] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [intentExpired, setIntentExpired] = useState(false);
-  const pendingIntentRef = useRef<PendingCartAdd | null>(pendingIntent);
+  const [expiredActionKind, setExpiredActionKind] = useState<PendingCustomerAction["kind"] | null>(null);
+  const pendingIntentRef = useRef<PendingCustomerAction | null>(pendingIntent);
   const pendingOwnerRef = useRef<string | null>(useAuthStore.getState().userId);
   const previousAuthRef = useRef({ userId, authEpoch });
   const loginGenerationRef = useRef(0);
   const runningKeysRef = useRef(new Set<string>());
   const attemptedKeysRef = useRef(new Set<string>());
 
-  const setIntent = useCallback((intent: PendingCartAdd | null) => {
+  const setIntent = useCallback((intent: PendingCustomerAction | null) => {
     pendingIntentRef.current = intent;
     setPendingIntent(intent);
     if (!intent) {
@@ -96,17 +99,17 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const expireIntent = useCallback((intent: PendingCartAdd) => {
+  const expireIntent = useCallback((intent: PendingCustomerAction) => {
     if (pendingIntentRef.current?.mutationKey !== intent.mutationKey) return;
     setIntent(null);
     setDialogOpen(false);
     setActionPending(false);
     setErrorCode(null);
-    setIntentExpired(true);
+    setExpiredActionKind(intent.kind);
   }, [setIntent]);
 
   const runIntent = useCallback(async (
-    intent: PendingCartAdd,
+    intent: PendingCustomerAction,
     expectedEpoch: number,
     expectedUserId: string,
   ) => {
@@ -120,17 +123,30 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setActionPending(true);
     setErrorCode(null);
     try {
-      const { data } = await api.post<Cart>(
-        "/cart/items",
-        { product_id: intent.productId, quantity: intent.quantity },
-        { headers: { "Idempotency-Key": intent.mutationKey } },
-      );
+      let cart: Cart | undefined;
+      if (intent.kind === "cart_add") {
+        const result = await api.post<Cart>(
+          "/cart/items",
+          { product_id: intent.productId, quantity: intent.quantity },
+          { headers: { "Idempotency-Key": intent.mutationKey } },
+        );
+        cart = result.data;
+      } else {
+        await api.put<void>(`/favorites/${intent.productId}`, undefined, {
+          headers: { "Idempotency-Key": intent.mutationKey },
+        });
+      }
       const current = useAuthStore.getState();
       if (current.authEpoch !== expectedEpoch || current.userId !== expectedUserId) return;
-      queryClient.setQueryData(["cart", expectedUserId], data);
+      if (intent.kind === "cart_add" && cart) {
+        queryClient.setQueryData(["cart", expectedUserId], cart);
+      } else if (intent.kind === "favorite_add") {
+        void queryClient.invalidateQueries({ queryKey: customerQueryKeys.favoriteState(expectedUserId, intent.productId) });
+        void queryClient.invalidateQueries({ queryKey: customerQueryKeys.favoritesRoot(expectedUserId) });
+      }
       if (pendingIntentRef.current?.mutationKey === intent.mutationKey) {
         setIntent(null);
-        if (intent.origin.startsWith("/product/")) navigate("/cart");
+        if (intent.kind === "cart_add" && intent.origin.startsWith("/product/")) navigate("/cart");
       }
     } catch (error) {
       const current = useAuthStore.getState();
@@ -184,9 +200,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const add = useCallback((productId: number, quantity: number, origin: string) => {
     if (pendingIntentRef.current) return;
-    setIntentExpired(false);
+    setExpiredActionKind(null);
     const normalizedOrigin = origin.startsWith("/") ? origin : "/";
-    const intent: PendingCartAdd = {
+    const intent: Extract<PendingCustomerAction, { kind: "cart_add" }> = {
+      kind: "cart_add",
       productId,
       quantity,
       origin: normalizedOrigin,
@@ -197,6 +214,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setIntent(intent);
     setErrorCode(null);
     if (!useAuthStore.getState().accessToken) setDialogOpen(true);
+  }, [setIntent]);
+
+  const addFavorite = useCallback((productId: number) => {
+    if (pendingIntentRef.current || useAuthStore.getState().accessToken) return;
+    setIntent({
+      kind: "favorite_add",
+      productId,
+      mutationKey: makeMutationKey(),
+      createdAt: Date.now(),
+    });
+    pendingOwnerRef.current = null;
+    setErrorCode(null);
+    setExpiredActionKind(null);
+    setDialogOpen(true);
   }, [setIntent]);
 
   const retry = useCallback(() => {
@@ -217,9 +248,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setIntent(null);
     setDialogOpen(false);
     setErrorCode(null);
-    setIntentExpired(false);
+    setExpiredActionKind(null);
     setActionPending(false);
-    if (intent && location.pathname + location.search !== intent.origin) {
+    if (intent?.kind === "cart_add" && location.pathname + location.search !== intent.origin) {
       navigate(intent.origin);
     }
   }, [location.pathname, location.search, navigate, setIntent]);
@@ -248,7 +279,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const openLogin = useCallback(() => {
     setErrorCode(null);
-    setIntentExpired(false);
+    setExpiredActionKind(null);
     setDialogOpen(true);
   }, []);
 
@@ -258,7 +289,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setDialogOpen(false);
     setActionPending(false);
     setErrorCode(null);
-    setIntentExpired(false);
+    setExpiredActionKind(null);
     const current = useAuthStore.getState();
     if (current.userId) {
       cancelAuthenticatedRequests(current.authEpoch);
@@ -269,6 +300,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const value: CustomerAuthContextValue = {
     add,
+    addFavorite,
     retry,
     cancelLogin,
     pending: actionPending || login.isPending,
@@ -290,20 +322,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       />
       {errorCode && pendingIntent && !dialogOpen && (
         <div className="fixed bottom-28 left-3 right-3 z-[90] mx-auto flex max-w-md flex-col gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-800 shadow-lg dark:bg-red-950/80 dark:text-red-100" role="alert">
-          <p>{t("cart.action_pending")}</p>
+          <p>{t(pendingIntent.kind === "cart_add" ? "cart.action_pending" : "favorite.action_pending")}</p>
           <div className="flex gap-2">
             <button className="rounded-lg bg-brand px-3 py-2 font-semibold text-white" onClick={retry} type="button">
-              {t("cart.retry")}
+              {t(pendingIntent.kind === "cart_add" ? "cart.retry" : "favorite.retry_action")}
             </button>
             <button className="rounded-lg border border-red-300 px-3 py-2 font-semibold" onClick={cancelLogin} type="button">
-              {t("cart.cancel_pending")}
+              {t(pendingIntent.kind === "cart_add" ? "cart.cancel_pending" : "favorite.cancel_pending")}
             </button>
           </div>
         </div>
       )}
-      {intentExpired && !dialogOpen && (
+      {expiredActionKind && !dialogOpen && (
         <p className="fixed bottom-28 left-3 right-3 z-[90] mx-auto max-w-md rounded-xl bg-amber-50 p-3 text-sm text-amber-900 shadow-lg dark:bg-amber-950/80 dark:text-amber-100" role="alert">
-          {t("cart.intent_expired")}
+          {t(expiredActionKind === "cart_add" ? "cart.intent_expired" : "favorite.intent_expired")}
         </p>
       )}
     </CustomerAuthContext.Provider>

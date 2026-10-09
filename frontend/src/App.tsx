@@ -1,6 +1,8 @@
 import { Routes, Route, useLocation } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { AccountNavigationPage } from "@/pages/AccountNavigationPage";
+import { ProfilePage } from "@/pages/ProfilePage";
+import { FavoritesPage } from "@/pages/FavoritesPage";
+import { AddressesPage } from "@/pages/AddressesPage";
 import { CatalogPage } from "@/pages/CatalogPage";
 import { ProductPage } from "@/pages/ProductPage";
 import { CartPage } from "@/pages/CartPage";
@@ -41,9 +43,9 @@ function CustomerApplication() {
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/:id" element={<OrderDetailPage />} />
-          <Route path="/profile" element={<AccountNavigationPage section="profile" />} />
-          <Route path="/favorites" element={<AccountNavigationPage section="favorites" />} />
-          <Route path="/profile/addresses" element={<AccountNavigationPage section="addresses" />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="/profile/addresses" element={<AddressesPage />} />
         </Route>
       </Routes>
     </CustomerAuthProvider>

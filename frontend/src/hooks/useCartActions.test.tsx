@@ -536,7 +536,7 @@ describe("cart action recovery", () => {
     const originalAdapter = api.defaults.adapter;
     let addCalls = 0;
     const adapter: AxiosAdapter = async (config) => {
-      addCalls += 1;
+      if (config.url === "/cart/items" && config.method === "post") addCalls += 1;
       throw new AxiosError("Timeout", "ECONNABORTED", config);
     };
     api.defaults.adapter = adapter;

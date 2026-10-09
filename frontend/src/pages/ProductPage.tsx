@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { ErrorState } from "@/components/ErrorState";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { ProductGallery } from "@/components/storefront/ProductGallery";
+import { FavoriteButton } from "@/components/storefront/FavoriteButton";
 import { useProduct } from "@/hooks/queries";
 import { useCartActions } from "@/hooks/useCartActions";
 import { formatExactPrice, localizedField } from "@/lib/format";
@@ -76,7 +77,10 @@ export function ProductPage() {
               {t("product.featured")}
             </span>
           )}
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{name}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{name}</h1>
+            <FavoriteButton productId={product.id} productName={name} />
+          </div>
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-900 dark:text-white">
               {formatExactPrice(product.price)}

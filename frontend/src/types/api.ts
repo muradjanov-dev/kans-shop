@@ -40,6 +40,24 @@ export interface Page<T> {
   total_pages: number;
 }
 
+export interface Profile {
+  display_name: string;
+  phone: string | null;
+  language: "uz" | "ru";
+}
+
+export interface Address {
+  id: number;
+  label: string;
+  address_text: string;
+  address_comment: string | null;
+  is_default: boolean;
+}
+
+export interface FavoriteState {
+  is_favorite: boolean;
+}
+
 export interface Category {
   id: number;
   parent_id: number | null;
@@ -84,6 +102,8 @@ export interface Product {
   edit_version?: number;
   images: ProductImage[];
 }
+
+export type FavoritePage = Page<Product>;
 
 export interface CartItem {
   id: number;
@@ -144,8 +164,6 @@ export interface CheckoutPayload {
   payment_method: PaymentMethod;
   address?: string | null;
   address_comment?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
   comment?: string | null;
   purchase_contract_version: 1;
   expected_total: string;

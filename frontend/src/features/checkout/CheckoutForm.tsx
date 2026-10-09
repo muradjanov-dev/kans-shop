@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { useTranslate, type TranslationKey } from "@/lib/i18n";
 import { formatExactPrice } from "@/lib/format";
+import type { Address } from "@/types/api";
+import type { AddressInput } from "@/hooks/customer";
 import type { OrderType, PaymentMethod } from "@/types/api";
 import type { useCheckoutFlow } from "./useCheckoutFlow";
 
@@ -7,10 +10,46 @@ type CheckoutFlow = ReturnType<typeof useCheckoutFlow>;
 
 const ORDER_TYPES: OrderType[] = ["delivery", "pickup", "preorder"];
 
-export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
+export function CheckoutForm({
+  flow,
+  addresses,
+  addressesError,
+  retryAddresses,
+  saveAddress,
+  savingAddress,
+}: {
+  flow: CheckoutFlow;
+  addresses: Address[];
+  addressesError: boolean;
+  retryAddresses: () => void;
+  saveAddress: (address: AddressInput) => Promise<unknown>;
+  savingAddress: boolean;
+}) {
   const t = useTranslate();
   const quote = flow.quote;
   const isPreorder = flow.orderType === "preorder";
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [savedAddressLabel, setSavedAddressLabel] = useState("");
+  const [addressSaved, setAddressSaved] = useState(false);
+  const [addressSaveError, setAddressSaveError] = useState(false);
+
+  async function saveCurrentAddress() {
+    const label = savedAddressLabel.trim();
+    const addressText = flow.address.trim();
+    if (!label || label.length > 60 || !addressText || flow.locked) return;
+    setAddressSaved(false);
+    setAddressSaveError(false);
+    try {
+      await saveAddress({
+        label,
+        address_text: addressText,
+        address_comment: flow.addressComment.trim() || null,
+      });
+      setAddressSaved(true);
+    } catch {
+      setAddressSaveError(true);
+    }
+  }
 
   return (
     <div className="p-4 pb-44">
@@ -65,10 +104,46 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
 
       {flow.orderType === "delivery" && (
         <>
+          {addresses.length > 0 && (
+            <Field label={t("checkout.saved_address")}>
+              <select
+                className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/15 dark:bg-slate-900 dark:text-white"
+                disabled={flow.locked}
+                onChange={(event) => {
+                  const selectedId = event.target.value;
+                  setSelectedAddressId(selectedId);
+                  const savedAddress = addresses.find(({ id }) => String(id) === selectedId);
+                  if (savedAddress) {
+                    flow.setAddress(savedAddress.address_text);
+                    flow.setAddressComment(savedAddress.address_comment ?? "");
+                    setAddressSaved(false);
+                    setAddressSaveError(false);
+                  }
+                }}
+                value={selectedAddressId}
+              >
+                <option value="">—</option>
+                {addresses.map((address) => <option key={address.id} value={address.id}>{address.label}</option>)}
+              </select>
+            </Field>
+          )}
+          {addressesError && (
+            <div className="flex items-center justify-between gap-3 text-xs text-red-600 dark:text-red-300" role="alert">
+              <span>{t("checkout.saved_addresses_error")}</span>
+              <button className="min-h-11 px-2 font-semibold underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand" onClick={retryAddresses} type="button">
+                {t("common.retry")}
+              </button>
+            </div>
+          )}
           <Field label={t("checkout.address")} error={flow.errors.address ? t(flow.errors.address as TranslationKey) : undefined}>
             <input
               value={flow.address}
-              onChange={(event) => flow.setAddress(event.target.value)}
+              maxLength={1000}
+              onChange={(event) => {
+                setSelectedAddressId("");
+                setAddressSaved(false);
+                flow.setAddress(event.target.value);
+              }}
               onBlur={() => flow.touch("address")}
               disabled={flow.locked}
               aria-invalid={Boolean(flow.errors.address)}
@@ -79,11 +154,37 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
           <Field label={t("checkout.address_comment")}>
             <input
               value={flow.addressComment}
-              onChange={(event) => flow.setAddressComment(event.target.value)}
+              maxLength={500}
+              onChange={(event) => {
+                setSelectedAddressId("");
+                setAddressSaved(false);
+                flow.setAddressComment(event.target.value);
+              }}
               disabled={flow.locked}
               className={inputClass(false)}
             />
           </Field>
+          <div className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3 dark:border-white/10">
+            <Field label={t("checkout.save_address_label")}>
+              <input
+                className={inputClass(false)}
+                disabled={flow.locked || savingAddress}
+                maxLength={60}
+                onChange={(event) => { setSavedAddressLabel(event.target.value); setAddressSaved(false); }}
+                value={savedAddressLabel}
+              />
+            </Field>
+            <button
+              className="min-h-11 self-start rounded-lg border border-slate-300 px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50 dark:border-white/15"
+              disabled={flow.locked || savingAddress || !savedAddressLabel.trim() || !flow.address.trim()}
+              onClick={() => void saveCurrentAddress()}
+              type="button"
+            >
+              {savingAddress ? t("checkout.saving_address") : t("checkout.save_for_later")}
+            </button>
+            {addressSaveError && <p className="text-xs text-red-700 dark:text-red-200" role="alert">{t("checkout.address_save_error")}</p>}
+            {addressSaved && <p className="text-xs text-emerald-700 dark:text-emerald-300" role="status">{t("checkout.address_saved")}</p>}
+          </div>
         </>
       )}
 
@@ -120,6 +221,14 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
       </Field>
 
       <div className="fixed bottom-0 mx-auto flex w-full max-w-lg flex-col gap-2 border-t border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+        {flow.profileLoadError && (
+          <div className="flex items-center justify-between gap-3 text-xs text-red-600 dark:text-red-300" role="alert">
+            <span>{t("profile.load_error")}</span>
+            <button className="min-h-11 px-2 font-semibold underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand" onClick={flow.retryProfile} type="button">
+              {t("common.retry")}
+            </button>
+          </div>
+        )}
         {flow.quoteLoading && <p className="text-xs text-gray-500 dark:text-gray-400">{t("checkout.quote_loading")}</p>}
         {flow.quoteError && (
           <div className="flex items-center justify-between gap-3 text-xs text-red-600 dark:text-red-300" role="alert">

@@ -75,7 +75,8 @@ for (const language of languages) {
   test(`browser login to cash order: ${language}`, async ({ page, purchaseApi }) => {
     const text = copy[language];
     await openPublicCatalog(page, language, purchaseApi);
-    await page.getByRole("link", { name: new RegExp(text.product) }).click();
+    await page.getByRole("link", { name: new RegExp(text.product) }).first().click();
+    await expect(page.getByRole("heading", { name: text.product })).toBeVisible();
 
     await page.getByRole("button", { name: text.add, exact: true }).click();
     const dialog = page.getByRole("dialog");
@@ -117,7 +118,7 @@ for (const language of languages) {
       JSON.stringify(request.body) === JSON.stringify({ init_data: "synthetic-signed-init-data" }),
     )).toBe(true);
 
-    await page.getByRole("link", { name: new RegExp(text.product) }).click();
+    await page.getByRole("link", { name: new RegExp(text.product) }).first().click();
     await expect(page.getByRole("heading", { name: text.product })).toBeVisible();
     await page.getByRole("button", { name: text.add, exact: true }).click();
     await expect(page).toHaveURL(/\/cart$/);
@@ -149,7 +150,8 @@ for (const language of languages) {
   test(`lost add and checkout responses reuse keys: ${language}`, async ({ page, purchaseApi }) => {
     const text = copy[language];
     await openPublicCatalog(page, language, purchaseApi);
-    await page.getByRole("link", { name: new RegExp(text.product) }).click();
+    await page.getByRole("link", { name: new RegExp(text.product) }).first().click();
+    await expect(page.getByRole("heading", { name: text.product })).toBeVisible();
     purchaseApi.failNextAddAfterCommit = true;
     await page.getByRole("button", { name: text.add, exact: true }).click();
     await submitLoginCode(page, text, "12345678");
@@ -282,7 +284,7 @@ async function openPublicCatalog(
   }, language);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: copy[language].catalog })).toBeVisible();
-  await expect(page.getByText(copy[language].product, { exact: true })).toBeVisible();
+  await expect(page.getByText(copy[language].product, { exact: true }).first()).toBeVisible();
   await expect.poll(() => purchaseApi.telegramBridgeRequests).toBeGreaterThan(0);
   const pageEnvelope = await page.evaluate(async (query) => {
     const response = await fetch(
@@ -316,7 +318,8 @@ async function addFromProductWithLogin(
   purchaseApi: PurchaseApiFixture,
 ): Promise<void> {
   await openPublicCatalog(page, text.language as Language, purchaseApi);
-  await page.getByRole("link", { name: new RegExp(text.product) }).click();
+  await page.getByRole("link", { name: new RegExp(text.product) }).first().click();
+  await expect(page.getByRole("heading", { name: text.product })).toBeVisible();
   await page.getByRole("button", { name: text.add, exact: true }).click();
   await submitLoginCode(page, text, "12345678");
   await expect(page).toHaveURL(/\/cart$/);
