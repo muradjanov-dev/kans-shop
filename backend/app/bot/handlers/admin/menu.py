@@ -76,6 +76,7 @@ async def on_menu_section(
 ) -> None:
     if not await require_admin(callback, admin, _, session=session):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
@@ -95,7 +96,7 @@ async def on_menu_section(
             ),
         )
     elif section == "orders":
-        await render_orders_list(edit, session, "all", 1, _)
+        await render_orders_list(edit, session, admin.id, "all", 1, _)
     elif section == "categories":
         await render_categories_list(edit, session, ROOT_CATEGORY_ID, translator=_)
     elif section == "products":

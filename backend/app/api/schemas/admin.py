@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from typing import Literal
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -14,11 +16,14 @@ from pydantic import (
 )
 
 from app.api.schemas.catalog import ProductOut
+from app.api.schemas.order import OrderOut
 from app.db.models.enums import (
     AdminRole,
     BroadcastStatus,
     BroadcastTarget,
     OrderStatus,
+    PaymentProvider,
+    PaymentTxState,
     ProductUnit,
     UserSource,
 )
@@ -218,8 +223,70 @@ def _https_lot_url(value: str | None) -> str | None:
 
 
 class AdminOrderStatusUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: OrderStatus
     comment: str | None = None
+
+
+class AdminOrderStatusHistoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    from_status: OrderStatus | None
+    to_status: OrderStatus
+    changed_by_admin_id: int | None
+    comment: str | None
+    created_at: datetime
+
+
+class AdminOrderPaymentHistoryOut(BaseModel):
+    """Safe gateway transaction history; provider payload and transaction secret are omitted."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    provider: PaymentProvider
+    state: PaymentTxState
+    amount: Decimal
+    created_at: datetime
+
+
+class AdminOrderPaymentReviewHistoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    actor_admin_id: int | None
+    actor_name_snapshot: str | None
+    action: str
+    created_at: datetime
+    before_json: dict[str, object] | None
+    after_json: dict[str, object] | None
+
+
+class AdminOrderDetailOut(OrderOut):
+    status_history: list[AdminOrderStatusHistoryOut]
+    payment_history: list[AdminOrderPaymentHistoryOut]
+    payment_review_history: list[AdminOrderPaymentReviewHistoryOut]
+
+
+class AdminOrderMessageIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(strict=True, min_length=1, max_length=4096)
+    idempotency_key: UUID
+
+    @field_validator("text")
+    @classmethod
+    def reject_blank_message(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
+
+
+class AdminOrderMessageQueuedOut(BaseModel):
+    message_id: int
+    state: Literal["queued"] = "queued"
 
 
 class AdminAcceptPaymentIn(BaseModel):

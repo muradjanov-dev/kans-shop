@@ -12,6 +12,7 @@ from app.db.models.order import Order
 from app.db.repositories import order_repository
 from app.services.admin_actor_service import load_live_admin
 from app.services.admin_audit_service import write_audit_event
+from app.services.receipt_service import has_private_receipt_evidence
 
 _ORDER_ADMIN_ROLES = frozenset({AdminRole.SUPERADMIN, AdminRole.MANAGER, AdminRole.OPERATOR})
 _NEW_ACCEPTANCE_IDS_KEY = "app.services.manual_payment.new_acceptance_order_ids"
@@ -53,7 +54,7 @@ async def accept_card_transfer_payment(
             },
         )
 
-    has_evidence = bool(order.receipt_storage_key or order.receipt_file_id)
+    has_evidence = has_private_receipt_evidence(order)
     if (
         order.payment_method == PaymentMethod.CARD_TRANSFER
         and order.payment_status == PaymentStatus.PAID

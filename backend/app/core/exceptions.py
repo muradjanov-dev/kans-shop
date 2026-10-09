@@ -136,6 +136,11 @@ class PaymentAcceptanceUnavailableError(KansShopError):
     http_status = 409
 
 
+class AdminOrderMessageValidationError(KansShopError):
+    code = "VALIDATION_ERROR"
+    http_status = 422
+
+
 class CategoryInUseError(KansShopError):
     code = "CATEGORY_IN_USE"
     http_status = 409

@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.db.models.enums import OrderStatus, OrderType, PaymentMethod, PaymentStatus
 from app.db.models.order import Order
 from app.db.models.user import User
+from app.services.receipt_service import has_private_receipt_evidence
 
 ORDER_TYPE_LABEL_KEYS = {
     OrderType.DELIVERY.value: "checkout.type_delivery",
@@ -94,7 +95,7 @@ def build_admin_order_text(
     lines.append(translator("admin.total_line", value=_format_price(order.total)))
 
     method_key = ADMIN_PAYMENT_LABEL_KEYS.get(order.payment_method, "admin.payment_card")
-    has_receipt = bool(order.receipt_file_id or order.receipt_storage_key or order.receipt_url)
+    has_receipt = has_private_receipt_evidence(order)
     if order.payment_status == PaymentStatus.PAID:
         receipt_suffix = translator("admin.paid_suffix")
     elif has_receipt:
@@ -123,7 +124,7 @@ def build_admin_order_keyboard(
     order: Order, *, translator: Callable[..., str]
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    has_receipt = bool(order.receipt_file_id or order.receipt_storage_key)
+    has_receipt = has_private_receipt_evidence(order)
 
     if order.status == OrderStatus.NEW:
         builder.row(

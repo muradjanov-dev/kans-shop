@@ -43,10 +43,12 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 @router.post("/quote", response_model=CheckoutQuoteOut)
 async def quote_order(
+    response: Response,
     payload: CheckoutQuoteIn,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CheckoutQuoteOut:
+    response.headers["Cache-Control"] = "private, no-store"
     quote = await quote_checkout(
         session,
         user_id=user.id,
@@ -108,25 +110,30 @@ async def checkout(
     if result.created:
         register_new_order_notification(session, bot, result.order.id)
     response.status_code = 201 if result.created else 200
+    response.headers["Cache-Control"] = "private, no-store"
     return OrderOut.model_validate(result.order)
 
 
 @router.get("", response_model=list[OrderOut])
 async def list_my_orders(
+    response: Response,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> list[OrderOut]:
+    response.headers["Cache-Control"] = "private, no-store"
     orders, _total = await order_repository.list_by_user(session, user.id, page=1, limit=50)
     return [OrderOut.model_validate(o) for o in orders]
 
 
 @router.get("/history", response_model=PageOut[OrderHistoryItemOut])
 async def customer_order_history(
+    response: Response,
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=24, ge=1, le=50),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[OrderHistoryItemOut]:
+    response.headers["Cache-Control"] = "private, no-store"
     result = await customer_order_service.list_customer_orders(
         session, user_id=user.id, page=page, limit=limit
     )
@@ -136,9 +143,11 @@ async def customer_order_history(
 @router.get("/{order_id}/timeline", response_model=list[OrderTimelineEventOut])
 async def customer_order_timeline(
     order_id: int,
+    response: Response,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> list[OrderTimelineEventOut]:
+    response.headers["Cache-Control"] = "private, no-store"
     return await customer_order_service.customer_timeline(
         session, user_id=user.id, order_id=order_id
     )
@@ -147,9 +156,11 @@ async def customer_order_timeline(
 @router.get("/{order_id}", response_model=OrderOut)
 async def get_order(
     order_id: int,
+    response: Response,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> OrderOut:
+    response.headers["Cache-Control"] = "private, no-store"
     order = await order_service.get_order(session, order_id)
     if order.user_id != user.id:
         raise ForbiddenError("Not your order")
@@ -159,10 +170,12 @@ async def get_order(
 @router.post("/{order_id}/receipt", response_model=OrderOut)
 async def upload_receipt(
     order_id: int,
+    response: Response,
     file: UploadFile,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> OrderOut:
+    response.headers["Cache-Control"] = "private, no-store"
     order = await order_service.get_order(session, order_id)
     if order.user_id != user.id:
         raise ForbiddenError("Not your order")
@@ -187,9 +200,11 @@ async def upload_receipt(
 async def pay_order(
     order_id: int,
     payload: PayIn,
+    response: Response,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PayOut:
+    response.headers["Cache-Control"] = "private, no-store"
     order = await order_repository.get_by_id_for_update(session, order_id)
     if order is None:
         order = await order_service.get_order(session, order_id)
@@ -203,12 +218,14 @@ async def pay_order(
 @router.get("/{order_id}/lot-links", response_model=LotLinksOut)
 async def order_lot_links(
     order_id: int,
+    response: Response,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> LotLinksOut:
     """Tender checkout: where to pay each item of this order. Kept a separate call rather
     than a field on OrderOut because it reads today's `products.lot_url`, not the order's
     snapshot, and only tender orders ever need it."""
+    response.headers["Cache-Control"] = "private, no-store"
     order = await order_service.get_order(session, order_id)
     if order.user_id != user.id:
         raise ForbiddenError("Not your order")

@@ -4,17 +4,16 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
-    AdminSessionRequiredError,
     ForbiddenError,
     InvalidFileError,
     OrderAlreadyProcessedError,
     OrderNotFoundError,
 )
 from app.core.uploads import validate_receipt_content
-from app.db.models.admin import Admin
-from app.db.models.enums import OrderStatus, PaymentMethod, PaymentStatus
+from app.db.models.enums import AdminRole, OrderStatus, PaymentMethod, PaymentStatus
 from app.db.models.order import Order
 from app.db.repositories import order_repository
+from app.services.admin_actor_service import load_live_admin
 from app.services.receipt_storage import PrivateReceiptStorage
 
 
@@ -22,6 +21,14 @@ from app.services.receipt_storage import PrivateReceiptStorage
 class ReceiptRead:
     path: Path
     content_type: str
+
+
+def has_private_receipt_evidence(order: Order) -> bool:
+    """Whether this order has an admin-reviewable receipt object or Telegram file."""
+    return bool(order.receipt_storage_key or order.receipt_file_id)
+
+
+_ORDER_ADMIN_ROLES = frozenset({AdminRole.SUPERADMIN, AdminRole.MANAGER, AdminRole.OPERATOR})
 
 
 async def attach_card_transfer_receipt(
@@ -90,9 +97,11 @@ async def open_order_receipt(
         raise OrderNotFoundError(f"Order {order_id} not found")
 
     if admin_id is not None:
-        admin = await session.get(Admin, admin_id)
-        if admin is None or not admin.is_active:
-            raise AdminSessionRequiredError("Admin session required")
+        await load_live_admin(
+            session,
+            admin_id=admin_id,
+            allowed_roles=_ORDER_ADMIN_ROLES,
+        )
     elif order.user_id != user_id:
         raise ForbiddenError("Not your order")
 

@@ -1,9 +1,7 @@
-import contextlib
 from collections.abc import Callable
-from functools import partial
+from uuid import UUID, uuid4
 
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,11 +29,12 @@ from app.bot.services.order_notifications import (
 )
 from app.bot.states.admin import AdminOrderStates
 from app.bot.utils.admin_order_card import build_admin_order_keyboard, build_admin_order_text
-from app.bot.utils.i18n import translate
 from app.bot.utils.messages import require_message
 from app.core.config import settings
 from app.core.exceptions import (
+    AdminOrderMessageValidationError,
     AdminSessionRequiredError,
+    ForbiddenError,
     OrderAlreadyProcessedError,
     OrderNotFoundError,
     PaymentAcceptanceUnavailableError,
@@ -45,9 +44,9 @@ from app.db.models.admin import Admin
 from app.db.models.enums import OrderStatus
 from app.db.models.order import Order
 from app.db.repositories import admin_repository, user_repository
-from app.services import manual_payment_service, order_service
+from app.services import admin_order_service, manual_payment_service, order_service
 from app.services.after_commit import commit_with_after_commit
-from app.services.receipt_service import open_order_receipt
+from app.services.receipt_service import has_private_receipt_evidence, open_order_receipt
 from app.services.receipt_storage import PrivateReceiptStorage
 
 router = Router(name="admin_orders")
@@ -112,6 +111,7 @@ async def send_receipt_to_admin(
     chat_id: int,
     storage: PrivateReceiptStorage | None = None,
 ) -> None:
+    await admin_order_service.load_order_admin(session, admin_id=admin_id)
     if order.receipt_file_id:
         content_type = order.receipt_content_type
         if content_type is None:
@@ -154,12 +154,19 @@ async def _get_order_or_alert(
     callback: CallbackQuery,
     session: AsyncSession,
     order_id: int,
+    admin_id: int,
     translator: Callable[..., str],
 ) -> Order | None:
     try:
-        return await order_service.get_order(session, order_id)
+        detail = await admin_order_service.get_admin_order(
+            session, admin_id=admin_id, order_id=order_id
+        )
+        return detail.order
     except OrderNotFoundError:
         await callback.answer(translator("admin.order_not_found"), show_alert=True)
+        return None
+    except (AdminSessionRequiredError, ForbiddenError):
+        await callback.answer(translator("admin.not_admin_alert"), show_alert=True)
         return None
 
 
@@ -206,14 +213,20 @@ async def on_confirm_order(
     if not await _require_admin(callback, admin, _):
         return
     assert admin is not None
-    order = await _get_order_or_alert(callback, session, callback_data.order_id, _)
+    order = await _get_order_or_alert(callback, session, callback_data.order_id, admin.id, _)
     if order is None:
         return
 
     try:
-        order = await order_service.confirm_order(session, order, admin_id=admin.id)
+        live_admin = await admin_order_service.load_order_admin(
+            session, admin_id=admin.id, lock=True
+        )
+        order = await order_service.confirm_order(session, order, admin_id=live_admin.id)
     except OrderAlreadyProcessedError:
         await _already_processed_alert(callback, session, order, _)
+        return
+    except (AdminSessionRequiredError, ForbiddenError):
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
         return
 
     register_order_status_notifications(
@@ -222,7 +235,7 @@ async def on_confirm_order(
         order.id,
         "orders.confirmed_notification",
         action_key=ACTION_KEY_BY_STATUS[OrderStatus.CONFIRMED],
-        admin_name=admin.full_name,
+        admin_name=live_admin.full_name,
     )
     await commit_with_after_commit(session)
     await callback.answer()
@@ -242,18 +255,25 @@ async def on_advance_status(
 ) -> None:
     if not await _require_admin(callback, admin, _):
         return
-    order = await _get_order_or_alert(callback, session, callback_data.order_id, _)
+    assert admin is not None
+    order = await _get_order_or_alert(callback, session, callback_data.order_id, admin.id, _)
     if order is None:
         return
     assert admin is not None
 
     to_status = OrderStatus(callback_data.to_status)
     try:
+        live_admin = await admin_order_service.load_order_admin(
+            session, admin_id=admin.id, lock=True
+        )
         order = await order_service.advance_status(
-            session, order, to_status, admin_id=admin.id
+            session, order, to_status, admin_id=live_admin.id
         )
     except OrderAlreadyProcessedError:
         await _already_processed_alert(callback, session, order, _)
+        return
+    except (AdminSessionRequiredError, ForbiddenError):
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
         return
 
     register_order_status_notifications(
@@ -263,7 +283,7 @@ async def on_advance_status(
         "orders.status_changed_notification",
         status_key=STATUS_LABEL_KEYS[to_status],
         action_key=ACTION_KEY_BY_STATUS[to_status],
-        admin_name=admin.full_name,
+        admin_name=live_admin.full_name,
     )
     await commit_with_after_commit(session)
     await callback.answer()
@@ -281,6 +301,7 @@ async def on_cancel_request(
 ) -> None:
     if not await _require_admin(callback, admin, _):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
@@ -331,19 +352,28 @@ async def on_custom_cancel_reason(
     if admin is None or not admin.is_active:
         await state.clear()
         return
+    try:
+        live_admin = await admin_order_service.load_order_admin(
+            session, admin_id=admin.id, lock=True
+        )
+    except (AdminSessionRequiredError, ForbiddenError):
+        await state.clear()
+        await message.answer(_("admin.not_admin_alert"))
+        return
     data = await state.get_data()
     order_id = data.get("order_id")
-    await state.clear()
     if order_id is None:
+        await state.clear()
         return
     reason_text = (message.text or "").strip() or "-"
     try:
         order = await order_service.get_order(session, order_id)
     except OrderNotFoundError:
+        await state.clear()
         await message.answer(_("admin.order_not_found"))
         return
     order = await order_service.cancel_order(
-        session, order, admin_id=admin.id, reason=reason_text
+        session, order, admin_id=live_admin.id, reason=reason_text
     )
     register_order_status_notifications(
         session,
@@ -351,10 +381,11 @@ async def on_custom_cancel_reason(
         order.id,
         "orders.cancelled_notification",
         action_key=ACTION_KEY_BY_STATUS[OrderStatus.CANCELLED],
-        admin_name=admin.full_name,
+        admin_name=live_admin.full_name,
         reason=reason_text,
     )
     await commit_with_after_commit(session)
+    await state.clear()
     await message.answer(
         _("admin.back_button"), reply_markup=back_to_order_keyboard(order_id, _)
     )
@@ -370,15 +401,21 @@ async def _finalize_cancel(
     _: Callable,
 ) -> None:
     assert admin is not None
-    order = await _get_order_or_alert(callback, session, order_id, _)
+    order = await _get_order_or_alert(callback, session, order_id, admin.id, _)
     if order is None:
         return
     try:
+        live_admin = await admin_order_service.load_order_admin(
+            session, admin_id=admin.id, lock=True
+        )
         order = await order_service.cancel_order(
-            session, order, admin_id=admin.id, reason=reason_text
+            session, order, admin_id=live_admin.id, reason=reason_text
         )
     except OrderAlreadyProcessedError:
         await _already_processed_alert(callback, session, order, _)
+        return
+    except (AdminSessionRequiredError, ForbiddenError):
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
         return
 
     register_order_status_notifications(
@@ -387,7 +424,7 @@ async def _finalize_cancel(
         order.id,
         "orders.cancelled_notification",
         action_key=ACTION_KEY_BY_STATUS[OrderStatus.CANCELLED],
-        admin_name=admin.full_name,
+        admin_name=live_admin.full_name,
         reason=reason_text,
     )
     await commit_with_after_commit(session)
@@ -407,10 +444,11 @@ async def on_back_to_order(
 ) -> None:
     if not await _require_admin(callback, admin, _):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
-    order = await _get_order_or_alert(callback, session, callback_data.order_id, _)
+    order = await _get_order_or_alert(callback, session, callback_data.order_id, admin.id, _)
     if order is None:
         return
     await _render_order_card(message, session, order, _)
@@ -430,10 +468,11 @@ async def on_message_customer(
 ) -> None:
     if not await _require_admin(callback, admin, _):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
-    order = await _get_order_or_alert(callback, session, callback_data.order_id, _)
+    order = await _get_order_or_alert(callback, session, callback_data.order_id, admin.id, _)
     if order is None:
         return
     customer = await user_repository.get_by_id(session, order.user_id)
@@ -459,14 +498,15 @@ async def on_write_via_bot(
 ) -> None:
     if not await _require_admin(callback, admin, _):
         return
-    order = await _get_order_or_alert(callback, session, callback_data.order_id, _)
+    assert admin is not None
+    order = await _get_order_or_alert(callback, session, callback_data.order_id, admin.id, _)
     if order is None:
         return
     message = await require_message(callback, _)
     if message is None:
         return
     await state.set_state(AdminOrderStates.writing_to_customer)
-    await state.update_data(order_id=order.id, customer_user_id=order.user_id)
+    await state.update_data(order_id=order.id, idempotency_key=str(uuid4()))
     await message.edit_text(_("admin.enter_message_to_customer"))
     await callback.answer()
 
@@ -476,7 +516,6 @@ async def on_customer_message_entered(
     message: Message,
     session: AsyncSession,
     admin: Admin | None,
-    bot: Bot,
     state: FSMContext,
     _: Callable,
 ) -> None:
@@ -485,23 +524,34 @@ async def on_customer_message_entered(
         return
     data = await state.get_data()
     order_id = data.get("order_id")
-    customer_user_id = data.get("customer_user_id")
+    idempotency_key = data.get("idempotency_key")
+    if order_id is None or idempotency_key is None:
+        await state.clear()
+        return
+    try:
+        queued = await admin_order_service.queue_order_message(
+            session,
+            admin_id=admin.id,
+            order_id=int(order_id),
+            text=message.text or "",
+            idempotency_key=UUID(str(idempotency_key)),
+        )
+    except (AdminSessionRequiredError, ForbiddenError):
+        await state.clear()
+        await message.answer(_("admin.not_admin_alert"))
+        return
+    except OrderNotFoundError:
+        await state.clear()
+        await message.answer(_("admin.order_not_found"))
+        return
+    except AdminOrderMessageValidationError:
+        await message.answer(_("admin.order_message_validation"))
+        return
+    await commit_with_after_commit(session)
     await state.clear()
-    if order_id is None or customer_user_id is None:
-        return
-
-    customer = await user_repository.get_by_id(session, customer_user_id)
-    if customer is None:
-        await message.answer(_("common.not_found"))
-        return
-
-    translator = partial(translate, customer.language)
-    text = translator("admin.message_from_admin_prefix") + (message.text or "")
-    with contextlib.suppress(TelegramBadRequest, TelegramForbiddenError):
-        await bot.send_message(customer.telegram_id, text)
-
     await message.answer(
-        _("admin.message_sent_to_customer"), reply_markup=back_to_order_keyboard(order_id, _)
+        _("admin.message_queued_to_customer", message_id=queued.id),
+        reply_markup=back_to_order_keyboard(int(order_id), _),
     )
 
 
@@ -520,10 +570,10 @@ async def on_view_receipt(
     if not await _require_admin(callback, admin, _):
         return
     assert admin is not None
-    order = await _get_order_or_alert(callback, session, callback_data.order_id, _)
+    order = await _get_order_or_alert(callback, session, callback_data.order_id, admin.id, _)
     if order is None:
         return
-    if not order.receipt_file_id and not order.receipt_storage_key:
+    if not has_private_receipt_evidence(order):
         await callback.answer(_("admin.no_receipt"), show_alert=True)
         return
 
