@@ -119,7 +119,30 @@ async def _audit_and_notify(
     before: dict[str, object] | None,
     after: dict[str, object] | None,
 ) -> AdminAuditEvent:
-    audit_event = await write_audit_event(
+    audit_event = await _write_audit_event(
+        session,
+        actor_admin_id=actor_admin_id,
+        action=action,
+        admin_id=admin_id,
+        before=before,
+        after=after,
+    )
+    await _notify_current_admins(
+        session, actor_admin_id=actor_admin_id, audit_event=audit_event
+    )
+    return audit_event
+
+
+async def _write_audit_event(
+    session: AsyncSession,
+    *,
+    actor_admin_id: int,
+    action: str,
+    admin_id: int,
+    before: dict[str, object] | None,
+    after: dict[str, object] | None,
+) -> AdminAuditEvent:
+    return await write_audit_event(
         session,
         admin_id=actor_admin_id,
         action=action,
@@ -129,10 +152,6 @@ async def _audit_and_notify(
         before=before,
         after=after,
     )
-    await _notify_current_admins(
-        session, actor_admin_id=actor_admin_id, audit_event=audit_event
-    )
-    return audit_event
 
 
 async def list_admins(
@@ -208,6 +227,16 @@ async def update_admin(
     target = await _load_target(session, admin_id)
     active_superadmins = await _active_superadmin_count(session)
     before = _snapshot(target)
+    proposed_after = _snapshot(target)
+
+    if changes.full_name is not None:
+        proposed_after["full_name"] = changes.full_name
+    if changes.role is not None:
+        proposed_after["role"] = changes.role
+    if changes.is_active is not None:
+        proposed_after["is_active"] = changes.is_active
+    if changes.notifications_enabled is not None:
+        proposed_after["notifications_enabled"] = changes.notifications_enabled
 
     desired_role = changes.role if changes.role is not None else target.role
     desired_active = changes.is_active if changes.is_active is not None else target.is_active
@@ -219,6 +248,26 @@ async def update_admin(
     if loses_superadmin and active_superadmins <= 1:
         raise LastSuperadminRequiredError("At least one active superadmin must remain")
 
+    changed_fields = {
+        key for key, value in before.items() if key != "id" and value != proposed_after[key]
+    }
+    if not changed_fields:
+        return target
+
+    audit_event = None
+    if target.id == actor.id and target.is_active and proposed_after["is_active"] is False:
+        # The shared audit helper must validate a live actor. For self-deactivation, record
+        # the before/proposed-after snapshots before making the actor inactive; all writes
+        # still commit or roll back together in the caller's transaction.
+        audit_event = await _write_audit_event(
+            session,
+            actor_admin_id=actor.id,
+            action="admin.team.update",
+            admin_id=target.id,
+            before=before,
+            after=proposed_after,
+        )
+
     if changes.full_name is not None:
         target.full_name = changes.full_name
     if changes.role is not None:
@@ -228,25 +277,22 @@ async def update_admin(
     if changes.notifications_enabled is not None:
         target.notifications_enabled = changes.notifications_enabled
 
-    changed_fields = {
-        key for key, value in before.items() if key != "id" and value != _snapshot(target)[key]
-    }
-    if not changed_fields:
-        return target
-
     if {"role", "is_active"} & changed_fields:
         await _revoke_sessions_and_advance_epoch(session, target, now=datetime.now(UTC))
     else:
         await session.flush()
 
-    await _audit_and_notify(
-        session,
-        actor_admin_id=actor.id,
-        action="admin.team.update",
-        admin_id=target.id,
-        before=before,
-        after=_snapshot(target),
-    )
+    if audit_event is None:
+        await _audit_and_notify(
+            session,
+            actor_admin_id=actor.id,
+            action="admin.team.update",
+            admin_id=target.id,
+            before=before,
+            after=_snapshot(target),
+        )
+    else:
+        await _notify_current_admins(session, actor_admin_id=actor.id, audit_event=audit_event)
     return target
 
 

@@ -6,7 +6,7 @@ from secrets import randbelow, token_hex
 from unittest.mock import patch
 
 import httpx
-from fastapi import Request
+from fastapi import FastAPI, Request
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -44,6 +44,7 @@ class FakeRedis:
 @dataclass
 class ApiCase:
     client: httpx.AsyncClient
+    app: FastAPI
     session_maker: async_sessionmaker[AsyncSession]
     user_id: int
     other_user_id: int
@@ -123,6 +124,7 @@ async def make_api_case(
         with patch("app.api.rate_limit.get_redis", return_value=fake_redis):
             yield ApiCase(
                 client=client,
+                app=app,
                 session_maker=session_maker,
                 user_id=user_id,
                 other_user_id=other_user_id,

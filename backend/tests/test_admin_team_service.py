@@ -5,6 +5,7 @@ from hashlib import sha256
 from secrets import token_urlsafe
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -18,6 +19,7 @@ from app.db.models.admin_session import AdminSession
 from app.db.models.enums import AdminRole
 from app.db.models.notification_outbox import NotificationOutbox
 from app.db.seed import seed_admins
+from app.services import admin_team_service
 from tests.api_helpers import ApiCase, make_api_case
 
 _TEAM_TEST_ADMIN_IDS: dict[int, set[int]] = {}
@@ -80,6 +82,28 @@ async def _create_admin(
         await session.refresh(admin)
         _TEAM_TEST_ADMIN_IDS.setdefault(id(case), set()).add(admin.id)
         return admin
+
+
+async def _attach_admin_cookie(case: ApiCase, client: httpx.AsyncClient, admin: Admin) -> str:
+    raw_cookie = token_urlsafe(32)
+    csrf_token = token_urlsafe(64)
+    now = datetime.now(UTC)
+    async with case.session_maker() as session:
+        current = await session.get(Admin, admin.id)
+        assert current is not None
+        session.add(
+            AdminSession(
+                admin_id=current.id,
+                token_hash=sha256(raw_cookie.encode("ascii")).hexdigest(),
+                csrf_token=csrf_token,
+                auth_epoch=current.auth_epoch,
+                idle_expires_at=now + timedelta(hours=12),
+                absolute_expires_at=now + timedelta(days=7),
+            )
+        )
+        await session.commit()
+    client.cookies.set(ADMIN_COOKIE_NAME, raw_cookie, path="/")
+    return csrf_token
 
 
 @pytest.mark.asyncio
@@ -197,7 +221,7 @@ async def test_last_superadmin_single_mutation(test_engine: AsyncEngine) -> None
 
 @pytest.mark.asyncio
 async def test_concurrent_last_superadmin_changes_keep_one_active(
-    test_engine: AsyncEngine,
+    test_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import asyncio
 
@@ -205,25 +229,48 @@ async def test_concurrent_last_superadmin_changes_keep_one_active(
         make_api_case(test_engine, base_url="https://testserver") as case,
         _superadmin_cookie(case) as (first, csrf_token),
     ):
-        headers = _csrf_headers(csrf_token)
-        responses = await asyncio.gather(
-            case.client.patch(
-                f"/api/v1/admin/team/{first.id}",
-                headers=headers,
-                json={"role": "manager"},
-            ),
-            case.client.patch(
-                f"/api/v1/admin/team/{first.id}",
-                headers=headers,
-                json={"is_active": False},
-            ),
+        second = await _create_admin(case, role=AdminRole.SUPERADMIN)
+        assert second.id != first.id
+        async with case.session_maker() as session:
+            initial_active_count = await session.scalar(
+                select(func.count())
+                .select_from(Admin)
+                .where(Admin.role == AdminRole.SUPERADMIN, Admin.is_active.is_(True))
+            )
+            assert initial_active_count == 2
+        second_client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=case.app), base_url="https://testserver"
         )
+        second_csrf_token = await _attach_admin_cookie(case, second_client, second)
+        second_session = await second_client.get("/api/v1/auth/admin/session")
+        assert second_session.status_code == 200
+        original_acquire_lock = admin_team_service._acquire_team_lock
+        arrival_barrier = asyncio.Barrier(2)
 
-        assert all(
-            response.status_code == 409
-            and response.json()["error"]["code"] == "LAST_SUPERADMIN_REQUIRED"
-            for response in responses
-        )
+        async def wait_then_acquire_lock(session) -> None:
+            # Both requests pass cookie/role authorization before either tries the lock.
+            await asyncio.wait_for(arrival_barrier.wait(), timeout=5)
+            await original_acquire_lock(session)
+
+        monkeypatch.setattr(admin_team_service, "_acquire_team_lock", wait_then_acquire_lock)
+        try:
+            first_request = case.client.patch(
+                f"/api/v1/admin/team/{first.id}",
+                headers=_csrf_headers(csrf_token),
+                json={"role": "manager"},
+            )
+            second_request = second_client.patch(
+                f"/api/v1/admin/team/{second.id}",
+                headers=_csrf_headers(second_csrf_token),
+                json={"role": "manager"},
+            )
+            responses = await asyncio.gather(first_request, second_request)
+        finally:
+            await second_client.aclose()
+
+        assert sorted(response.status_code for response in responses) == [200, 409]
+        conflicts = [response for response in responses if response.status_code == 409]
+        assert conflicts[0].json()["error"]["code"] == "LAST_SUPERADMIN_REQUIRED"
         async with case.session_maker() as session:
             active_count = await session.scalar(
                 select(func.count())
@@ -377,6 +424,67 @@ async def test_role_change_revokes_sessions_and_epoch(test_engine: AsyncEngine) 
             headers={"Cookie": f"{ADMIN_COOKIE_NAME}={removal_cookie}"},
         )
         assert removed_cookie.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_self_deactivation_keeps_audit_and_revokes_session(
+    test_engine: AsyncEngine,
+) -> None:
+    async with (
+        make_api_case(test_engine, base_url="https://testserver") as case,
+        _superadmin_cookie(case) as (actor, csrf_token),
+    ):
+        backup = await _create_admin(case, role=AdminRole.SUPERADMIN)
+        response = await case.client.patch(
+            f"/api/v1/admin/team/{actor.id}",
+            headers=_csrf_headers(csrf_token),
+            json={"is_active": False},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["is_active"] is False
+        async with case.session_maker() as session:
+            current = await session.get(Admin, actor.id)
+            current_session = await session.scalar(
+                select(AdminSession).where(AdminSession.admin_id == actor.id)
+            )
+            audit = await session.scalar(
+                select(AdminAuditEvent).where(
+                    AdminAuditEvent.action == "admin.team.update",
+                    AdminAuditEvent.actor_admin_id == actor.id,
+                    AdminAuditEvent.resource_id == str(actor.id),
+                )
+            )
+            active_count = await session.scalar(
+                select(func.count())
+                .select_from(Admin)
+                .where(Admin.role == AdminRole.SUPERADMIN, Admin.is_active.is_(True))
+            )
+            assert current is not None and current.is_active is False
+            assert current.auth_epoch == 1
+            assert current_session is not None and current_session.revoked_at is not None
+            assert audit is not None
+            assert audit.before_json == {
+                "id": actor.id,
+                "telegram_id": actor.telegram_id,
+                "full_name": actor.full_name,
+                "role": AdminRole.SUPERADMIN.value,
+                "is_active": True,
+                "notifications_enabled": True,
+            }
+            assert audit.after_json == {
+                "id": actor.id,
+                "telegram_id": actor.telegram_id,
+                "full_name": actor.full_name,
+                "role": AdminRole.SUPERADMIN.value,
+                "is_active": False,
+                "notifications_enabled": True,
+            }
+            assert active_count == 1
+            assert backup.is_active is True
+
+        expired = await case.client.get("/api/v1/auth/admin/session")
+        assert expired.status_code == 401
 
 
 @pytest.mark.asyncio
