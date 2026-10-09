@@ -3,6 +3,17 @@
 // here and parsed with parseFloat() at render time — see src/lib/format.ts.
 
 export type ProductUnit = "dona" | "quti" | "paket" | "komplekt";
+export type CatalogSort = "default" | "price_asc" | "price_desc" | "newest";
+
+export interface CatalogQuery {
+  q: string;
+  category: number | null;
+  min_price: string;
+  max_price: string;
+  in_stock: boolean;
+  sort: CatalogSort;
+  page: number;
+}
 export type OrderType = "delivery" | "pickup" | "preorder";
 export type OrderStatus =
   | "new"
@@ -21,6 +32,21 @@ export type PaymentMethod =
 export type PaymentProvider = "click" | "payme" | "paynet";
 export type PaymentStatus = "pending" | "receipt_uploaded" | "paid" | "failed";
 
+export interface OrderHistoryItem {
+  id: number;
+  order_number: string;
+  created_at: string;
+  status: OrderStatus;
+  payment_status: PaymentStatus;
+  order_type: OrderType;
+  total: string;
+}
+
+export interface OrderTimelineEvent {
+  status: OrderStatus;
+  occurred_at: string;
+}
+
 export interface Page<T> {
   items: T[];
   total: number;
@@ -29,12 +55,31 @@ export interface Page<T> {
   total_pages: number;
 }
 
+export interface Profile {
+  display_name: string;
+  phone: string | null;
+  language: "uz" | "ru";
+}
+
+export interface Address {
+  id: number;
+  label: string;
+  address_text: string;
+  address_comment: string | null;
+  is_default: boolean;
+}
+
+export interface FavoriteState {
+  is_favorite: boolean;
+}
+
 export interface Category {
   id: number;
   parent_id: number | null;
   name_uz: string;
   name_ru: string;
   slug: string;
+  edit_version?: number;
   description_uz: string | null;
   description_ru: string | null;
   image_url: string | null;
@@ -69,8 +114,11 @@ export interface Product {
   lot_url: string | null;
   views_count: number;
   sold_count: number;
+  edit_version?: number;
   images: ProductImage[];
 }
+
+export type FavoritePage = Page<Product>;
 
 export interface CartItem {
   id: number;
@@ -112,6 +160,9 @@ export interface Order {
   total: string;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
+  payment_instructions: { card_number: string; card_holder: string } | null;
+  receipt_version: number;
+  has_receipt: boolean;
   receipt_url: string | null;
   cancel_reason: string | null;
   created_at: string;
@@ -128,9 +179,20 @@ export interface CheckoutPayload {
   payment_method: PaymentMethod;
   address?: string | null;
   address_comment?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
   comment?: string | null;
+  purchase_contract_version: 1;
+  expected_total: string;
+  expected_quote: string;
+}
+
+export interface CheckoutQuote {
+  subtotal: string;
+  delivery_fee: string | null;
+  total: string | null;
+  payment_methods: PaymentMethod[];
+  ready: boolean;
+  reasons: string[];
+  quote_fingerprint: string | null;
 }
 
 export interface PayResponse {
@@ -151,14 +213,14 @@ export interface PublicSettings {
   delivery_fee: number | null;
   free_delivery_from: number | null;
   min_order_amount: number | null;
-  work_hours: string | null;
+  work_hours?: string | null;
   card_number: string | null;
   card_holder: string | null;
-  support_username: string | null;
-  shop_phone: string | null;
+  support_username?: string | null;
+  shop_phone?: string | null;
   is_shop_open: boolean | null;
-  welcome_text_uz: string | null;
-  welcome_text_ru: string | null;
+  welcome_text_uz?: string | null;
+  welcome_text_ru?: string | null;
   enabled_payment_providers: PaymentProvider[];
 }
 

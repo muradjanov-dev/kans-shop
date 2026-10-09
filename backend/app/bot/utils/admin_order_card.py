@@ -6,6 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.keyboards.callback_data import (
+    AdminAcceptPaymentCallback,
     AdminAdvanceCallback,
     AdminCancelRequestCallback,
     AdminConfirmCallback,
@@ -16,6 +17,7 @@ from app.core.config import settings
 from app.db.models.enums import OrderStatus, OrderType, PaymentMethod, PaymentStatus
 from app.db.models.order import Order
 from app.db.models.user import User
+from app.services.receipt_service import has_private_receipt_evidence
 
 ORDER_TYPE_LABEL_KEYS = {
     OrderType.DELIVERY.value: "checkout.type_delivery",
@@ -93,7 +95,10 @@ def build_admin_order_text(
     lines.append(translator("admin.total_line", value=_format_price(order.total)))
 
     method_key = ADMIN_PAYMENT_LABEL_KEYS.get(order.payment_method, "admin.payment_card")
-    if order.receipt_file_id:
+    has_receipt = has_private_receipt_evidence(order)
+    if order.payment_status == PaymentStatus.PAID:
+        receipt_suffix = translator("admin.paid_suffix")
+    elif has_receipt:
         receipt_suffix = translator("admin.receipt_uploaded_suffix")
     elif (
         order.payment_method != PaymentMethod.CASH
@@ -119,6 +124,7 @@ def build_admin_order_keyboard(
     order: Order, *, translator: Callable[..., str]
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    has_receipt = has_private_receipt_evidence(order)
 
     if order.status == OrderStatus.NEW:
         builder.row(
@@ -177,13 +183,29 @@ def build_admin_order_keyboard(
             ),
         )
 
+    if (
+        order.status not in (OrderStatus.COMPLETED, OrderStatus.CANCELLED)
+        and order.payment_method == PaymentMethod.CARD_TRANSFER
+        and order.payment_status == PaymentStatus.RECEIPT_UPLOADED
+        and has_receipt
+    ):
+        builder.row(
+            InlineKeyboardButton(
+                text=translator("admin.accept_payment_button"),
+                callback_data=AdminAcceptPaymentCallback(
+                    order_id=order.id,
+                    receipt_version=order.receipt_version or 0,
+                ).pack(),
+            )
+        )
+
     utility_row = [
         InlineKeyboardButton(
             text=translator("admin.message_customer_button"),
             callback_data=AdminMessageCustomerCallback(order_id=order.id).pack(),
         )
     ]
-    if order.payment_method == PaymentMethod.CARD_TRANSFER and order.receipt_file_id:
+    if order.payment_method == PaymentMethod.CARD_TRANSFER and has_receipt:
         utility_row.append(
             InlineKeyboardButton(
                 text=translator("admin.view_receipt_button"),

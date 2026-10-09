@@ -20,7 +20,6 @@ from app.bot.keyboards.callback_data import (
 )
 from app.bot.keyboards.inline.admin_common import cancel_only_keyboard
 from app.bot.keyboards.inline.admin_sources import (
-    admin_source_delete_confirm_keyboard,
     admin_source_detail_keyboard,
     admin_sources_list_keyboard,
 )
@@ -28,9 +27,11 @@ from app.bot.states.admin_catalog import SourceFormStates
 from app.bot.utils.admin_guard import MANAGEMENT_ROLES, require_admin
 from app.bot.utils.identity import bot_username
 from app.bot.utils.messages import require_message
+from app.core.exceptions import TrafficSourceCodeConflictError
 from app.db.models.admin import Admin
 from app.db.models.traffic_source import TrafficSource
 from app.db.repositories import traffic_source_repository
+from app.services import traffic_source_service
 
 router = Router(name="admin_sources")
 
@@ -51,9 +52,16 @@ def _share_url(link: str, source: TrafficSource) -> str:
 
 
 async def render_sources_list(
-    send: Sender, session: AsyncSession, *, translator: Callable[..., str]
+    send: Sender,
+    session: AsyncSession,
+    *,
+    admin_id: int,
+    translator: Callable[..., str],
 ) -> None:
-    sources = await traffic_source_repository.list_all(session)
+    result = await traffic_source_service.list_sources(
+        session, admin_id=admin_id, page=1, limit=100
+    )
+    sources = result.items
     text = translator("admin.sources_title" if sources else "admin.sources_empty")
     await send(text, reply_markup=admin_sources_list_keyboard(sources, translator=translator))
 
@@ -64,9 +72,12 @@ async def render_source_detail(
     bot: Bot,
     source: TrafficSource,
     *,
+    admin_id: int,
     translator: Callable[..., str],
 ) -> None:
-    stats = await traffic_source_repository.get_stats(session, source)
+    stats = await traffic_source_service.get_source_stats(
+        session, admin_id=admin_id, source_id=source.id
+    )
     link = await source_link(bot, source)
     status_key = (
         "admin.source_status_active" if source.is_active else "admin.source_status_inactive"
@@ -77,9 +88,9 @@ async def render_source_detail(
         code=source.code,
         link=link,
         clicks=source.clicks_count,
-        users=stats.users_count,
+        users=stats.first_touch_users,
         orders=stats.orders_count,
-        revenue=_format_price(stats.revenue),
+        order_value=_format_price(stats.order_value),
         status=translator(status_key),
     )
     await send(
@@ -111,7 +122,9 @@ async def on_source_detail(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES):
+    if admin is None or not await require_admin(
+        callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+    ):
         return
     message = await require_message(callback, _)
     if message is None:
@@ -119,18 +132,23 @@ async def on_source_detail(
     source = await _get_source_or_alert(callback, session, callback_data.source_id, _)
     if source is None:
         return
-    await render_source_detail(message.edit_text, session, bot, source, translator=_)
+    await render_source_detail(
+        message.edit_text, session, bot, source, admin_id=admin.id, translator=_
+    )
     await callback.answer()
 
 
 @router.callback_query(AdminSourceAddCallback.filter())
 async def on_source_add(
     callback: CallbackQuery,
+    session: AsyncSession,
     admin: Admin | None,
     state: FSMContext,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES):
+    if admin is None or not await require_admin(
+        callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+    ):
         return
     message = await require_message(callback, _)
     if message is None:
@@ -141,7 +159,17 @@ async def on_source_add(
 
 
 @router.message(SourceFormStates.entering_name, F.text)
-async def on_source_name_entered(message: Message, state: FSMContext, _: Callable) -> None:
+async def on_source_name_entered(
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+    admin: Admin | None,
+    _: Callable,
+) -> None:
+    if admin is None or not await require_admin(
+        message, admin, _, roles=MANAGEMENT_ROLES, session=session
+    ):
+        return
     name = (message.text or "").strip()
     if not name:
         return
@@ -156,8 +184,17 @@ async def on_source_name_entered(message: Message, state: FSMContext, _: Callabl
 
 @router.message(SourceFormStates.entering_code, F.text)
 async def on_source_code_entered(
-    message: Message, session: AsyncSession, bot: Bot, state: FSMContext, _: Callable
+    message: Message,
+    session: AsyncSession,
+    bot: Bot,
+    state: FSMContext,
+    admin: Admin | None,
+    _: Callable,
 ) -> None:
+    if admin is None or not await require_admin(
+        message, admin, _, roles=MANAGEMENT_ROLES, session=session
+    ):
+        return
     data = await state.get_data()
     raw = (message.text or "").strip()
     # "-" accepts the code suggested from the campaign name.
@@ -168,18 +205,20 @@ async def on_source_code_entered(
             _("admin.source_invalid_code"), reply_markup=cancel_only_keyboard(_)
         )
         return
-    if await traffic_source_repository.get_by_code(session, code) is not None:
+    try:
+        source = await traffic_source_service.create_source(
+            session, admin_id=admin.id, code=code, name=data.get("name", code)
+        )
+    except TrafficSourceCodeConflictError:
         await message.answer(
             _("admin.source_code_exists"), reply_markup=cancel_only_keyboard(_)
         )
         return
-
-    source = await traffic_source_repository.create(
-        session, code=code, name=data.get("name", code)
-    )
     await state.clear()
     await message.answer(_("admin.source_created"))
-    await render_source_detail(message.answer, session, bot, source, translator=_)
+    await render_source_detail(
+        message.answer, session, bot, source, admin_id=admin.id, translator=_
+    )
 
 
 @router.callback_query(AdminSourceActionCallback.filter(F.action == "toggle"))
@@ -191,7 +230,9 @@ async def on_source_toggle(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES):
+    if admin is None or not await require_admin(
+        callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+    ):
         return
     message = await require_message(callback, _)
     if message is None:
@@ -199,53 +240,14 @@ async def on_source_toggle(
     source = await _get_source_or_alert(callback, session, callback_data.source_id, _)
     if source is None:
         return
-    source.is_active = not source.is_active
-    await session.flush()
-    await render_source_detail(message.edit_text, session, bot, source, translator=_)
-    await callback.answer()
-
-
-@router.callback_query(AdminSourceActionCallback.filter(F.action == "delete_request"))
-async def on_source_delete_request(
-    callback: CallbackQuery,
-    callback_data: AdminSourceActionCallback,
-    session: AsyncSession,
-    admin: Admin | None,
-    _: Callable,
-) -> None:
-    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES):
-        return
-    message = await require_message(callback, _)
-    if message is None:
-        return
-    source = await _get_source_or_alert(callback, session, callback_data.source_id, _)
-    if source is None:
-        return
-    await message.edit_text(
-        _("admin.source_delete_confirm", name=source.name),
-        reply_markup=admin_source_delete_confirm_keyboard(source, translator=_),
+    source = await traffic_source_service.update_source(
+        session,
+        admin_id=admin.id,
+        source_id=source.id,
+        name=None,
+        active=not source.is_active,
+    )
+    await render_source_detail(
+        message.edit_text, session, bot, source, admin_id=admin.id, translator=_
     )
     await callback.answer()
-
-
-@router.callback_query(AdminSourceActionCallback.filter(F.action == "delete_confirm"))
-async def on_source_delete_confirm(
-    callback: CallbackQuery,
-    callback_data: AdminSourceActionCallback,
-    session: AsyncSession,
-    admin: Admin | None,
-    _: Callable,
-) -> None:
-    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES):
-        return
-    message = await require_message(callback, _)
-    if message is None:
-        return
-    source = await _get_source_or_alert(callback, session, callback_data.source_id, _)
-    if source is None:
-        return
-    # users.traffic_source_id is ON DELETE SET NULL — already-attributed users survive, they
-    # just lose the attribution along with the campaign.
-    await traffic_source_repository.delete(session, source)
-    await callback.answer(_("admin.source_deleted"))
-    await render_sources_list(message.edit_text, session, translator=_)

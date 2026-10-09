@@ -11,11 +11,28 @@ from app.db.models.user import User
 ACTIVE_WINDOW_DAYS = 30
 
 
+def _initial_display_name(
+    *, first_name: str, last_name: str | None, username: str | None
+) -> str:
+    telegram_name = " ".join(
+        part.strip() for part in (first_name, last_name or "") if part.strip()
+    )
+    if telegram_name:
+        return telegram_name[:128]
+    if username and username.strip():
+        return username.strip()[:128]
+    return "Foydalanuvchi"
+
+
 async def get_by_telegram_id(session: AsyncSession, telegram_id: int) -> User | None:
     return await session.scalar(select(User).where(User.telegram_id == telegram_id))
 
 
-async def get_by_id(session: AsyncSession, user_id: int) -> User | None:
+async def get_by_id(
+    session: AsyncSession, user_id: int, *, for_update: bool = False
+) -> User | None:
+    if for_update:
+        return await session.scalar(select(User).where(User.id == user_id).with_for_update())
     return await session.get(User, user_id)
 
 
@@ -33,6 +50,9 @@ async def create(
         telegram_id=telegram_id,
         first_name=first_name,
         last_name=last_name,
+        display_name=_initial_display_name(
+            first_name=first_name, last_name=last_name, username=username
+        ),
         username=username,
         language=language,
         source=source,

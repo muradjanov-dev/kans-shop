@@ -17,7 +17,7 @@ from app.bot.handlers.admin.stats import render_stats
 from app.bot.handlers.admin.users import render_users_list
 from app.bot.keyboards.callback_data import ROOT_CATEGORY_ID, AdminMenuCallback
 from app.bot.keyboards.inline.admin_menu import admin_menu_keyboard
-from app.bot.utils.admin_guard import require_admin
+from app.bot.utils.admin_guard import MANAGEMENT_ROLES, require_admin
 from app.bot.utils.i18n import menu_button_texts
 from app.bot.utils.messages import require_message
 from app.db.models.admin import Admin
@@ -74,8 +74,9 @@ async def on_menu_section(
     state: FSMContext,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _):
+    if not await require_admin(callback, admin, _, session=session):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
@@ -95,21 +96,41 @@ async def on_menu_section(
             ),
         )
     elif section == "orders":
-        await render_orders_list(edit, session, "all", 1, _)
+        await render_orders_list(edit, session, admin.id, "all", 1, _)
     elif section == "categories":
         await render_categories_list(edit, session, ROOT_CATEGORY_ID, translator=_)
     elif section == "products":
         await render_products_category_picker(edit, session, _)
     elif section == "stats":
-        await render_stats(edit, session, "today", _)
+        if admin is None:
+            return
+        await render_stats(edit, session, admin, "today", _)
     elif section == "broadcast":
         await render_broadcast_entry(message, state, _)
     elif section == "users":
-        await render_users_list(edit, session, 1, _)
+        if not await require_admin(
+            callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+        ):
+            return
+        if admin is None:
+            return
+        await render_users_list(edit, session, 1, _, admin_id=admin.id)
     elif section == "settings":
-        await render_settings(edit, session, _)
+        if not await require_admin(
+            callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+        ):
+            return
+        if admin is None:
+            return
+        await render_settings(edit, session, _, admin_id=admin.id)
     elif section == "sources":
-        await render_sources_list(edit, session, translator=_)
+        if not await require_admin(
+            callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+        ):
+            return
+        if admin is None:
+            return
+        await render_sources_list(edit, session, admin_id=admin.id, translator=_)
     elif section == "admins":
         if not await require_admin(callback, admin, _, roles=(AdminRole.SUPERADMIN,)):
             return

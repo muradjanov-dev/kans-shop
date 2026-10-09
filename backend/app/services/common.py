@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 DEFAULT_CATALOG_PAGE_SIZE = 8
+PUBLIC_CATALOG_PAGE_SIZE = 24
 
 
 @dataclass(frozen=True)

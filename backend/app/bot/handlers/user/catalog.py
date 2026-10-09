@@ -32,8 +32,7 @@ from app.core.exceptions import CategoryNotFoundError, OutOfStockError, ProductN
 from app.db.models.category import Category
 from app.db.models.product import Product
 from app.db.models.user import User
-from app.db.repositories import favorite_repository
-from app.services import cart_service, catalog_service
+from app.services import cart_service, catalog_service, favorite_service
 from app.services.common import DEFAULT_CATALOG_PAGE_SIZE
 
 router = Router(name="catalog")
@@ -189,7 +188,7 @@ async def send_product_detail(
             unit=unit,
         )
 
-    is_favorite = (await favorite_repository.get(session, user_id, product_id)) is not None
+    is_favorite = await favorite_service.is_favorite(session, user_id, product_id)
     qty = max(1, min(qty, product.stock_qty)) if in_stock else qty
 
     await send(
@@ -363,11 +362,17 @@ async def on_favorite_toggle(
     if message is None:
         return
 
-    existing = await favorite_repository.get(session, user.id, callback_data.product_id)
-    if existing is not None:
-        await favorite_repository.remove(session, user.id, callback_data.product_id)
+    is_favorite = await favorite_service.is_favorite(
+        session, user.id, callback_data.product_id
+    )
+    if is_favorite:
+        await favorite_service.remove_favorite(session, user.id, callback_data.product_id)
     else:
-        await favorite_repository.add(session, user.id, callback_data.product_id)
+        try:
+            await favorite_service.add_favorite(session, user.id, callback_data.product_id)
+        except ProductNotFoundError:
+            await callback.answer(_("common.not_found"), show_alert=True)
+            return
 
     async def edit(text: str, reply_markup=None) -> object:
         return await message.edit_text(text, reply_markup=reply_markup)

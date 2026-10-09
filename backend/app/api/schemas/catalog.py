@@ -17,6 +17,7 @@ class CategoryOut(BaseModel):
     description_ru: str | None
     image_url: str | None
     sort_order: int
+    edit_version: int
     is_active: bool
     products_count: int
 
@@ -51,4 +52,5 @@ class ProductOut(BaseModel):
     lot_url: str | None = None
     views_count: int
     sold_count: int
+    edit_version: int
     images: list[ProductImageOut] = []

@@ -15,6 +15,8 @@ SETTINGS_FIELDS = (
     "support_username",
     "shop_phone",
     "is_shop_open",
+    "welcome_text_uz",
+    "welcome_text_ru",
 )
 
 

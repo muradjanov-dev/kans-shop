@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.db.models.enums import AdminRole
 
 
 class TelegramAuthIn(BaseModel):
@@ -6,6 +8,21 @@ class TelegramAuthIn(BaseModel):
 
 
 class BotCodeAuthIn(BaseModel):
+    code: str
+
+
+class AdminCodeAuthIn(BaseModel):
+    code: str = Field(pattern=r"^[0-9]{6}$")
+
+
+class AdminSessionOut(BaseModel):
+    admin_id: int
+    full_name: str
+    role: AdminRole
+    csrf_token: str
+
+
+class CustomerCodeAuthIn(BaseModel):
     code: str
 
 

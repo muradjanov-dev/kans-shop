@@ -9,9 +9,11 @@ from aiogram.types import (
     Message,
     ReplyKeyboardRemove,
 )
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.user.catalog import send_category_level, send_product_detail
+from app.bot.handlers.user.web_login import send_customer_login_code
 from app.bot.keyboards.callback_data import (
     ORIGIN_CATEGORY,
     ROOT_CATEGORY_ID,
@@ -22,15 +24,15 @@ from app.bot.keyboards.inline.language import language_keyboard
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
 from app.bot.states.receipt_redirect import ReceiptRedirectStates
 from app.bot.utils.i18n import translate
-from app.db.models.admin import Admin
-from app.db.models.enums import PaymentMethod
-from app.db.models.user import User
-from app.db.repositories import (
-    order_repository,
-    setting_repository,
-    traffic_source_repository,
-    user_repository,
+from app.core.exceptions import (
+    ForbiddenError,
+    OrderAlreadyProcessedError,
+    OrderNotFoundError,
 )
+from app.db.models.admin import Admin
+from app.db.models.user import User
+from app.db.repositories import traffic_source_repository, user_repository
+from app.services.receipt_service import get_receipt_upload_order
 
 router = Router(name="start")
 
@@ -48,23 +50,31 @@ async def _handle_receipt_redirect(
     the web storefront (no in-app photo upload there) lands the customer here to attach the
     payment receipt, mirroring the bot's own checkout receipt step but for an order that
     already exists."""
-    order = await order_repository.get_by_id(session, order_id)
-    if (
-        order is None
-        or order.user_id != user_id
-        or order.payment_method != PaymentMethod.CARD_TRANSFER
-        or order.receipt_url is not None
-    ):
+    try:
+        order = await get_receipt_upload_order(
+            session, order_id=order_id, owner_user_id=user_id
+        )
+    except (ForbiddenError, OrderAlreadyProcessedError, OrderNotFoundError):
         return
-    settings_map = await setting_repository.get_all(session)
+
+    instructions = order.payment_instructions
+    card_number = instructions.get("card_number") if isinstance(instructions, dict) else None
+    card_holder = instructions.get("card_holder") if isinstance(instructions, dict) else None
+    if not isinstance(card_number, str) or not card_number.strip():
+        await message.answer(translator("checkout.payment_instructions_unavailable"))
+        return
+    if not isinstance(card_holder, str) or not card_holder.strip():
+        await message.answer(translator("checkout.payment_instructions_unavailable"))
+        return
+
     await state.set_state(ReceiptRedirectStates.uploading)
     await state.update_data(order_id=order.id)
     total = f"{order.total:,.0f}".replace(",", " ")
     await message.answer(
         translator(
             "checkout.card_details",
-            card_number=settings_map.get("card_number", "-"),
-            card_holder=settings_map.get("card_holder", "-"),
+            card_number=card_number,
+            card_holder=card_holder,
             total=total,
         )
     )
@@ -107,8 +117,12 @@ async def _handle_deeplink(
     translator: Callable,
     payload: str,
     state: FSMContext,
+    user: User,
+    redis: Redis,
 ) -> None:
-    if payload.startswith("receipt_"):
+    if payload == "web_login":
+        await send_customer_login_code(message, user, redis, translator)
+    elif payload.startswith("receipt_"):
         try:
             order_id = int(payload.removeprefix("receipt_"))
         except ValueError:
@@ -162,6 +176,7 @@ async def cmd_start(
     _: Callable,
     state: FSMContext,
     admin: Admin | None,
+    redis: Redis,
 ) -> None:
     if command.args:
         await state.update_data(deeplink=command.args)
@@ -194,6 +209,8 @@ async def cmd_start(
             translator=_,
             payload=command.args,
             state=state,
+            user=user,
+            redis=redis,
         )
 
 
@@ -205,6 +222,7 @@ async def on_language_selected(
     user: User,
     state: FSMContext,
     admin: Admin | None,
+    redis: Redis,
 ) -> None:
     await user_repository.set_language(session, user, callback_data.code)
 
@@ -238,5 +256,7 @@ async def on_language_selected(
             translator=translator,
             payload=deeplink,
             state=state,
+            user=user,
+            redis=redis,
         )
     await callback.answer()

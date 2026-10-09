@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.api.schemas.cart import AddCartItemIn, CartOut, UpdateCartItemIn
 from app.db.models.cart import Cart
 from app.db.models.user import User
-from app.services import cart_service
+from app.services import cart_replay_service, cart_service
 
 router = APIRouter(prefix="/cart", tags=["cart"])
 
@@ -20,7 +22,8 @@ def _cart_to_out(cart: Cart) -> CartOut:
 
 @router.get("", response_model=CartOut)
 async def get_cart(
-    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CartOut:
     cart = await cart_service.get_cart(session, user.id)
     return _cart_to_out(cart)
@@ -29,11 +32,21 @@ async def get_cart(
 @router.post("/items", response_model=CartOut, status_code=201)
 async def add_cart_item(
     payload: AddCartItemIn,
+    idempotency_key: UUID | None = Header(default=None, alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CartOut:
-    await cart_service.add_item(session, user.id, payload.product_id, payload.quantity)
-    cart = await cart_service.get_cart(session, user.id)
+    if idempotency_key is None:
+        await cart_service.add_item(session, user.id, payload.product_id, payload.quantity)
+        cart = await cart_service.get_cart(session, user.id)
+    else:
+        cart = await cart_replay_service.add_item_once(
+            session,
+            user_id=user.id,
+            product_id=payload.product_id,
+            quantity=payload.quantity,
+            mutation_key=idempotency_key,
+        )
     return _cart_to_out(cart)
 
 
@@ -42,7 +55,7 @@ async def update_cart_item(
     product_id: int,
     payload: UpdateCartItemIn,
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CartOut:
     await cart_service.update_item_quantity(session, user.id, product_id, payload.quantity)
     cart = await cart_service.get_cart(session, user.id)
@@ -53,7 +66,7 @@ async def update_cart_item(
 async def remove_cart_item(
     product_id: int,
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CartOut:
     await cart_service.remove_item(session, user.id, product_id)
     cart = await cart_service.get_cart(session, user.id)
@@ -62,7 +75,8 @@ async def remove_cart_item(
 
 @router.delete("", response_model=CartOut)
 async def clear_cart(
-    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CartOut:
     await cart_service.clear_cart(session, user.id)
     cart = await cart_service.get_cart(session, user.id)

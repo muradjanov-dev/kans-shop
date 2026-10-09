@@ -10,8 +10,7 @@ from app.bot.utils.admin_guard import require_admin
 from app.bot.utils.messages import require_message
 from app.db.models.admin import Admin
 from app.db.models.enums import OrderStatus
-from app.db.repositories import order_repository
-from app.services.common import Page
+from app.services import admin_order_service
 
 router = Router(name="admin_orders_list")
 
@@ -21,15 +20,26 @@ Sender = Callable[..., Awaitable[object]]
 
 
 async def render_orders_list(
-    send: Sender, session: AsyncSession, status: str, page: int, translator: Callable[..., str]
+    send: Sender,
+    session: AsyncSession,
+    admin_id: int,
+    status: str,
+    page: int,
+    translator: Callable[..., str],
 ) -> None:
     status_enum = OrderStatus(status) if status != "all" else None
-    orders, total = await order_repository.list_for_admin(
-        session, status=status_enum, page=page, limit=ORDERS_PAGE_SIZE
+    page_obj = await admin_order_service.list_admin_orders(
+        session,
+        admin_id=admin_id,
+        status=status_enum,
+        query=None,
+        date_from=None,
+        date_to=None,
+        page=page,
+        limit=ORDERS_PAGE_SIZE,
     )
-    page_obj = Page(items=orders, total=total, page=page, limit=ORDERS_PAGE_SIZE)
     text = translator("admin.orders_list_title")
-    if not orders:
+    if not page_obj.items:
         text += "\n\n" + translator("admin.orders_empty")
     await send(
         text,
@@ -45,8 +55,9 @@ async def on_order_filter(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _):
+    if not await require_admin(callback, admin, _, session=session):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
@@ -54,5 +65,7 @@ async def on_order_filter(
     async def edit(text: str, reply_markup=None) -> object:
         return await message.edit_text(text, reply_markup=reply_markup)
 
-    await render_orders_list(edit, session, callback_data.status, callback_data.page, _)
+    await render_orders_list(
+        edit, session, admin.id, callback_data.status, callback_data.page, _
+    )
     await callback.answer()

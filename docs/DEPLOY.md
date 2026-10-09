@@ -1,4 +1,25 @@
-# Deploying Kans Shop to Railway
+# Deploying Kans Shop
+
+## Current production: Netcup
+
+Production deploys from `main` through `.github/workflows/deploy.yml`. GitHub Actions builds and
+publishes commit-SHA images to GHCR, then updates the Netcup Kans Shop stack and waits for healthy
+containers. The public DNS for `kans.standart-eko.uz` points directly to `159.195.248.216`; Caddy
+owns public API, webhook, payment-callback, and media routing for this site.
+
+The Kans stack shares its existing database, Redis, product-media volume, and Docker network with
+the rest of the host. Keep those resources intact. The React image nginx serves the SPA; Netcup
+Caddy routes API traffic. Local Compose's root nginx owns local API routing.
+
+Private receipt cutover, reviewed compose/Caddy changes, owner settings, verification, and rollback
+are covered by [RELEASE_PURCHASE.md](RELEASE_PURCHASE.md). That review is separate from approval of
+the implementation plan. Do not apply the Kans override or deploy the release until the concrete
+owner review is complete.
+
+## Historical Railway deployment guide
+
+The remaining sections record an earlier Railway setup. They are not the current production
+procedure; do not use Railway steps for the Netcup service.
 
 This project has no CI/CD wired up — deployment is manual, via the Railway dashboard/CLI. Nothing
 in this guide is run automatically by anyone other than you; there's no Railway API token in this
@@ -88,12 +109,16 @@ bot in Telegram (to every configured admin) confirming the app came up, right af
 - [ ] Seed the catalog if this is a fresh database: `railway run --service api python -m app.db.seed`
       (or open a shell on the service via the Railway dashboard).
 
-## 7. Persistent storage for uploads (required)
+## Historical Railway media storage
 
-`MEDIA_ROOT` (`/app/media`) holds product images and payment receipts. A Railway container's
-filesystem is **ephemeral** — without a volume mounted there, every deploy silently discards
-all of it and the storefront renders each product with a broken image, while the API still
-returns 200 for the catalog. Nothing in the logs reports this.
+This section describes the former Railway layout only. It kept product images and receipts under
+one persistent `/app/media` mount. Current receipt cutover separates receipts into
+`PRIVATE_MEDIA_ROOT`; product images remain on the existing public media volume. Follow
+`docs/RELEASE_PURCHASE.md` for the current Netcup procedure.
+
+On Railway, a container filesystem is **ephemeral** unless a volume is mounted at the media path.
+That older arrangement could lose product images during a deploy while the API still returned the
+catalog.
 
 The `api` service therefore has a volume (`api-volume`) mounted at `/app/media`. If you
 recreate the service, recreate the volume too:

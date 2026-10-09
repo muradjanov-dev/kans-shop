@@ -3,6 +3,7 @@ from collections.abc import Callable
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.api.schemas.admin import AdminUserDetail
 from app.bot.keyboards.callback_data import (
     AdminMenuCallback,
     AdminUserActionCallback,
@@ -59,7 +60,7 @@ def admin_user_list_keyboard(
 
 
 def admin_user_detail_keyboard(
-    user: User, *, translator: Callable[..., str]
+    user: User | AdminUserDetail, *, translator: Callable[..., str]
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     action = "unblock" if user.is_blocked else "block"

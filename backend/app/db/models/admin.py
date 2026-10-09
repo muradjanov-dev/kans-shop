@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, String
+from sqlalchemy import BigInteger, Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -16,6 +16,7 @@ class Admin(IDMixin, TimestampMixin, Base):
     notifications_enabled: Mapped[bool] = mapped_column(
         Boolean, server_default="true", nullable=False
     )
+    auth_epoch: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
 
     def __repr__(self) -> str:
         return f"<Admin id={self.id} telegram_id={self.telegram_id} role={self.role}>"

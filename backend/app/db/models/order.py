@@ -2,7 +2,16 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +32,9 @@ if TYPE_CHECKING:
 
 class Order(IDMixin, TimestampMixin, Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint("user_id", "checkout_key", name="uq_orders_user_checkout_key"),
+    )
 
     order_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     user_id: Mapped[int] = mapped_column(
@@ -70,6 +82,16 @@ class Order(IDMixin, TimestampMixin, Base):
     )
     receipt_file_id: Mapped[str | None] = mapped_column(String(255))
     receipt_url: Mapped[str | None] = mapped_column(Text)
+    checkout_key: Mapped[str | None] = mapped_column(String(36))
+    checkout_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    payment_instructions: Mapped[dict | None] = mapped_column(JSONB)
+    receipt_storage_key: Mapped[str | None] = mapped_column(String(512))
+    receipt_content_type: Mapped[str | None] = mapped_column(String(255))
+    receipt_version: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    payment_reviewed_by_admin_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("admins.id", ondelete="SET NULL")
+    )
+    payment_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     processed_by_admin_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("admins.id", ondelete="SET NULL")

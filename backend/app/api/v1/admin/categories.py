@@ -1,15 +1,15 @@
-import re
-import unicodedata
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import MANAGEMENT_ROLES, get_db, require_admin_roles
-from app.api.schemas.admin import CategoryCreateIn, CategoryUpdateIn
+from app.api.deps import MANAGEMENT_ROLES, get_current_admin, get_db, require_admin_roles
+from app.api.schemas.admin import CategoryCreateIn, CategoryMoveIn, CategoryUpdateIn
 from app.api.schemas.catalog import CategoryOut
-from app.core.exceptions import CategoryInUseError, CategoryNotFoundError
-from app.db.models.category import Category
-from app.db.repositories import category_repository, product_repository
+from app.core.exceptions import InvalidFileError
+from app.db.models.admin import Admin
+from app.db.repositories import category_repository
+from app.services import admin_catalog_service
+
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 router = APIRouter(
     prefix="/admin/categories",
@@ -18,67 +18,102 @@ router = APIRouter(
 )
 
 
-def _slugify(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower()
-    return slug or "category"
-
-
-async def _unique_slug(session: AsyncSession, base: str) -> str:
-    slug = base
-    suffix = 2
-    while await category_repository.get_by_slug(session, slug) is not None:
-        slug = f"{base}-{suffix}"
-        suffix += 1
-    return slug
+async def _read_image(file: UploadFile) -> bytes:
+    content = await file.read(_MAX_IMAGE_BYTES + 1)
+    if len(content) > _MAX_IMAGE_BYTES:
+        raise InvalidFileError("File too large", details={"max_bytes": _MAX_IMAGE_BYTES})
+    return content
 
 
 @router.get("", response_model=list[CategoryOut])
-async def list_categories(session: AsyncSession = Depends(get_db)) -> list[CategoryOut]:
+async def list_categories(
+    session: AsyncSession = Depends(get_db, scope="function"),
+) -> list[CategoryOut]:
     categories = await category_repository.list_all(session, active_only=False)
-    return [CategoryOut.model_validate(c) for c in categories]
+    return [CategoryOut.model_validate(category) for category in categories]
 
 
 @router.post("", response_model=CategoryOut, status_code=201)
 async def create_category(
     payload: CategoryCreateIn,
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
+    admin: Admin = Depends(get_current_admin),
 ) -> CategoryOut:
-    slug = await _unique_slug(session, _slugify(payload.name_uz))
-    category = Category(
-        name_uz=payload.name_uz,
-        name_ru=payload.name_ru,
-        slug=slug,
-        parent_id=payload.parent_id,
+    category = await admin_catalog_service.create_category(
+        session, admin_id=admin.id, values=payload
     )
-    session.add(category)
-    await session.flush()
     return CategoryOut.model_validate(category)
 
 
 @router.patch("/{category_id}", response_model=CategoryOut)
 async def update_category(
-    category_id: int, payload: CategoryUpdateIn, session: AsyncSession = Depends(get_db)
+    category_id: int,
+    payload: CategoryUpdateIn,
+    session: AsyncSession = Depends(get_db, scope="function"),
+    admin: Admin = Depends(get_current_admin),
 ) -> CategoryOut:
-    category = await category_repository.get_by_id(session, category_id)
-    if category is None:
-        raise CategoryNotFoundError(f"Category {category_id} not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(category, field, value)
-    await session.flush()
+    category = await admin_catalog_service.update_category(
+        session,
+        admin_id=admin.id,
+        category_id=category_id,
+        expected_edit_version=payload.expected_edit_version,
+        changes=payload,
+    )
+    return CategoryOut.model_validate(category)
+
+
+@router.patch("/{category_id}/move", response_model=CategoryOut)
+async def move_category(
+    category_id: int,
+    payload: CategoryMoveIn,
+    session: AsyncSession = Depends(get_db, scope="function"),
+    admin: Admin = Depends(get_current_admin),
+) -> CategoryOut:
+    category = await admin_catalog_service.move_category(
+        session,
+        admin_id=admin.id,
+        category_id=category_id,
+        parent_id=payload.parent_id,
+        expected_edit_version=payload.expected_edit_version,
+    )
     return CategoryOut.model_validate(category)
 
 
 @router.delete("/{category_id}", status_code=204)
-async def delete_category(category_id: int, session: AsyncSession = Depends(get_db)) -> None:
-    category = await category_repository.get_by_id(session, category_id)
-    if category is None:
-        raise CategoryNotFoundError(f"Category {category_id} not found")
-    _items, product_count = await product_repository.list_by_category(
-        session, category_id, page=1, limit=1, active_only=False
+async def delete_category(
+    category_id: int,
+    session: AsyncSession = Depends(get_db, scope="function"),
+    admin: Admin = Depends(get_current_admin),
+) -> None:
+    await admin_catalog_service.delete_category(
+        session, admin_id=admin.id, category_id=category_id
     )
-    children = await category_repository.list_children(session, category_id, active_only=False)
-    if product_count or children:
-        raise CategoryInUseError("Category still has products or subcategories")
-    await session.delete(category)
-    await session.flush()
+
+
+@router.put("/{category_id}/image", response_model=CategoryOut)
+async def upload_category_image(
+    category_id: int,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_db, scope="function"),
+    admin: Admin = Depends(get_current_admin),
+) -> CategoryOut:
+    category = await admin_catalog_service.set_category_image(
+        session,
+        admin_id=admin.id,
+        category_id=category_id,
+        content=await _read_image(file),
+        content_type=file.content_type or "",
+    )
+    return CategoryOut.model_validate(category)
+
+
+@router.delete("/{category_id}/image", response_model=CategoryOut)
+async def delete_category_image(
+    category_id: int,
+    session: AsyncSession = Depends(get_db, scope="function"),
+    admin: Admin = Depends(get_current_admin),
+) -> CategoryOut:
+    category = await admin_catalog_service.delete_category_image(
+        session, admin_id=admin.id, category_id=category_id
+    )
+    return CategoryOut.model_validate(category)

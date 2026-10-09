@@ -2,6 +2,7 @@ import secrets
 from collections.abc import Callable
 
 from aiogram import Router
+from aiogram.enums import ChatType
 from aiogram.filters import Command
 from aiogram.types import Message
 from redis.asyncio import Redis
@@ -19,6 +20,9 @@ ADMIN_LOGIN_KEY_PREFIX = "admin_login:"
 async def cmd_admin_login(
     message: Message, admin: Admin | None, redis: Redis, _: Callable
 ) -> None:
+    if message.chat.type != ChatType.PRIVATE:
+        await message.answer(_("auth.private_chat_only"))
+        return
     if not await require_admin(message, admin, _):
         return
     assert admin is not None  # require_admin() only returns True when admin is set

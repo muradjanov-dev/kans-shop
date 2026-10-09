@@ -2,6 +2,7 @@ from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.keyboards.callback_data import AdminAcceptPaymentCallback
 from app.bot.utils.admin_order_card import build_admin_order_keyboard, build_admin_order_text
 from app.bot.utils.i18n import translate
 from app.db.models.admin import Admin
@@ -18,7 +19,16 @@ translator = partial(translate, "uz")
 async def _make_order(
     session: AsyncSession, user: User, product: Product, **overrides
 ) -> Order:
-    await setting_repository.set_value(session, "min_order_amount", 0)
+    for key, value in {
+        "is_shop_open": True,
+        "min_order_amount": 0,
+        "delivery_fee": 0,
+        "free_delivery_from": 0,
+    }.items():
+        await setting_repository.set_value(session, key, value)
+    if overrides.get("payment_method") == PaymentMethod.CARD_TRANSFER:
+        await setting_repository.set_value(session, "card_number", "8600 1234")
+        await setting_repository.set_value(session, "card_holder", "Synthetic Shop")
     await cart_service.add_item(session, user.id, product.id, quantity=2)
     kwargs = dict(
         user_id=user.id,
@@ -121,7 +131,29 @@ async def test_keyboard_shows_receipt_button_only_for_card_with_receipt(
         db_session, order_with_card, file_id="AgAD1234", url="http://x/receipts/1.jpg"
     )
     keyboard_with_receipt = build_admin_order_keyboard(order_with_card, translator=translator)
-    assert any(cb.startswith("arcpt:") for cb in _flatten_callback_data(keyboard_with_receipt))
+    callbacks = _flatten_callback_data(keyboard_with_receipt)
+    assert any(cb.startswith("arcpt:") for cb in callbacks)
+    accept_data = next(cb for cb in callbacks if cb.startswith("apay:"))
+    accept = AdminAcceptPaymentCallback.unpack(accept_data)
+    assert accept.order_id == order_with_card.id
+    assert accept.receipt_version == order_with_card.receipt_version
+    assert len(accept_data.encode("utf-8")) <= 64
+
+    callback_rows = keyboard_with_receipt.inline_keyboard
+    accept_row = next(
+        row
+        for row in callback_rows
+        if any(button.callback_data == accept_data for button in row)
+    )
+    assert not any(
+        button.callback_data.startswith(("aconf:", "acreq:")) for button in accept_row
+    )
+
+    largest_callback = AdminAcceptPaymentCallback(
+        order_id=9_223_372_036_854_775_807,
+        receipt_version=2_147_483_647,
+    ).pack()
+    assert len(largest_callback.encode("utf-8")) <= 64
 
 
 async def test_keyboard_terminal_status_has_no_action_buttons(

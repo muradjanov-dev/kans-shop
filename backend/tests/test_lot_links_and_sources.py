@@ -31,7 +31,13 @@ async def _product(
 
 
 async def _checkout(session: AsyncSession, user: User):
-    await setting_repository.set_value(session, "min_order_amount", 0)
+    for key, value in {
+        "is_shop_open": True,
+        "min_order_amount": 0,
+        "delivery_fee": 0,
+        "free_delivery_from": 0,
+    }.items():
+        await setting_repository.set_value(session, key, value)
     return await order_service.checkout(
         session,
         user_id=user.id,

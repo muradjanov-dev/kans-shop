@@ -8,7 +8,7 @@ export function ErrorState({ onRetry }: { onRetry?: () => void }) {
       {onRetry && (
         <button
           onClick={onRetry}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          className="min-h-11 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           {t("common.retry")}
         </button>

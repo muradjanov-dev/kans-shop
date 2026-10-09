@@ -1,3 +1,5 @@
+import { setSystemTheme } from "@/store/theme";
+
 // The Telegram bridge script in index.html owns `window.Telegram.WebApp`, and that global is
 // the source of truth here.
 //
@@ -36,7 +38,7 @@ function applyColorScheme(): void {
   const isDark = isTelegramWebApp()
     ? webApp()?.colorScheme === "dark"
     : window.matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.classList.toggle("dark", isDark);
+  setSystemTheme(isDark ? "dark" : "light");
 }
 
 let themeListenerBound = false;

@@ -27,6 +27,10 @@ class OrderNotFoundError(NotFoundError):
     code = "ORDER_NOT_FOUND"
 
 
+class UserNotFoundError(NotFoundError):
+    code = "USER_NOT_FOUND"
+
+
 class CartEmptyError(KansShopError):
     code = "CART_EMPTY"
     http_status = 400
@@ -34,6 +38,26 @@ class CartEmptyError(KansShopError):
 
 class OutOfStockError(KansShopError):
     code = "OUT_OF_STOCK"
+    http_status = 409
+
+
+class MinimumOrderQuantityError(KansShopError):
+    code = "MIN_ORDER_QUANTITY"
+    http_status = 400
+
+
+class IdempotencyConflictError(KansShopError):
+    code = "IDEMPOTENCY_CONFLICT"
+    http_status = 409
+
+
+class AddressLimitExceededError(KansShopError):
+    code = "ADDRESS_LIMIT_EXCEEDED"
+    http_status = 409
+
+
+class ClientUpdateRequiredError(KansShopError):
+    code = "CLIENT_UPDATE_REQUIRED"
     http_status = 409
 
 
@@ -52,9 +76,39 @@ class UnauthorizedError(KansShopError):
     http_status = 401
 
 
+class AdminSessionRequiredError(UnauthorizedError):
+    code = "ADMIN_SESSION_REQUIRED"
+
+
+class AdminSessionInvalidError(AdminSessionRequiredError):
+    """A formerly valid session was revoked because its owner or lifetime changed."""
+
+
 class ForbiddenError(KansShopError):
     code = "FORBIDDEN"
     http_status = 403
+
+
+class AdminRoleRequiredError(ForbiddenError):
+    code = "ADMIN_ROLE_REQUIRED"
+
+
+class CsrfFailedError(ForbiddenError):
+    code = "CSRF_FAILED"
+
+
+class UnsupportedMediaTypeError(KansShopError):
+    code = "UNSUPPORTED_MEDIA_TYPE"
+    http_status = 415
+
+
+class GoneError(KansShopError):
+    code = "GONE"
+    http_status = 410
+
+
+class InvalidOrExpiredAdminCodeError(UnauthorizedError):
+    code = "INVALID_OR_EXPIRED_CODE"
 
 
 class RateLimitedError(KansShopError):
@@ -67,13 +121,72 @@ class InvalidFileError(KansShopError):
     http_status = 400
 
 
+class BroadcastMediaTooLargeError(KansShopError):
+    code = "BROADCAST_MEDIA_TOO_LARGE"
+    http_status = 413
+
+
 class OrderAlreadyProcessedError(KansShopError):
     code = "ORDER_ALREADY_PROCESSED"
     http_status = 409
 
 
+class ReceiptVersionConflictError(KansShopError):
+    code = "RECEIPT_VERSION_CONFLICT"
+    http_status = 409
+
+
+class PaymentAcceptanceUnavailableError(KansShopError):
+    code = "PAYMENT_ACCEPTANCE_UNAVAILABLE"
+    http_status = 409
+
+
+class AdminOrderMessageValidationError(KansShopError):
+    code = "VALIDATION_ERROR"
+    http_status = 422
+
+
 class CategoryInUseError(KansShopError):
     code = "CATEGORY_IN_USE"
+    http_status = 409
+
+
+class TrafficSourceNotFoundError(NotFoundError):
+    code = "TRAFFIC_SOURCE_NOT_FOUND"
+
+
+class TrafficSourceCodeConflictError(KansShopError):
+    code = "TRAFFIC_SOURCE_CODE_EXISTS"
+    http_status = 409
+
+
+class TrafficSourceInUseError(KansShopError):
+    code = "TRAFFIC_SOURCE_IN_USE"
+    http_status = 409
+
+
+class TrafficSourceValidationError(KansShopError):
+    code = "INVALID_TRAFFIC_SOURCE"
+    http_status = 422
+
+
+class CatalogEditConflictError(KansShopError):
+    code = "ENTITY_CONFLICT"
+    http_status = 409
+
+
+class StoreSettingsConflictError(KansShopError):
+    code = "ENTITY_CONFLICT"
+    http_status = 409
+
+
+class AdminAlreadyExistsError(KansShopError):
+    code = "ENTITY_CONFLICT"
+    http_status = 409
+
+
+class LastSuperadminRequiredError(KansShopError):
+    code = "LAST_SUPERADMIN_REQUIRED"
     http_status = 409
 
 
@@ -109,3 +222,18 @@ class PaymentAlreadyProcessedError(KansShopError):
 class PaymentNotConfiguredError(KansShopError):
     code = "PAYMENT_NOT_CONFIGURED"
     http_status = 400
+
+
+class CheckoutUnavailableError(KansShopError):
+    code = "CHECKOUT_UNAVAILABLE"
+    http_status = 409
+
+
+class QuoteChangedError(KansShopError):
+    code = "QUOTE_CHANGED"
+    http_status = 409
+
+
+class CheckoutValidationError(KansShopError):
+    code = "VALIDATION_ERROR"
+    http_status = 422

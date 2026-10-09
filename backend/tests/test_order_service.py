@@ -2,6 +2,7 @@ import asyncio
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.exceptions import (
@@ -15,12 +16,19 @@ from app.db.models.category import Category
 from app.db.models.enums import OrderStatus, OrderType, ProductUnit
 from app.db.models.order import Order
 from app.db.models.product import Product
+from app.db.models.setting import Setting
 from app.db.models.user import User
 from app.db.repositories import setting_repository
 from app.services import cart_service, order_service
 
 
 async def _checkout_delivery(session: AsyncSession, user_id: int, **overrides) -> Order:
+    current_settings = await setting_repository.get_all(session)
+    await setting_repository.set_value(session, "is_shop_open", True)
+    await setting_repository.set_value(session, "delivery_fee", 0)
+    await setting_repository.set_value(session, "free_delivery_from", 0)
+    if "min_order_amount" not in current_settings:
+        await setting_repository.set_value(session, "min_order_amount", 0)
     kwargs = dict(
         user_id=user_id,
         order_type=OrderType.DELIVERY,
@@ -194,6 +202,16 @@ async def test_concurrent_checkouts_never_oversell_stock(test_engine: AsyncEngin
     'qoldiq yetmasa buyurtma yaratilmaydi (race condition)' requirement from the spec."""
     setup_maker = async_sessionmaker(bind=test_engine, expire_on_commit=False)
     async with setup_maker() as setup_session:
+        setting_keys = (
+            "is_shop_open",
+            "min_order_amount",
+            "delivery_fee",
+            "free_delivery_from",
+        )
+        existing_settings = await setting_repository.get_all(setup_session)
+        previous_settings = {
+            key: (key in existing_settings, existing_settings.get(key)) for key in setting_keys
+        }
         category = Category(name_uz="Race", name_ru="Race", slug="race-cat")
         setup_session.add(category)
         await setup_session.flush()
@@ -216,6 +234,9 @@ async def test_concurrent_checkouts_never_oversell_stock(test_engine: AsyncEngin
         await setup_session.commit()
 
         await setting_repository.set_value(setup_session, "min_order_amount", 0)
+        await setting_repository.set_value(setup_session, "is_shop_open", True)
+        await setting_repository.set_value(setup_session, "delivery_fee", 0)
+        await setting_repository.set_value(setup_session, "free_delivery_from", 0)
         await cart_service.add_item(setup_session, user_a.id, scarce_product.id, quantity=1)
         await cart_service.add_item(setup_session, user_b.id, scarce_product.id, quantity=1)
         await setup_session.commit()
@@ -262,3 +283,8 @@ async def test_concurrent_checkouts_never_oversell_stock(test_engine: AsyncEngin
             category = await cleanup_session.get(Category, category.id)
             if category is not None:
                 await cleanup_session.delete(category)
+            for key, (existed, value) in previous_settings.items():
+                if existed:
+                    await setting_repository.set_value(cleanup_session, key, value)
+                else:
+                    await cleanup_session.execute(delete(Setting).where(Setting.key == key))

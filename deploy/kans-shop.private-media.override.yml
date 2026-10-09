@@ -1,0 +1,13 @@
+services:
+  kans-api:
+    environment:
+      PRIVATE_MEDIA_ROOT: /app/private_media
+      # Reconfirm against the live Caddy container before applying this override.
+      # Uvicorn keeps its default narrow forwarded-header trust; the app parses XFF itself.
+      TRUSTED_PROXY_CIDRS: "172.18.0.8/32"
+    volumes:
+      - kansshop_private_media:/app/private_media
+
+volumes:
+  kansshop_private_media:
+    name: kans-shop_kansshop_private_media

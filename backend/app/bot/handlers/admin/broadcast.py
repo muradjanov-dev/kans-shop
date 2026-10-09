@@ -1,8 +1,8 @@
-import contextlib
+import html
 from collections.abc import Callable
+from uuid import UUID, uuid4
 
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,9 +23,15 @@ from app.bot.states.admin_catalog import BroadcastFormStates
 from app.bot.utils.admin_guard import MANAGEMENT_ROLES, require_admin
 from app.bot.utils.messages import require_message
 from app.db.models.admin import Admin
-from app.db.models.enums import BroadcastStatus, BroadcastTarget
-from app.db.repositories import broadcast_repository, user_repository
-from app.services.broadcast_service import run_broadcast
+from app.db.models.enums import BroadcastTarget
+from app.services.admin_broadcast_service import (
+    BroadcastAudienceChangedError,
+    BroadcastPreview,
+    BroadcastPreviewChangedError,
+    create_broadcast_draft,
+    launch_broadcast,
+    preview_broadcast,
+)
 
 router = Router(name="admin_broadcast")
 
@@ -123,26 +129,55 @@ async def on_target_chosen(
     callback: CallbackQuery,
     callback_data: BroadcastTargetCallback,
     state: FSMContext,
+    session: AsyncSession,
+    admin: Admin | None,
     _: Callable,
 ) -> None:
+    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES, session=session):
+        return
     message = await require_message(callback, _)
     if message is None:
         return
-    await state.update_data(target=callback_data.target)
-    await state.set_state(BroadcastFormStates.confirming)
     data = await state.get_data()
+    target = BroadcastTarget(callback_data.target)
+    assert admin is not None
+    preview = await preview_broadcast(
+        session,
+        admin_id=admin.id,
+        target=target,
+        text=data.get("content_text", ""),
+        photo_storage_key=None,
+        photo_file_id=data.get("photo_file_id"),
+        button_text=data.get("button_text"),
+        button_url=data.get("button_url"),
+    )
+    await state.update_data(
+        target=target.value,
+        preview_content_fingerprint=preview.preview_content_fingerprint,
+        preview_fingerprint=preview.preview_fingerprint,
+        preview_count=preview.preview_count,
+        idempotency_key=str(uuid4()),
+    )
+    await state.set_state(BroadcastFormStates.confirming)
 
     button_markup = broadcast_content_button(data.get("button_text"), data.get("button_url"))
-    preview_text = f"{_('admin.broadcast_preview_title')}\n\n{data.get('content_text', '')}"
+    preview_text = (
+        f"{_('admin.broadcast_preview_title')}\n\n"
+        f"{html.escape(data.get('content_text', ''))}"
+    )
     if data.get("photo_file_id"):
         await message.answer_photo(
-            data["photo_file_id"], caption=preview_text, reply_markup=button_markup
+            data["photo_file_id"],
+            caption=preview_text,
+            reply_markup=button_markup,
+            parse_mode="HTML",
         )
     else:
-        await message.answer(preview_text, reply_markup=button_markup)
+        await message.answer(preview_text, reply_markup=button_markup, parse_mode="HTML")
 
     await message.answer(
-        _("admin.broadcast_choose_target"), reply_markup=broadcast_confirm_keyboard(_)
+        _("admin.broadcast_preview_audience", count=preview.preview_count),
+        reply_markup=broadcast_confirm_keyboard(_),
     )
     await callback.answer()
 
@@ -160,7 +195,7 @@ async def on_broadcast_cancel(callback: CallbackQuery, state: FSMContext, _: Cal
 
 
 @router.callback_query(
-    BroadcastFormStates.confirming, BroadcastConfirmCallback.filter(F.action == "send")
+    BroadcastFormStates.confirming, BroadcastConfirmCallback.filter(F.action == "launch")
 )
 async def on_broadcast_send(
     callback: CallbackQuery,
@@ -170,55 +205,47 @@ async def on_broadcast_send(
     state: FSMContext,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES):
+    if not await require_admin(callback, admin, _, roles=MANAGEMENT_ROLES, session=session):
         return
     message = await require_message(callback, _)
     if message is None:
         return
     assert admin is not None
 
+    assert admin is not None
     data = await state.get_data()
+    try:
+        preview = BroadcastPreview(
+            target=BroadcastTarget(data["target"]),
+            text=data.get("content_text", ""),
+            photo_storage_key=None,
+            photo_file_id=data.get("photo_file_id"),
+            button_text=data.get("button_text"),
+            button_url=data.get("button_url"),
+            preview_content_fingerprint=data["preview_content_fingerprint"],
+            preview_fingerprint=data["preview_fingerprint"],
+            preview_count=data["preview_count"],
+        )
+        broadcast = await create_broadcast_draft(session, admin_id=admin.id, preview=preview)
+        await launch_broadcast(
+            session,
+            admin_id=admin.id,
+            broadcast_id=broadcast.id,
+            preview_fingerprint=preview.preview_fingerprint,
+            preview_count=preview.preview_count,
+            idempotency_key=UUID(data["idempotency_key"]),
+        )
+    except (BroadcastAudienceChangedError, BroadcastPreviewChangedError):
+        await state.set_state(BroadcastFormStates.choosing_target)
+        await message.edit_text(
+            _("admin.broadcast_preview_expired"), reply_markup=broadcast_target_keyboard(_)
+        )
+        return
+    except (KeyError, TypeError, ValueError):
+        await message.edit_text(_("admin.broadcast_preview_expired"))
+        await state.clear()
+        return
+
     await state.clear()
-
-    broadcast = await broadcast_repository.create(
-        session,
-        admin_id=admin.id,
-        text=data.get("content_text", ""),
-        photo_file_id=data.get("photo_file_id"),
-        button_text=data.get("button_text"),
-        button_url=data.get("button_url"),
-        target=BroadcastTarget(data["target"]),
-    )
-    await broadcast_repository.mark_sending(session, broadcast)
     await callback.answer()
-
-    audience = await user_repository.list_for_broadcast(session, data["target"])
-    button_markup = broadcast_content_button(data.get("button_text"), data.get("button_url"))
-    progress_message = await message.edit_text(
-        _("admin.broadcast_sending", sent=0, total=len(audience))
-    )
-    assert isinstance(progress_message, Message)
-
-    async def _report_progress(index: int, total: int) -> None:
-        # e.g. "message is not modified" when the count didn't change since last edit —
-        # never let a cosmetic progress-update failure abort the send loop.
-        with contextlib.suppress(TelegramBadRequest):
-            await progress_message.edit_text(
-                _("admin.broadcast_sending", sent=index, total=total)
-            )
-
-    sent, failed = await run_broadcast(
-        bot,
-        session,
-        audience,
-        text=data.get("content_text", ""),
-        photo_file_id=data.get("photo_file_id"),
-        button_markup=button_markup,
-        on_progress=_report_progress,
-    )
-
-    status = BroadcastStatus.COMPLETED if failed < len(audience) else BroadcastStatus.FAILED
-    await broadcast_repository.finish(
-        session, broadcast, sent=sent, failed=failed, status=status
-    )
-    await progress_message.edit_text(_("admin.broadcast_done", sent=sent, failed=failed))
+    await message.edit_text(_("admin.broadcast_queued", count=preview.preview_count))

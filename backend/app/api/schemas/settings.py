@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PublicSettingsOut(BaseModel):
@@ -13,4 +13,6 @@ class PublicSettingsOut(BaseModel):
     is_shop_open: bool | None = None
     welcome_text_uz: str | None = None
     welcome_text_ru: str | None = None
-    enabled_payment_providers: list[str] = []
+    enabled_payment_providers: list[str] = Field(default_factory=list)
+    checkout_type_readiness: dict[str, bool] = Field(default_factory=dict)
+    payment_method_readiness: dict[str, bool] = Field(default_factory=dict)

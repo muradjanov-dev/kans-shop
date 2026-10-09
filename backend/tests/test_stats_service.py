@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,11 +9,17 @@ from app.db.models.product import Product
 from app.db.models.user import User
 from app.db.repositories import setting_repository
 from app.services import cart_service, order_service
-from app.services.stats_service import get_stats
+from app.services.stats_service import get_admin_stats, get_stats
 
 
 async def _checkout(session: AsyncSession, user: User, product: Product, qty: int = 1):
-    await setting_repository.set_value(session, "min_order_amount", 0)
+    for key, value in {
+        "is_shop_open": True,
+        "min_order_amount": 0,
+        "delivery_fee": 0,
+        "free_delivery_from": 0,
+    }.items():
+        await setting_repository.set_value(session, key, value)
     await cart_service.add_item(session, user.id, product.id, quantity=qty)
     return await order_service.checkout(
         session,
@@ -53,8 +60,15 @@ async def test_get_stats_excludes_cancelled_orders_from_revenue(
     assert stats.top_products == []
 
 
-async def test_get_stats_counts_new_users(db_session: AsyncSession, user: User) -> None:
-    stats = await get_stats(db_session, "today")
+async def test_get_stats_counts_new_users(
+    db_session: AsyncSession, user: User, admin: Admin
+) -> None:
+    # Use fixed Tashkent-local-day input so the assertion does not depend on small clock skew
+    # between the disposable PostgreSQL container and the Python process.
+    now = datetime(2026, 10, 9, 7, 0, tzinfo=UTC)
+    user.created_at = datetime(2026, 10, 8, 20, 0, tzinfo=UTC)
+    await db_session.flush()
+    stats = await get_admin_stats(db_session, admin_id=admin.id, period="today", now=now)
     assert stats.new_users >= 1
 
 

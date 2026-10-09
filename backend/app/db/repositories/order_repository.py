@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +41,9 @@ async def create(
     total: Decimal,
     payment_method: PaymentMethod,
     source: str = "bot",
+    checkout_key: str | None = None,
+    checkout_fingerprint: str | None = None,
+    payment_instructions: dict | None = None,
 ) -> Order:
     order = Order(
         order_number=order_number,
@@ -60,6 +64,9 @@ async def create(
         payment_method=payment_method,
         payment_status=PaymentStatus.PENDING,
         source=source,
+        checkout_key=checkout_key,
+        checkout_fingerprint=checkout_fingerprint,
+        payment_instructions=payment_instructions,
     )
     session.add(order)
     await session.flush()
@@ -95,6 +102,22 @@ async def get_by_id(session: AsyncSession, order_id: int) -> Order | None:
     return await session.scalar(stmt)
 
 
+async def get_by_id_for_update(session: AsyncSession, order_id: int) -> Order | None:
+    stmt = (
+        _with_items(select(Order).where(Order.id == order_id))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return await session.scalar(stmt)
+
+
+async def get_by_checkout_key(session: AsyncSession, user_id: int, key: UUID) -> Order | None:
+    stmt = _with_items(
+        select(Order).where(Order.user_id == user_id, Order.checkout_key == str(key))
+    )
+    return await session.scalar(stmt)
+
+
 async def get_by_number(session: AsyncSession, order_number: str) -> Order | None:
     stmt = _with_items(select(Order).where(Order.order_number == order_number))
     return await session.scalar(stmt)
@@ -109,6 +132,38 @@ async def list_by_user(
     stmt = stmt.offset((page - 1) * limit).limit(limit)
     items = (await session.scalars(stmt)).all()
     return items, total or 0
+
+
+async def list_for_customer_history(
+    session: AsyncSession, user_id: int, *, page: int = 1, limit: int = 24
+) -> tuple[Sequence[Order], int]:
+    base = select(Order).where(Order.user_id == user_id)
+    total = await session.scalar(select(func.count()).select_from(base.subquery()))
+    stmt = (
+        base.order_by(Order.created_at.desc(), Order.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    items = (await session.scalars(stmt)).all()
+    return items, total or 0
+
+
+async def list_customer_timeline_rows(
+    session: AsyncSession, *, user_id: int, order_id: int
+) -> list[tuple[OrderStatus, OrderStatus | None, datetime | None, int | None]]:
+    stmt = (
+        select(
+            Order.status,
+            OrderStatusHistory.to_status,
+            OrderStatusHistory.created_at,
+            OrderStatusHistory.id,
+        )
+        .outerjoin(OrderStatusHistory, OrderStatusHistory.order_id == Order.id)
+        .where(Order.id == order_id, Order.user_id == user_id)
+        .order_by(OrderStatusHistory.created_at, OrderStatusHistory.id)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [(row[0], row[1], row[2], row[3]) for row in rows]
 
 
 async def list_for_admin(

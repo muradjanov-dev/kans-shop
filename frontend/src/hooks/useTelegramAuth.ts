@@ -17,23 +17,26 @@ export function useTelegramAuth(): AuthStatus {
   const [status, setStatus] = useState<AuthStatus>("pending");
   const setTokens = useAuthStore((state) => state.setTokens);
   const accessToken = useAuthStore((state) => state.accessToken);
-  const setLanguage = useLanguageStore((state) => state.setLanguage);
+  const setTelegramLanguage = useLanguageStore((state) => state.setTelegramLanguage);
 
   useEffect(() => {
     let cancelled = false;
 
     function authenticate() {
-      setLanguage(telegramLanguageCode());
+      setTelegramLanguage(telegramLanguageCode());
 
       if (accessToken) {
         setStatus("ready");
         return;
       }
 
+      const expectedEpoch = useAuthStore.getState().authEpoch;
+
       axios
         .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: telegramInitData() })
         .then(({ data }) => {
           if (cancelled) return;
+          if (useAuthStore.getState().authEpoch !== expectedEpoch) return;
           setTokens(data);
           setStatus("ready");
         })
@@ -57,6 +60,10 @@ export function useTelegramAuth(): AuthStatus {
         initTelegramWebApp();
         if (isTelegramWebApp()) {
           authenticate();
+          return;
+        }
+        if (!(window as unknown as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp) {
+          setStatus("unavailable");
           return;
         }
       } catch (error) {

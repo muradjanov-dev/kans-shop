@@ -4,8 +4,12 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 
-def phone_request_keyboard(translator: Callable[..., str]) -> ReplyKeyboardMarkup:
+def phone_request_keyboard(
+    translator: Callable[..., str], *, default_phone: str | None = None
+) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
+    if default_phone:
+        builder.row(KeyboardButton(text=default_phone))
     builder.row(
         KeyboardButton(text=translator("checkout.send_contact_button"), request_contact=True)
     )

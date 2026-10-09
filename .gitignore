@@ -20,6 +20,8 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/*.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/
 
 # Media / uploads (local dev only, not source) — keep directories tracked via .gitkeep
 backend/media/**
@@ -34,3 +36,7 @@ Thumbs.db
 
 # Docker
 *.log
+
+# Agent execution artifacts
+.superpowers/
+.worktrees/
