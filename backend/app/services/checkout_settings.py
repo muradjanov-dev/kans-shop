@@ -6,8 +6,6 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.repositories import setting_repository
-
 NUMERIC_CHECKOUT_SETTINGS = (
     "delivery_fee",
     "free_delivery_from",
@@ -92,7 +90,15 @@ async def load_checkout_settings(session: AsyncSession) -> CheckoutSettings:
     negative, or valid so callers can explain why an order type is unavailable. Decimal
     zero remains valid and distinct from missing configuration.
     """
-    values = await setting_repository.get_all(session)
+    # The typed store-settings service is the single parser used by both admin readiness and
+    # phase 1 checkout. The local import keeps that module free to reuse this parser/dataclass.
+    from app.services.store_settings_service import checkout_settings_from_store
+
+    return await checkout_settings_from_store(session)
+
+
+def checkout_settings_from_values(values: dict[str, Any]) -> CheckoutSettings:
+    """Parse the checkout-relevant part of the persisted, typed settings map."""
     states: dict[str, str] = {}
     numeric_values = {
         key: _decimal_value(values, key, states) for key in NUMERIC_CHECKOUT_SETTINGS

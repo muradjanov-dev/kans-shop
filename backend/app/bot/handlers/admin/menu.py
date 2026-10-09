@@ -17,7 +17,7 @@ from app.bot.handlers.admin.stats import render_stats
 from app.bot.handlers.admin.users import render_users_list
 from app.bot.keyboards.callback_data import ROOT_CATEGORY_ID, AdminMenuCallback
 from app.bot.keyboards.inline.admin_menu import admin_menu_keyboard
-from app.bot.utils.admin_guard import require_admin
+from app.bot.utils.admin_guard import MANAGEMENT_ROLES, require_admin
 from app.bot.utils.i18n import menu_button_texts
 from app.bot.utils.messages import require_message
 from app.db.models.admin import Admin
@@ -105,9 +105,21 @@ async def on_menu_section(
     elif section == "broadcast":
         await render_broadcast_entry(message, state, _)
     elif section == "users":
-        await render_users_list(edit, session, 1, _)
+        if not await require_admin(
+            callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+        ):
+            return
+        if admin is None:
+            return
+        await render_users_list(edit, session, 1, _, admin_id=admin.id)
     elif section == "settings":
-        await render_settings(edit, session, _)
+        if not await require_admin(
+            callback, admin, _, roles=MANAGEMENT_ROLES, session=session
+        ):
+            return
+        if admin is None:
+            return
+        await render_settings(edit, session, _, admin_id=admin.id)
     elif section == "sources":
         await render_sources_list(edit, session, translator=_)
     elif section == "admins":

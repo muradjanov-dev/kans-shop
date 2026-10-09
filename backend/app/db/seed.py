@@ -15,7 +15,6 @@ from app.db.models.admin import Admin
 from app.db.models.category import Category
 from app.db.models.enums import AdminRole, ProductUnit
 from app.db.models.product import Product
-from app.db.models.setting import Setting
 from app.db.session import async_session_maker
 
 log = get_logger(__name__)
@@ -217,28 +216,6 @@ PRODUCTS = [
     ),
 ]
 
-DEFAULT_SETTINGS = [
-    ("delivery_fee", 20000, "Standart yetkazib berish narxi (so'm)"),
-    ("free_delivery_from", 300000, "Shu summadan yuqori bepul yetkazib berish (so'm)"),
-    ("min_order_amount", 30000, "Minimal buyurtma summasi (so'm)"),
-    ("work_hours", "09:00-19:00", "Ish vaqti"),
-    ("card_number", "8600 0000 0000 0000", "To'lov uchun karta raqami"),
-    ("card_holder", "KANS SHOP MCHJ", "Karta egasi"),
-    ("support_username", "kansshop_support", "Qo'llab-quvvatlash Telegram username"),
-    ("shop_phone", "+998901234567", "Do'kon telefon raqami"),
-    ("is_shop_open", True, "Do'kon hozir buyurtma qabul qilyaptimi"),
-    (
-        "welcome_text_uz",
-        "Kans Shop'ga xush kelibsiz! Ofis va maktab buyumlari uchun ishonchli manzil.",
-        "Salomlashuv matni (uz)",
-    ),
-    (
-        "welcome_text_ru",
-        "Добро пожаловать в Kans Shop! Надёжный магазин канцтоваров.",
-        "Приветственный текст (ru)",
-    ),
-]
-
 
 async def seed_categories(session) -> dict[str, int]:
     slug_to_id: dict[str, int] = {}
@@ -300,12 +277,7 @@ async def seed_products(session, slug_to_id: dict[str, int]) -> None:
 
 
 async def seed_settings(session) -> None:
-    for key, value, description in DEFAULT_SETTINGS:
-        existing = await session.scalar(select(Setting).where(Setting.key == key))
-        if existing:
-            continue
-        session.add(Setting(key=key, value=value, description=description))
-        log.info("setting_seeded", key=key)
+    """Keep real store values unset until an owner enters them in the admin console."""
 
 
 async def seed_admins(session) -> None:

@@ -7,6 +7,7 @@ from app.api.v1.admin import (
     orders,
     payments,
     products,
+    settings,
     stats,
     users,
 )
@@ -17,6 +18,7 @@ router.include_router(products.router)
 router.include_router(orders.router)
 router.include_router(payments.router)
 router.include_router(users.router)
+router.include_router(settings.router)
 router.include_router(stats.router)
 router.include_router(broadcasts.router)
 router.include_router(audit.router)

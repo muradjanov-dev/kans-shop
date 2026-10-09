@@ -27,6 +27,10 @@ class OrderNotFoundError(NotFoundError):
     code = "ORDER_NOT_FOUND"
 
 
+class UserNotFoundError(NotFoundError):
+    code = "USER_NOT_FOUND"
+
+
 class CartEmptyError(KansShopError):
     code = "CART_EMPTY"
     http_status = 400
@@ -134,6 +138,11 @@ class CategoryInUseError(KansShopError):
 
 
 class CatalogEditConflictError(KansShopError):
+    code = "ENTITY_CONFLICT"
+    http_status = 409
+
+
+class StoreSettingsConflictError(KansShopError):
     code = "ENTITY_CONFLICT"
     http_status = 409
 

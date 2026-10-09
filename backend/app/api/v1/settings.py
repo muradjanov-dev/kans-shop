@@ -6,7 +6,8 @@ from app.api.schemas.settings import PublicSettingsOut
 from app.db.models.enums import PaymentProvider
 from app.db.repositories import setting_repository
 from app.services import payment_service
-from app.services.checkout_settings import CheckoutSettings, load_checkout_settings
+from app.services.checkout_settings import CheckoutSettings
+from app.services.store_settings_service import checkout_settings_from_store
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -32,7 +33,7 @@ async def get_public_settings(
     session: AsyncSession = Depends(get_db, scope="function")
 ) -> PublicSettingsOut:
     settings_map = await setting_repository.get_all(session)
-    checkout = await load_checkout_settings(session)
+    checkout = await checkout_settings_from_store(session)
     enabled_providers = [
         provider.value
         for provider in PaymentProvider

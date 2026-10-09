@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.db.models.enums import (
     BroadcastStatus,
@@ -190,6 +198,149 @@ class UserOut(BaseModel):
     source: UserSource
     created_at: datetime
     last_active_at: datetime | None
+
+
+class AdminUserSourceSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    code: str
+
+
+class AdminUserDetail(UserOut):
+    orders_count: int
+    first_touch_source: AdminUserSourceSummary | None
+
+
+STORE_SETTING_FIELDS = (
+    "delivery_fee",
+    "free_delivery_from",
+    "min_order_amount",
+    "work_hours",
+    "card_number",
+    "card_holder",
+    "support_username",
+    "shop_phone",
+    "is_shop_open",
+    "welcome_text_uz",
+    "welcome_text_ru",
+)
+
+_STORE_SETTING_NUMERIC_FIELDS = (
+    "delivery_fee",
+    "free_delivery_from",
+    "min_order_amount",
+)
+_STORE_SETTING_STRING_FIELDS = (
+    "work_hours",
+    "card_number",
+    "card_holder",
+    "support_username",
+    "shop_phone",
+    "welcome_text_uz",
+    "welcome_text_ru",
+)
+
+
+class StoreSettingsPatch(BaseModel):
+    """Strict delta of persisted store settings plus the version being edited."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int = Field(strict=True, ge=0)
+    delivery_fee: Decimal | None = Field(default=None, ge=0)
+    free_delivery_from: Decimal | None = Field(default=None, ge=0)
+    min_order_amount: Decimal | None = Field(default=None, ge=0)
+    work_hours: str | None = Field(default=None, max_length=128)
+    card_number: str | None = Field(default=None, max_length=64)
+    card_holder: str | None = Field(default=None, max_length=128)
+    support_username: str | None = Field(default=None, max_length=32)
+    shop_phone: str | None = Field(default=None, max_length=20)
+    is_shop_open: bool | None = None
+    welcome_text_uz: str | None = Field(default=None, max_length=4000)
+    welcome_text_ru: str | None = Field(default=None, max_length=4000)
+
+    @field_validator(*_STORE_SETTING_NUMERIC_FIELDS, mode="before")
+    @classmethod
+    def parse_decimal_strings(cls, value: object) -> Decimal | None:
+        if value is None or isinstance(value, Decimal):
+            return value
+        if not isinstance(value, str):
+            raise ValueError("numeric settings must be decimal strings or null")
+        try:
+            parsed = Decimal(value.strip())
+        except (InvalidOperation, ValueError):
+            raise ValueError("numeric settings must be decimal strings or null") from None
+        if not parsed.is_finite():
+            raise ValueError("numeric settings must be finite")
+        return parsed
+
+    @field_validator(*_STORE_SETTING_STRING_FIELDS, mode="before")
+    @classmethod
+    def normalize_optional_strings(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("store settings must be strings or null")
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("support_username")
+    @classmethod
+    def validate_support_username(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.removeprefix("@").strip()
+        if re.fullmatch(r"[A-Za-z0-9_]{5,32}", normalized) is None:
+            raise ValueError("support_username must be a Telegram username")
+        return normalized
+
+    @field_validator("shop_phone")
+    @classmethod
+    def validate_shop_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if (
+            not value.startswith("+")
+            or not value[1:].isdigit()
+            or not 7 <= len(value[1:]) <= 15
+        ):
+            raise ValueError("shop_phone must be an E.164 phone number")
+        if value[1] == "0":
+            raise ValueError("shop_phone must be an E.164 phone number")
+        return value
+
+    @field_validator("is_shop_open", mode="before")
+    @classmethod
+    def require_boolean_shop_state(cls, value: object) -> bool | None:
+        if value is None or isinstance(value, bool):
+            return value
+        raise ValueError("is_shop_open must be a boolean or null")
+
+
+class StoreSettingsSnapshot(BaseModel):
+    """Typed, secret-free view of the keys that can be configured by store staff."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=0)
+    delivery_fee: Decimal | None = Field(ge=0)
+    free_delivery_from: Decimal | None = Field(ge=0)
+    min_order_amount: Decimal | None = Field(ge=0)
+    work_hours: str | None
+    card_number: str | None
+    card_holder: str | None
+    support_username: str | None
+    shop_phone: str | None
+    is_shop_open: bool | None
+    welcome_text_uz: str | None
+    welcome_text_ru: str | None
+    readiness: dict[str, bool]
+
+    @field_serializer(*_STORE_SETTING_NUMERIC_FIELDS)
+    def serialize_decimal_settings(self, value: Decimal | None) -> str | None:
+        return str(value) if value is not None else None
 
 
 class UserBlockIn(BaseModel):
