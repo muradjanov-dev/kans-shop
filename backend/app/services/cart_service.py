@@ -34,6 +34,8 @@ async def _get_active_product(
     product = await product_repository.get_by_id(session, product_id, for_update=for_update)
     if product is None or not product.is_active:
         raise ProductNotFoundError(f"Product {product_id} not found")
+    if await product_repository.get_public_by_id(session, product_id) is None:
+        raise ProductNotFoundError(f"Product {product_id} not found")
     return product
 
 

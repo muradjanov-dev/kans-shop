@@ -47,6 +47,11 @@ class IdempotencyConflictError(KansShopError):
     http_status = 409
 
 
+class ClientUpdateRequiredError(KansShopError):
+    code = "CLIENT_UPDATE_REQUIRED"
+    http_status = 409
+
+
 class MinOrderAmountError(KansShopError):
     code = "MIN_ORDER_AMOUNT"
     http_status = 400
@@ -124,3 +129,13 @@ class PaymentNotConfiguredError(KansShopError):
 class CheckoutUnavailableError(KansShopError):
     code = "CHECKOUT_UNAVAILABLE"
     http_status = 409
+
+
+class QuoteChangedError(KansShopError):
+    code = "QUOTE_CHANGED"
+    http_status = 409
+
+
+class CheckoutValidationError(KansShopError):
+    code = "VALIDATION_ERROR"
+    http_status = 422

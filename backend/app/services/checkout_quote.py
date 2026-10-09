@@ -11,7 +11,7 @@ from app.core.exceptions import CheckoutUnavailableError
 from app.db.models.cart import CartItem
 from app.db.models.enums import OrderType, PaymentMethod, PaymentProvider
 from app.db.models.product import Product
-from app.db.repositories import cart_repository
+from app.db.repositories import cart_repository, product_repository
 from app.services import payment_service
 from app.services.checkout_settings import CheckoutSettings, load_checkout_settings
 
@@ -27,12 +27,18 @@ class CheckoutQuote:
     ready: bool
     reasons: list[str]
     quote_fingerprint: str | None
+    payment_instructions: dict[str, str] | None = None
 
 
 def _money_string(amount: Decimal | None) -> str | None:
     if amount is None:
         return None
-    return f"{amount.quantize(_CENT, rounding=ROUND_HALF_UP):.2f}"
+    return f"{_round_money(amount):.2f}"
+
+
+def _round_money(amount: Decimal) -> Decimal:
+    """Return the same cents that Numeric(12, 2) persists for an order."""
+    return amount.quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
 def _setting_reason(settings: CheckoutSettings, key: str, label: str) -> str:
@@ -141,7 +147,8 @@ async def quote_checkout(
     stock_ok = True
     for item in items:
         product = item.product
-        if product is None:
+        public_product = await product_repository.get_public_by_id(session, item.product_id)
+        if product is None or public_product is None:
             missing_product = True
             stock_ok = False
             blockers.append(f"CHECKOUT_UNAVAILABLE: Product {item.product_id} is unavailable.")
@@ -200,8 +207,14 @@ async def quote_checkout(
     else:
         delivery_fee = None
 
+    subtotal = _round_money(subtotal)
+    if delivery_fee is not None:
+        delivery_fee = _round_money(delivery_fee)
+
     total = (
-        subtotal + delivery_fee if delivery_fee is not None and not missing_product else None
+        _round_money(subtotal + delivery_fee)
+        if delivery_fee is not None and not missing_product
+        else None
     )
 
     base_ready = not blockers and numeric_settings_ready and min_order_met and stock_ok
@@ -284,4 +297,11 @@ async def quote_checkout(
         ready=base_ready and payment_method in methods,
         reasons=reasons,
         quote_fingerprint=fingerprint,
+        payment_instructions=(
+            {"card_number": settings.card_number, "card_holder": settings.card_holder}
+            if payment_method == PaymentMethod.CARD_TRANSFER
+            and settings.card_number is not None
+            and settings.card_holder is not None
+            else None
+        ),
     )

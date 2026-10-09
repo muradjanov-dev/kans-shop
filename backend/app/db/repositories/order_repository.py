@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +41,9 @@ async def create(
     total: Decimal,
     payment_method: PaymentMethod,
     source: str = "bot",
+    checkout_key: str | None = None,
+    checkout_fingerprint: str | None = None,
+    payment_instructions: dict | None = None,
 ) -> Order:
     order = Order(
         order_number=order_number,
@@ -60,6 +64,9 @@ async def create(
         payment_method=payment_method,
         payment_status=PaymentStatus.PENDING,
         source=source,
+        checkout_key=checkout_key,
+        checkout_fingerprint=checkout_fingerprint,
+        payment_instructions=payment_instructions,
     )
     session.add(order)
     await session.flush()
@@ -92,6 +99,22 @@ async def add_item(
 
 async def get_by_id(session: AsyncSession, order_id: int) -> Order | None:
     stmt = _with_items(select(Order).where(Order.id == order_id))
+    return await session.scalar(stmt)
+
+
+async def get_by_id_for_update(session: AsyncSession, order_id: int) -> Order | None:
+    stmt = (
+        _with_items(select(Order).where(Order.id == order_id))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return await session.scalar(stmt)
+
+
+async def get_by_checkout_key(session: AsyncSession, user_id: int, key: UUID) -> Order | None:
+    stmt = _with_items(
+        select(Order).where(Order.user_id == user_id, Order.checkout_key == str(key))
+    )
     return await session.scalar(stmt)
 
 

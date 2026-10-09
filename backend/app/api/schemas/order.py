@@ -1,7 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.db.models.enums import (
@@ -23,6 +24,17 @@ class CheckoutIn(BaseModel):
     latitude: Decimal | None = None
     longitude: Decimal | None = None
     comment: str | None = None
+    purchase_contract_version: Literal[1] | None = None
+    expected_total: Decimal | None = None
+    expected_quote: str | None = None
+
+    @field_validator("customer_name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not 1 <= len(normalized) <= 128:
+            raise ValueError("Name must contain 1 to 128 characters")
+        return normalized
 
     @field_validator("customer_phone")
     @classmethod
@@ -31,6 +43,19 @@ class CheckoutIn(BaseModel):
         if not is_valid_uz_phone(normalized):
             raise ValueError(f"Invalid Uzbek phone number: {value}")
         return normalized
+
+    @model_validator(mode="after")
+    def _validate_purchase_contract(self) -> "CheckoutIn":
+        has_quote_metadata = self.expected_total is not None or self.expected_quote is not None
+        if self.purchase_contract_version is None and has_quote_metadata:
+            raise ValueError("Quote metadata requires purchase_contract_version=1")
+        if self.purchase_contract_version == 1 and (
+            self.expected_total is None or not self.expected_quote
+        ):
+            raise ValueError(
+                "purchase_contract_version=1 requires expected_total and expected_quote"
+            )
+        return self
 
 
 class OrderItemOut(BaseModel):

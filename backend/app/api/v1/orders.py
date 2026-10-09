@@ -1,5 +1,7 @@
+from uuid import UUID
+
 from aiogram import Bot
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Header, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_db
@@ -14,15 +16,21 @@ from app.api.schemas.order import (
 )
 from app.bot.services.order_notifications import notify_admins_new_order
 from app.core.config import settings
-from app.core.exceptions import ForbiddenError, InvalidFileError
+from app.core.exceptions import (
+    CheckoutValidationError,
+    ClientUpdateRequiredError,
+    ForbiddenError,
+    InvalidFileError,
+)
 from app.core.uploads import (
     ALLOWED_RECEIPT_MIME_TYPES,
     MAX_RECEIPT_SIZE_BYTES,
     MIME_EXTENSIONS,
 )
+from app.db.models.enums import PaymentMethod
 from app.db.models.user import User
 from app.db.repositories import order_repository
-from app.services import order_service, payment_service
+from app.services import order_service, payment_service, purchase_service
 from app.services.checkout_quote import quote_checkout
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -54,27 +62,48 @@ async def quote_order(
 @router.post("", response_model=OrderOut, status_code=201)
 async def checkout(
     payload: CheckoutIn,
+    response: Response,
+    checkout_key: UUID | None = Header(default=None, alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
     bot: Bot = Depends(get_bot),
 ) -> OrderOut:
-    order = await order_service.checkout(
+    if payload.payment_method == PaymentMethod.CARD_TRANSFER and (
+        payload.purchase_contract_version is None
+    ):
+        raise ClientUpdateRequiredError(
+            "Reload the checkout to review the current card payment instructions."
+        )
+
+    if payload.purchase_contract_version == 1 and checkout_key is None:
+        raise CheckoutValidationError(
+            "Idempotency-Key is required for a quote-bound checkout."
+        )
+
+    result = await purchase_service.submit_checkout(
         session,
         user_id=user.id,
-        order_type=payload.order_type,
-        customer_name=payload.customer_name,
-        customer_phone=payload.customer_phone,
-        payment_method=payload.payment_method,
-        address=payload.address,
-        address_comment=payload.address_comment,
-        latitude=payload.latitude,
-        longitude=payload.longitude,
-        comment=payload.comment,
+        command=purchase_service.CheckoutCommand(
+            order_type=payload.order_type,
+            customer_name=payload.customer_name,
+            customer_phone=payload.customer_phone,
+            payment_method=payload.payment_method,
+            address=payload.address,
+            address_comment=payload.address_comment,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            comment=payload.comment,
+        ),
+        checkout_key=checkout_key,
+        expected_quote=payload.expected_quote,
+        expected_total=payload.expected_total,
         source="webapp",
         lang=user.language,
     )
-    await notify_admins_new_order(bot, session, order)
-    return OrderOut.model_validate(order)
+    if result.created:
+        await notify_admins_new_order(bot, session, result.order)
+    response.status_code = 201 if result.created else 200
+    return OrderOut.model_validate(result.order)
 
 
 @router.get("", response_model=list[OrderOut])

@@ -42,7 +42,7 @@ async def get_by_id(
 async def get_public_by_id(session: AsyncSession, product_id: int) -> Product | None:
     stmt = _with_images(
         select(Product).where(Product.id == product_id, public_visibility_predicate())
-    )
+    ).execution_options(populate_existing=True)
     return await session.scalar(stmt)
 
 

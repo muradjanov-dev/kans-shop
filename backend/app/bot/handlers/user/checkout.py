@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from decimal import Decimal
+from uuid import UUID, uuid4
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
@@ -39,16 +40,21 @@ from app.bot.utils.messages import require_message
 from app.core.config import settings
 from app.core.exceptions import (
     CartEmptyError,
+    CheckoutUnavailableError,
+    CheckoutValidationError,
+    IdempotencyConflictError,
     MinOrderAmountError,
     OutOfStockError,
     PaymentNotConfiguredError,
+    QuoteChangedError,
 )
 from app.core.uploads import ALLOWED_RECEIPT_MIME_TYPES, MAX_RECEIPT_SIZE_BYTES
 from app.db.models.enums import OrderType, PaymentMethod, PaymentProvider
 from app.db.models.order import Order
 from app.db.models.user import User
 from app.db.repositories import setting_repository
-from app.services import cart_service, order_service, payment_service
+from app.services import cart_service, order_service, payment_service, purchase_service
+from app.services.checkout_quote import CheckoutQuote, quote_checkout
 
 router = Router(name="checkout")
 
@@ -122,6 +128,35 @@ async def _send_lot_links(
         )
 
 
+async def _request_card_receipt(
+    message: Message,
+    state: FSMContext,
+    quote: CheckoutQuote,
+    *,
+    translator: Callable[..., str],
+) -> None:
+    instructions = quote.payment_instructions
+    if quote.total is None or instructions is None:
+        await message.answer(translator("checkout.checkout_unavailable"))
+        return
+    await state.update_data(
+        payment_quote_fingerprint=quote.quote_fingerprint,
+        payment_quote_total=str(quote.total),
+        receipt_file_id=None,
+        receipt_is_document=False,
+    )
+    await state.set_state(CheckoutStates.uploading_receipt)
+    await message.answer(
+        translator(
+            "checkout.card_details",
+            card_number=instructions["card_number"],
+            card_holder=instructions["card_holder"],
+            total=_format_price(quote.total),
+        ),
+        reply_markup=back_cancel_keyboard(translator),
+    )
+
+
 def _contact_manager_keyboard(
     support_username: str, *, translator: Callable[..., str]
 ) -> InlineKeyboardMarkup:
@@ -147,13 +182,25 @@ async def _cancel_checkout(
 
 
 async def _build_summary(
-    session: AsyncSession, data: dict, *, lang: str, translator: Callable[..., str]
+    session: AsyncSession,
+    data: dict,
+    *,
+    lang: str,
+    translator: Callable[..., str],
+    quote: CheckoutQuote | None = None,
 ) -> tuple[str, Decimal, Decimal, Decimal]:
     cart = await cart_service.get_cart(session, data["user_id"])
-    subtotal = cart_service.calculate_subtotal(cart)
     order_type = OrderType(data["order_type"])
-    delivery_fee = await order_service.calculate_delivery_fee(session, order_type, subtotal)
-    total = subtotal + delivery_fee
+    if quote is None:
+        subtotal = cart_service.calculate_subtotal(cart)
+        delivery_fee = await order_service.calculate_delivery_fee(
+            session, order_type, subtotal
+        )
+        total = subtotal + delivery_fee
+    else:
+        subtotal = quote.subtotal
+        delivery_fee = quote.delivery_fee or Decimal("0")
+        total = quote.total or Decimal("0")
 
     lines = [translator("checkout.summary_title"), ""]
     lines.append(
@@ -539,23 +586,18 @@ async def on_payment_method_chosen(
     if callback_data.value in ONLINE_PAYMENT_METHODS:
         await _show_confirmation(message, session, state, lang=lang, _=_)
     elif callback_data.value == PaymentMethod.CARD_TRANSFER.value:
-        settings_map = await setting_repository.get_all(session)
         data = await state.get_data()
-        cart = await cart_service.get_cart(session, data["user_id"])
-        subtotal = cart_service.calculate_subtotal(cart)
-        delivery_fee = await order_service.calculate_delivery_fee(
-            session, OrderType(data["order_type"]), subtotal
+        quote = await quote_checkout(
+            session,
+            user_id=data["user_id"],
+            order_type=OrderType(data["order_type"]),
+            payment_method=PaymentMethod.CARD_TRANSFER,
         )
-        await state.set_state(CheckoutStates.uploading_receipt)
-        await message.answer(
-            _(
-                "checkout.card_details",
-                card_number=settings_map.get("card_number", "-"),
-                card_holder=settings_map.get("card_holder", "-"),
-                total=_format_price(subtotal + delivery_fee),
-            ),
-            reply_markup=back_cancel_keyboard(_),
-        )
+        if quote.ready:
+            await _request_card_receipt(message, state, quote, translator=_)
+        else:
+            await callback.answer(_("checkout.checkout_unavailable"), show_alert=True)
+            return
     else:
         await _show_confirmation(message, session, state, lang=lang, _=_)
     await callback.answer()
@@ -644,8 +686,70 @@ async def _show_confirmation(
 ) -> None:
     await state.set_state(CheckoutStates.confirming)
     data = await state.get_data()
+    try:
+        command = purchase_service.normalize_checkout_command(
+            purchase_service.CheckoutCommand(
+                order_type=OrderType(data["order_type"]),
+                customer_name=data.get("name", ""),
+                customer_phone=data.get("phone", ""),
+                payment_method=PaymentMethod(
+                    data.get("payment_method", PaymentMethod.CASH.value)
+                ),
+                address=data.get("address"),
+                address_comment=data.get("address_comment"),
+                latitude=(
+                    Decimal(str(data["latitude"]))
+                    if data.get("latitude") is not None
+                    else None
+                ),
+                longitude=(
+                    Decimal(str(data["longitude"]))
+                    if data.get("longitude") is not None
+                    else None
+                ),
+                comment=data.get("comment"),
+            )
+        )
+        quote = await quote_checkout(
+            session,
+            user_id=data["user_id"],
+            order_type=command.order_type,
+            payment_method=command.payment_method,
+        )
+    except CheckoutValidationError:
+        await message.answer(_("checkout.invalid_customer_info"))
+        return
+
+    if not quote.ready or quote.quote_fingerprint is None or quote.total is None:
+        await message.answer(_("checkout.checkout_unavailable"))
+        return
+
+    if (
+        command.payment_method == PaymentMethod.CARD_TRANSFER
+        and data.get("payment_quote_fingerprint")
+        and data["payment_quote_fingerprint"] != quote.quote_fingerprint
+    ):
+        await _request_card_receipt(message, state, quote, translator=_)
+        return
+
+    request_fingerprint = purchase_service.checkout_request_fingerprint(
+        command, expected_quote=quote.quote_fingerprint, expected_total=quote.total
+    )
+    checkout_key = (
+        UUID(data["checkout_key"])
+        if data.get("checkout_request_fingerprint") == request_fingerprint
+        and data.get("checkout_key")
+        else uuid4()
+    )
+    await state.update_data(
+        checkout_key=str(checkout_key),
+        checkout_request_fingerprint=request_fingerprint,
+        expected_quote=quote.quote_fingerprint,
+        expected_total=str(quote.total),
+    )
+
     summary, _subtotal, _fee, _total = await _build_summary(
-        session, data, lang=lang, translator=_
+        session, data, lang=lang, translator=_, quote=quote
     )
     await message.answer(summary, reply_markup=confirm_keyboard(_))
 
@@ -667,22 +771,53 @@ async def on_confirm(
         return
 
     data = await state.get_data()
+    if (
+        not data.get("checkout_key")
+        or not data.get("expected_quote")
+        or not data.get("expected_total")
+    ):
+        await _show_confirmation(message, session, state, lang=lang, _=_)
+        await callback.answer()
+        return
+
+    command = purchase_service.CheckoutCommand(
+        order_type=OrderType(data["order_type"]),
+        customer_name=data.get("name", ""),
+        customer_phone=data.get("phone", ""),
+        payment_method=PaymentMethod(data.get("payment_method", PaymentMethod.CASH.value)),
+        address=data.get("address"),
+        address_comment=data.get("address_comment"),
+        latitude=(
+            Decimal(str(data["latitude"])) if data.get("latitude") is not None else None
+        ),
+        longitude=(
+            Decimal(str(data["longitude"])) if data.get("longitude") is not None else None
+        ),
+        comment=data.get("comment"),
+    )
     try:
-        order = await order_service.checkout(
+        normalized = purchase_service.normalize_checkout_command(command)
+        request_fingerprint = purchase_service.checkout_request_fingerprint(
+            normalized,
+            expected_quote=data["expected_quote"],
+            expected_total=Decimal(data["expected_total"]),
+        )
+        if request_fingerprint != data.get("checkout_request_fingerprint"):
+            await _show_confirmation(message, session, state, lang=lang, _=_)
+            await callback.answer(_("checkout.quote_changed"), show_alert=True)
+            return
+
+        result = await purchase_service.submit_checkout(
             session,
             user_id=user.id,
-            order_type=OrderType(data["order_type"]),
-            customer_name=data["name"],
-            customer_phone=data["phone"],
-            payment_method=PaymentMethod(data.get("payment_method", PaymentMethod.CASH.value)),
-            address=data.get("address"),
-            address_comment=data.get("address_comment"),
-            latitude=data.get("latitude"),
-            longitude=data.get("longitude"),
-            comment=data.get("comment"),
+            command=command,
+            checkout_key=UUID(data["checkout_key"]),
+            expected_quote=data["expected_quote"],
+            expected_total=Decimal(data["expected_total"]),
             source="bot",
             lang=lang,
         )
+        order = result.order
     except CartEmptyError:
         await callback.answer(_("checkout.cart_empty"), show_alert=True)
         await state.clear()
@@ -700,17 +835,28 @@ async def on_confirm(
     except OutOfStockError:
         await callback.answer(_("checkout.out_of_stock_error"), show_alert=True)
         return
+    except QuoteChangedError:
+        await _show_confirmation(message, session, state, lang=lang, _=_)
+        await callback.answer(_("checkout.quote_changed"), show_alert=True)
+        return
+    except (CheckoutUnavailableError, CheckoutValidationError):
+        await callback.answer(_("checkout.checkout_unavailable"), show_alert=True)
+        return
+    except IdempotencyConflictError:
+        await callback.answer(_("checkout.already_submitted"), show_alert=True)
+        return
 
-    receipt_file_id = data.get("receipt_file_id")
-    if receipt_file_id:
-        receipt_url = await _persist_receipt(
-            bot, order.id, receipt_file_id, data.get("receipt_is_document", False)
-        )
-        await order_service.attach_receipt(
-            session, order, file_id=receipt_file_id, url=receipt_url
-        )
+    if result.created:
+        receipt_file_id = data.get("receipt_file_id")
+        if receipt_file_id:
+            receipt_url = await _persist_receipt(
+                bot, order.id, receipt_file_id, data.get("receipt_is_document", False)
+            )
+            await order_service.attach_receipt(
+                session, order, file_id=receipt_file_id, url=receipt_url
+            )
 
-    await notify_admins_new_order(bot, session, order)
+        await notify_admins_new_order(bot, session, order)
 
     summary = _build_order_summary(order, translator=_)
     await state.clear()
