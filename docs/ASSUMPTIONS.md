@@ -183,7 +183,9 @@ ambiguous or silent, the decision made and its rationale are logged here.
   with progress-reporting as an optional callback so the bot's Telegram-message-editing UI stays
   bot-specific while the send/retry/pacing core is shared) rather than duplicated.
 - **Rate limiting**: implemented as Starlette middleware (`app/api/rate_limit.py`) using Redis
-  `INCR`+`EXPIRE` sliding-ish windows — 20 req/min/IP general, 3 req/min/IP on `POST /api/v1/
+  `INCR`+`EXPIRE` fixed windows — 300 req/min/IP general (raised from the historical 20
+  after ordinary storefront browsing and admin polling exhausted the shared budget),
+  5 code exchanges per 5 minutes/IP, and 3 req/min/IP on `POST /api/v1/
   orders` specifically (checkout), per spec section 10. Applied only under `/api/v1`; `/webhook`
   and `/media` are exempt (webhook has its own secret-token gate, media is static reads).
 - **`products_count` denormalization**: the bot's product editor never hard-deletes a product

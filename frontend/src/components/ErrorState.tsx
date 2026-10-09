@@ -1,10 +1,10 @@
 import { useTranslate } from "@/lib/i18n";
 
-export function ErrorState({ onRetry }: { onRetry?: () => void }) {
+export function ErrorState({ onRetry, message }: { onRetry?: () => void; message?: string }) {
   const t = useTranslate();
   return (
     <div className="flex flex-col items-center gap-3 py-10 text-center text-gray-500">
-      <p>{t("common.error")}</p>
+      <p>{message ?? t("common.error")}</p>
       {onRetry && (
         <button
           onClick={onRetry}

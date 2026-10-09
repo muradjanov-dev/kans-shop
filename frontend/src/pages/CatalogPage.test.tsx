@@ -344,6 +344,25 @@ describe("CatalogPage", () => {
     expect(screen.getByRole("searchbox", { name: "Mahsulotlarni qidirish" })).toHaveValue("");
   });
 
+  it("shows localized rate-limit guidance when the category tree is rate limited", async () => {
+    const rateLimitedError = Object.assign(new Error("Rate limited"), {
+      isAxiosError: true,
+      response: { status: 429 },
+    });
+    get.mockImplementation(async (url: string) => {
+      if (url === "/catalog/categories") throw rateLimitedError;
+      if (url === "/catalog/featured") return response([]);
+      if (url === "/settings/public") return response(publicSettings());
+      if (url === "/catalog/products") return response(productPage([]));
+      throw new Error(`Unexpected GET ${String(url)}`);
+    });
+
+    renderCatalog();
+
+    expect(await screen.findByText("So‘rovlar soni cheklangan. Biroz kutib, qayta urinib ko‘ring.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Qayta urinish" })).toBeInTheDocument();
+  });
+
   it("shows localized product details, exact prices and bounded quantities", async () => {
     const detail = {
       ...product(7, "Daftar"),
