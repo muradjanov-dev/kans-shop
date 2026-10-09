@@ -10,6 +10,11 @@ import type { Profile } from "@/types/api";
 
 type ProfileDraft = { display_name: string; phone: string; language: Profile["language"] };
 
+function isCurrentOwner(owner: { userId: string; authEpoch: number }): boolean {
+  const current = useAuthStore.getState();
+  return current.userId === owner.userId && current.authEpoch === owner.authEpoch;
+}
+
 function toDraft(profile: Profile): ProfileDraft {
   return {
     display_name: profile.display_name,
@@ -21,6 +26,7 @@ function toDraft(profile: Profile): ProfileDraft {
 export function ProfilePage() {
   const t = useTranslate();
   const userId = useAuthStore((state) => state.userId);
+  const authEpoch = useAuthStore((state) => state.authEpoch);
   const accessToken = useAuthStore((state) => state.accessToken);
   const { openLogin, logout } = useCustomerAuth();
   const profile = useCustomerProfile();
@@ -30,15 +36,17 @@ export function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const draftOwnerId = useRef<string | null>(null);
   const isAuthenticated = Boolean(accessToken && userId);
+  const visibleDraft = userId && draftOwnerId.current === userId ? draft : null;
 
   useEffect(() => {
-    if (userId && draftOwnerId.current && draftOwnerId.current !== userId) {
+    if (draftOwnerId.current && draftOwnerId.current !== userId) {
       draftOwnerId.current = null;
       setDraft(null);
       setValidationError(null);
       setSaved(false);
+      updateProfile.reset();
     }
-  }, [userId]);
+  }, [updateProfile.reset, userId]);
 
   useEffect(() => {
     if (userId && profile.data && draftOwnerId.current !== userId) {
@@ -51,9 +59,14 @@ export function ProfilePage() {
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft) return;
-    const name = draft.display_name.trim();
-    const phone = draft.phone.trim();
+    if (!visibleDraft) return;
+    const owner = userId ? { userId, authEpoch } : null;
+    if (!isAuthenticated || !owner || !isCurrentOwner(owner)) {
+      openLogin();
+      return;
+    }
+    const name = visibleDraft.display_name.trim();
+    const phone = visibleDraft.phone.trim();
     if (name.length < 1 || name.length > 128) {
       setValidationError("profile.validation.name");
       setSaved(false);
@@ -64,21 +77,19 @@ export function ProfilePage() {
       setSaved(false);
       return;
     }
-    if (!isAuthenticated) {
-      openLogin();
-      return;
-    }
-
     setValidationError(null);
     setSaved(false);
     try {
       const updated = await updateProfile.mutateAsync({
         display_name: name,
         phone: phone ? normalizeUzPhone(phone) : null,
-        language: draft.language,
+        language: visibleDraft.language,
       });
+      if (!isCurrentOwner(owner)) return;
       setDraft(toDraft(updated));
+      if (!isCurrentOwner(owner)) return;
       useLanguageStore.getState().setLanguage(updated.language);
+      if (!isCurrentOwner(owner)) return;
       setSaved(true);
     } catch {
       // Keep the draft so a network, authorization or server failure can be retried.
@@ -126,11 +137,11 @@ export function ProfilePage() {
         </div>
       )}
 
-      {isAuthenticated && profile.isLoading && !draft && (
+      {isAuthenticated && profile.isLoading && !visibleDraft && (
         <p className="py-8 text-center text-sm text-slate-500" role="status">{t("common.loading")}</p>
       )}
 
-      {draft && (
+      {visibleDraft && (
         <form className="flex max-w-xl flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900" onSubmit={(event) => void save(event)}>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-slate-200">
             {t("profile.name")}
@@ -139,9 +150,9 @@ export function ProfilePage() {
               className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/15 dark:bg-white/5 dark:text-white"
               disabled={updateProfile.isPending}
               maxLength={128}
-              onChange={(event) => { setDraft({ ...draft, display_name: event.target.value }); setSaved(false); }}
+              onChange={(event) => { setDraft({ ...visibleDraft, display_name: event.target.value }); setSaved(false); }}
               required
-              value={draft.display_name}
+              value={visibleDraft.display_name}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -152,8 +163,8 @@ export function ProfilePage() {
               disabled={updateProfile.isPending}
               inputMode="tel"
               maxLength={20}
-              onChange={(event) => { setDraft({ ...draft, phone: event.target.value }); setSaved(false); }}
-              value={draft.phone}
+              onChange={(event) => { setDraft({ ...visibleDraft, phone: event.target.value }); setSaved(false); }}
+              value={visibleDraft.phone}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -161,8 +172,8 @@ export function ProfilePage() {
             <select
               className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/15 dark:bg-slate-900 dark:text-white"
               disabled={updateProfile.isPending}
-              onChange={(event) => { setDraft({ ...draft, language: event.target.value as Profile["language"] }); setSaved(false); }}
-              value={draft.language}
+              onChange={(event) => { setDraft({ ...visibleDraft, language: event.target.value as Profile["language"] }); setSaved(false); }}
+              value={visibleDraft.language}
             >
               <option value="uz">O‘zbekcha</option>
               <option value="ru">Русский</option>

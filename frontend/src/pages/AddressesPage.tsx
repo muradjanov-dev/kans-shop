@@ -19,13 +19,15 @@ export function AddressesPage() {
   const [actionError, setActionError] = useState(false);
   const dialogOwnerId = useRef<string | null>(null);
   const isAuthenticated = Boolean(accessToken && userId);
+  const showDialog = Boolean(dialogOpen && userId && dialogOwnerId.current === userId);
   const addresses = addressesQuery.data ?? [];
 
   useEffect(() => {
-    if (dialogOpen && dialogOwnerId.current && userId && dialogOwnerId.current !== userId) {
+    if (dialogOpen && dialogOwnerId.current && dialogOwnerId.current !== userId) {
       dialogOwnerId.current = null;
       setDialogOpen(false);
       setEditingAddress(null);
+      setActionError(false);
     }
   }, [dialogOpen, userId]);
 
@@ -133,11 +135,12 @@ export function AddressesPage() {
         </div>
       )}
 
-      {dialogOpen && (
+      {showDialog && (
         <AddressFormDialog
           address={editingAddress}
           key={`${editingAddress?.id ?? "new"}`}
           onCancel={() => {
+            dialogOwnerId.current = null;
             setDialogOpen(false);
             setEditingAddress(null);
           }}

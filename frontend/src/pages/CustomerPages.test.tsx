@@ -1,9 +1,11 @@
 import axios, { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse } from "axios";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
+import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 import { useAuthStore } from "@/store/auth";
+import { useLanguageStore } from "@/store/language";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type { Address, CheckoutQuote, Page, Product, Profile } from "@/types/api";
 import { FavoriteButton } from "@/components/storefront/FavoriteButton";
@@ -100,6 +102,11 @@ afterEach(() => {
   originalApiAdapter = undefined;
   originalAxiosAdapter = undefined;
 });
+
+function ProviderLogoutButton() {
+  const { logout } = useCustomerAuth();
+  return <button onClick={logout} type="button">Test session logout</button>;
+}
 
 describe("customer profile, favorites and addresses", () => {
   it("keeps profile drafts after a recoverable error and sends only editable profile fields", async () => {
@@ -477,5 +484,90 @@ describe("customer profile, favorites and addresses", () => {
     await user.click(screen.getByRole("button", { name: "Chiqish" }));
     await waitFor(() => expect(rendered.queryClient.getQueryData(["profile", "43"])).toBeUndefined());
     expect(screen.getByRole("button", { name: "Kirish" })).toBeInTheDocument();
+  });
+
+  it("hides profile and address drafts immediately when the shared session logs out", async () => {
+    signedIn();
+    originalApiAdapter = api.defaults.adapter;
+    api.defaults.adapter = async (config) => {
+      if (config.url === "/profile" && config.method === "get") return response(config, initialProfile);
+      if (config.url === "/addresses" && config.method === "get") return response(config, [savedAddress]);
+      throw new Error(`Unexpected request: ${config.method} ${config.url}`);
+    };
+    const user = userEvent.setup();
+
+    renderWithProviders(
+      <>
+        <ProfilePage />
+        <AddressesPage />
+        <ProviderLogoutButton />
+      </>,
+      "/profile",
+      true,
+    );
+    const name = await screen.findByLabelText("Ism familiya");
+    await user.clear(name);
+    await user.type(name, "Unsent profile value");
+    await user.click(await screen.findByRole("button", { name: "Tahrirlash: Uy" }));
+    const dialog = screen.getByRole("dialog", { name: "Manzilni tahrirlash" });
+    await user.clear(within(dialog).getByLabelText("Manzil nomi"));
+    await user.type(within(dialog).getByLabelText("Manzil nomi"), "Unsent address value");
+
+    await user.click(screen.getByRole("button", { name: "Test session logout" }));
+
+    expect(screen.queryByLabelText("Ism familiya")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Unsent address value")).not.toBeInTheDocument();
+  });
+
+  it("does not apply a profile PATCH response to a different account", async () => {
+    signedIn(42);
+    originalApiAdapter = api.defaults.adapter;
+    let releasePatch!: (value: AxiosResponse<Profile>) => void;
+    let patchStarted!: () => void;
+    const patchGate = new Promise<AxiosResponse<Profile>>((resolve) => { releasePatch = resolve; });
+    const patchRequestStarted = new Promise<void>((resolve) => { patchStarted = resolve; });
+    api.defaults.adapter = async (config) => {
+      if (config.url === "/profile" && config.method === "get") {
+        const authorization = String(config.headers.get("Authorization"));
+        return response(config, {
+          ...initialProfile,
+          display_name: authorization.includes(jwt(42)) ? "Account A" : "Account B",
+          language: "uz",
+        });
+      }
+      throw new Error(`Unexpected request: ${config.method} ${config.url}`);
+    };
+    const patchSpy = vi.spyOn(api, "patch").mockImplementation(() => {
+      patchStarted();
+      return patchGate as never;
+    });
+    const user = userEvent.setup();
+
+    try {
+      renderWithProviders(<ProfilePage />, "/profile", true);
+      const name = await screen.findByLabelText("Ism familiya");
+      await user.clear(name);
+      await user.type(name, "Draft from A");
+      await user.selectOptions(screen.getByLabelText("Til"), "ru");
+      await user.click(screen.getByRole("button", { name: "Saqlash" }));
+      await patchRequestStarted;
+
+      signedIn(43);
+      await waitFor(() => expect(screen.getByLabelText("Ism familiya")).toHaveValue("Account B"));
+      releasePatch(response({} as Parameters<AxiosAdapter>[0], {
+        ...initialProfile,
+        display_name: "Stale response from A",
+        language: "ru",
+      }));
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+
+      expect(screen.getByLabelText("Ism familiya")).toHaveValue("Account B");
+      expect(screen.getByLabelText("Til")).toHaveValue("uz");
+      expect(useLanguageStore.getState().language).toBe("uz");
+      expect(screen.queryByText("Profil saqlandi.")).not.toBeInTheDocument();
+    } finally {
+      patchSpy.mockRestore();
+    }
   });
 });
