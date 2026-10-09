@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+# Use Google's cache of the official image in local/CI builds as well as BuildKit.
+FROM mirror.gcr.io/library/python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

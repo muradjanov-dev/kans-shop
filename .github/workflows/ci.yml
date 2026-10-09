@@ -69,6 +69,12 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements.txt
+      - name: Cache Docker integration-test images
+        run: |
+          for image in alpine:3.21 nginx:1.27-alpine caddy:2.10-alpine python:3.12-alpine; do
+            docker pull "mirror.gcr.io/library/$image"
+            docker tag "mirror.gcr.io/library/$image" "$image"
+          done
       - run: pip install -r requirements.txt
       - name: Lint
         run: |
