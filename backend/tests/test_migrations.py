@@ -95,6 +95,7 @@ def test_new_columns_are_covered_by_a_migration() -> None:
         ("admin_audit_events", "resource_id"),
         ("admin_audit_events", "before_json"),
         ("admin_audit_events", "after_json"),
+        ("admin_audit_events", "request_id"),
         ("notification_outbox", "recipient_user_id"),
         ("notification_outbox", "recipient_admin_id"),
         ("notification_outbox", "event_type"),

@@ -101,6 +101,7 @@ def upgrade() -> None:
         sa.Column("action", sa.String(length=64), nullable=False),
         sa.Column("resource_type", sa.String(length=64), nullable=False),
         sa.Column("resource_id", sa.String(length=128)),
+        sa.Column("request_id", sa.String(length=64), nullable=False),
         sa.Column("before_json", postgresql.JSONB(astext_type=sa.Text())),
         sa.Column("after_json", postgresql.JSONB(astext_type=sa.Text())),
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
@@ -122,6 +123,11 @@ def upgrade() -> None:
         op.f("ix_admin_audit_events_actor_admin_id"),
         "admin_audit_events",
         ["actor_admin_id"],
+    )
+    op.create_index(
+        op.f("ix_admin_audit_events_request_id"),
+        "admin_audit_events",
+        ["request_id"],
     )
 
     op.create_table(
@@ -338,6 +344,9 @@ def downgrade() -> None:
 
     op.drop_index(
         op.f("ix_admin_audit_events_actor_admin_id"), table_name="admin_audit_events"
+    )
+    op.drop_index(
+        op.f("ix_admin_audit_events_request_id"), table_name="admin_audit_events"
     )
     op.drop_table("admin_audit_events")
 

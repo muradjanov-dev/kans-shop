@@ -10,6 +10,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.exc import IntegrityError
 
 from alembic import command
 from app.core.config import settings
@@ -71,6 +72,26 @@ def _insert_historical_order(connection, *, user_id: int) -> int:
             """),
         {"user_id": user_id},
     ).scalar_one()
+
+
+def _insert_admin_session(
+    connection, *, admin_id: int, token_hash: str, csrf_token: str
+) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO admin_sessions ("
+            "admin_id, token_hash, csrf_token, auth_epoch, idle_expires_at, absolute_expires_at"
+            ") VALUES ("
+            ":admin_id, :token_hash, :csrf_token, 0, "
+            "now() + interval '1 hour', now() + interval '2 hours'"
+            ")"
+        ),
+        {
+            "admin_id": admin_id,
+            "token_hash": token_hash,
+            "csrf_token": csrf_token,
+        },
+    )
 
 
 def test_phase2_migration_from_phase1_head(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -151,11 +172,77 @@ def test_phase2_upgrade_preserves_orders_receipts_and_media_refs(
             ).one()
             assert media == ("/media/products/1/history.webp", "telegram-product-image-1")
 
+            admin_id = connection.execute(
+                text(
+                    "INSERT INTO admins (telegram_id, full_name, role) "
+                    "VALUES (9000000000000002, 'Migration Admin', 'superadmin') RETURNING id"
+                )
+            ).scalar_one()
+            _insert_admin_session(
+                connection,
+                admin_id=admin_id,
+                token_hash="a" * 64,
+                csrf_token="c" * 64,
+            )
+            with pytest.raises(IntegrityError), connection.begin_nested():
+                _insert_admin_session(
+                    connection,
+                    admin_id=admin_id,
+                    token_hash="b" * 64,
+                    csrf_token="c" * 64,
+                )
+
+            request_id = "phase2-correlation-0123456789"
+            connection.execute(
+                text(
+                    "INSERT INTO admin_audit_events ("
+                    "actor_admin_id, action, resource_type, resource_id, request_id"
+                    ") VALUES ("
+                    ":actor_admin_id, :action, 'product', '42', :request_id"
+                    ")"
+                ),
+                [
+                    {
+                        "actor_admin_id": admin_id,
+                        "action": "product.updated",
+                        "request_id": request_id,
+                    },
+                    {
+                        "actor_admin_id": admin_id,
+                        "action": "product.deactivated",
+                        "request_id": request_id,
+                    },
+                ],
+            )
+            correlated_request_ids = (
+                connection.execute(
+                    text(
+                        "SELECT request_id FROM admin_audit_events "
+                        "WHERE request_id = :request_id ORDER BY id"
+                    ),
+                    {"request_id": request_id},
+                )
+                .scalars()
+                .all()
+            )
+            assert correlated_request_ids == [request_id, request_id]
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT NOT i.indisunique FROM pg_index i "
+                        "JOIN pg_class idx ON idx.oid = i.indexrelid "
+                        "WHERE idx.relname = 'ix_admin_audit_events_request_id'"
+                    )
+                )
+                is True
+            )
+
             unique_constraints = connection.execute(
                 text(
                     "SELECT conname, pg_get_constraintdef(oid) "
                     "FROM pg_constraint WHERE contype = 'u' AND conname IN ("
                     "'uq_admin_sessions_token_hash', "
+                    "'uq_admin_sessions_csrf_token', "
                     "'uq_admin_order_messages_admin_order_idempotency_key', "
                     "'uq_notification_outbox_dedupe_key', "
                     "'uq_broadcast_recipients_broadcast_user'"
@@ -164,6 +251,7 @@ def test_phase2_upgrade_preserves_orders_receipts_and_media_refs(
             ).all()
             expected_unique_constraints = {
                 "uq_admin_sessions_token_hash": "UNIQUE (token_hash)",
+                "uq_admin_sessions_csrf_token": "UNIQUE (csrf_token)",
                 "uq_admin_order_messages_admin_order_idempotency_key": (
                     "UNIQUE (admin_id, order_id, idempotency_key)"
                 ),
