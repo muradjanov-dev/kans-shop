@@ -153,8 +153,10 @@ export function useCheckout() {
   const userId = useAuthStore((state) => state.userId);
   const authEpoch = useAuthStore((state) => state.authEpoch);
   return useMutation({
-    mutationFn: async (payload: CheckoutPayload) => {
-      const { data } = await api.post<Order>("/orders", payload);
+    mutationFn: async ({ payload, checkoutKey }: { payload: CheckoutPayload; checkoutKey: string }) => {
+      const { data } = await api.post<Order>("/orders", payload, {
+        headers: { "Idempotency-Key": checkoutKey },
+      });
       return data;
     },
     onSuccess: () => {

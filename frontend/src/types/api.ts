@@ -112,6 +112,9 @@ export interface Order {
   total: string;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
+  payment_instructions: { card_number: string; card_holder: string } | null;
+  receipt_version: number;
+  has_receipt: boolean;
   receipt_url: string | null;
   cancel_reason: string | null;
   created_at: string;
@@ -131,6 +134,19 @@ export interface CheckoutPayload {
   latitude?: number | null;
   longitude?: number | null;
   comment?: string | null;
+  purchase_contract_version: 1;
+  expected_total: string;
+  expected_quote: string;
+}
+
+export interface CheckoutQuote {
+  subtotal: string;
+  delivery_fee: string | null;
+  total: string | null;
+  payment_methods: PaymentMethod[];
+  ready: boolean;
+  reasons: string[];
+  quote_fingerprint: string | null;
 }
 
 export interface PayResponse {
