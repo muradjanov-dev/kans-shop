@@ -1,8 +1,8 @@
 """Move recognized legacy public receipts into the persistent private media volume.
 
-The manifest contains paths, hashes, order IDs, and generated private keys only. It never
-contains receipt bytes, Telegram file IDs, or raw receipt URLs. Public files are removed only
-after both the private object and committed database reference have been verified.
+The manifest contains paths, hashes, order IDs, generated private keys, and its approved origin
+policy. It never contains receipt bytes, Telegram file IDs, or raw receipt URLs. Public files are
+removed only after both the private object and committed database reference have been verified.
 """
 
 from __future__ import annotations
@@ -10,12 +10,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import ipaddress
 import json
 import os
 import re
 import stat
 import sys
 import tempfile
+from collections.abc import Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -125,7 +127,64 @@ def _safe_public_source(public_root: Path, relative: str) -> Path:
     return path
 
 
-def _parse_legacy_reference(order: Order) -> tuple[str, str] | None:
+def _origin_from_url(value: str, *, allow_path: bool) -> str:
+    if any(character.isspace() or ord(character) < 0x20 for character in value):
+        raise CutoverError("Approved receipt origin is invalid")
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise CutoverError("Approved receipt origin is invalid") from exc
+    scheme = parsed.scheme.lower()
+    if (
+        scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or "%" in parsed.netloc
+        or "\\" in value
+        or parsed.netloc.endswith(":")
+        or (not allow_path and parsed.path not in {"", "/"})
+    ):
+        raise CutoverError("Approved receipt origin is invalid")
+    hostname = parsed.hostname
+    if not hostname or not hostname.isascii():
+        raise CutoverError("Approved receipt origin is invalid")
+    hostname = hostname.lower()
+    if ":" in hostname:
+        try:
+            hostname = f"[{ipaddress.IPv6Address(hostname).compressed}]"
+        except ValueError as exc:
+            raise CutoverError("Approved receipt origin is invalid") from exc
+    else:
+        labels = hostname.split(".")
+        if len(hostname) > 253 or any(
+            not label
+            or len(label) > 63
+            or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", label)
+            for label in labels
+        ):
+            raise CutoverError("Approved receipt origin is invalid")
+    if port is not None and not 1 <= port <= 65535:
+        raise CutoverError("Approved receipt origin is invalid")
+    default_port = 80 if scheme == "http" else 443
+    authority = hostname if port is None or port == default_port else f"{hostname}:{port}"
+    return f"{scheme}://{authority}"
+
+
+def _origin_policy(legacy_origins: Sequence[str] = ()) -> tuple[str, ...]:
+    current_origin = _origin_from_url(settings.media_base_url, allow_path=True)
+    approved = {current_origin}
+    for origin in legacy_origins:
+        approved.add(_origin_from_url(origin, allow_path=False))
+    return tuple(sorted(approved))
+
+
+def _parse_legacy_reference(
+    order: Order, *, approved_origins: frozenset[str]
+) -> tuple[str, str] | None:
     value = order.receipt_url
     if not value or "%" in value or "\\" in value:
         return None
@@ -135,10 +194,15 @@ def _parse_legacy_reference(order: Order) -> tuple[str, str] | None:
         return None
     if parsed.query or parsed.fragment or parsed.username or parsed.password:
         return None
-    if parsed.scheme and parsed.scheme not in {"http", "https"}:
-        return None
-    if parsed.scheme and not parsed.netloc:
-        return None
+    if parsed.scheme or parsed.netloc:
+        if not parsed.scheme or not parsed.netloc:
+            return None
+        try:
+            origin = _origin_from_url(value, allow_path=True)
+        except CutoverError:
+            return None
+        if origin not in approved_origins:
+            return None
     match = _LEGACY_URL.fullmatch(parsed.path)
     if match is None or int(match.group("order_id")) != order.id:
         return None
@@ -181,7 +245,11 @@ def _private_path(private_root: Path, key: str) -> Path:
 
 
 def _validate_manifest(
-    manifest: dict[str, Any], public_root: Path, private_root: Path
+    manifest: dict[str, Any],
+    public_root: Path,
+    private_root: Path,
+    *,
+    approved_origins: tuple[str, ...],
 ) -> None:
     if not isinstance(manifest, dict) or manifest.get("format_version") != FORMAT_VERSION:
         raise CutoverError("Unsupported receipt manifest")
@@ -192,10 +260,12 @@ def _validate_manifest(
     entries = manifest.get("entries")
     unresolved = manifest.get("unresolved")
     existing_private = manifest.get("existing_private")
+    manifest_origins = manifest.get("approved_origins")
     if (
         not isinstance(entries, list)
         or not isinstance(unresolved, list)
         or not isinstance(existing_private, list)
+        or not isinstance(manifest_origins, list)
     ):
         raise CutoverError("Receipt manifest is malformed")
     if (
@@ -209,12 +279,22 @@ def _validate_manifest(
             "existing_private",
             "unresolved",
             "public_receipts",
+            "approved_origins",
         }
         or not isinstance(manifest["created_at"], str)
         or type(manifest["public_receipts"]) is not int
         or manifest["public_receipts"] < 0
     ):
         raise CutoverError("Receipt manifest is malformed")
+    if (
+        any(not isinstance(origin, str) for origin in manifest_origins)
+        or tuple(manifest_origins) != tuple(sorted(set(manifest_origins)))
+        or tuple(manifest_origins) != approved_origins
+    ):
+        raise CutoverError("Receipt manifest origin policy does not match")
+    for origin in manifest_origins:
+        if _origin_from_url(origin, allow_path=False) != origin:
+            raise CutoverError("Receipt manifest origin is not canonical")
 
     seen_orders: set[int] = set()
     seen_sources: set[str] = set()
@@ -271,6 +351,7 @@ def _validate_manifest(
         "public_file_missing",
         "private_reference_invalid",
         "public_private_mismatch",
+        "legacy_public_url_stale",
     }
     for row in unresolved:
         if (
@@ -310,9 +391,15 @@ def _validate_manifest(
 
 
 async def build_manifest(
-    session: AsyncSession, *, public_root: Path, private_root: Path
+    session: AsyncSession,
+    *,
+    public_root: Path,
+    private_root: Path,
+    legacy_origins: Sequence[str] = (),
 ) -> dict[str, Any]:
     public, private = _roots(public_root, private_root)
+    approved_origins = _origin_policy(legacy_origins)
+    approved_origin_set = frozenset(approved_origins)
     entries: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
     existing_private: list[dict[str, Any]] = []
@@ -340,7 +427,9 @@ async def build_manifest(
                     }
                 )
                 if order.receipt_url:
-                    reference = _parse_legacy_reference(order)
+                    reference = _parse_legacy_reference(
+                        order, approved_origins=approved_origin_set
+                    )
                     if reference is None:
                         unresolved.append(
                             {"order_id": order.id, "reason": "unrecognized_reference"}
@@ -351,6 +440,9 @@ async def build_manifest(
                     try:
                         source_digest, source_size = _hash_file(source)
                     except FileNotFoundError:
+                        unresolved.append(
+                            {"order_id": order.id, "reason": "legacy_public_url_stale"}
+                        )
                         continue
                     if source_digest != digest or source_size != size:
                         unresolved.append(
@@ -376,7 +468,7 @@ async def build_manifest(
                 )
             continue
 
-        reference = _parse_legacy_reference(order)
+        reference = _parse_legacy_reference(order, approved_origins=approved_origin_set)
         if reference is None:
             reason = (
                 "file_id_only"
@@ -418,8 +510,9 @@ async def build_manifest(
         "existing_private": existing_private,
         "unresolved": unresolved,
         "public_receipts": _public_receipt_files(public),
+        "approved_origins": list(approved_origins),
     }
-    _validate_manifest(manifest, public, private)
+    _validate_manifest(manifest, public, private, approved_origins=approved_origins)
     return manifest
 
 
@@ -563,9 +656,12 @@ async def apply_manifest(
     *,
     public_root: Path,
     private_root: Path,
+    legacy_origins: Sequence[str] = (),
 ) -> dict[str, int]:
     public, private = _roots(public_root, private_root)
-    _validate_manifest(manifest, public, private)
+    approved_origins = _origin_policy(legacy_origins)
+    approved_origin_set = frozenset(approved_origins)
+    _validate_manifest(manifest, public, private, approved_origins=approved_origins)
     _ensure_private_root(private)
     migrated = already_migrated = 0
 
@@ -599,7 +695,9 @@ async def apply_manifest(
                     raise CutoverError(
                         "Order receipt reference changed after manifest creation"
                     )
-                reference = _parse_legacy_reference(order)
+                reference = _parse_legacy_reference(
+                    order, approved_origins=approved_origin_set
+                )
                 if reference is None or reference[0] != entry["source"]:
                     raise CutoverError("Order receipt reference is not recognized")
                 _verify_manifest_source(entry, source)
@@ -618,7 +716,7 @@ async def apply_manifest(
                 != entry["receipt_url_sha256"]
             ):
                 raise CutoverError("Order receipt reference changed after manifest creation")
-            reference = _parse_legacy_reference(order)
+            reference = _parse_legacy_reference(order, approved_origins=approved_origin_set)
             if reference is None or reference[0] != entry["source"]:
                 raise CutoverError("Order receipt reference is not recognized")
             if order.receipt_content_type not in (None, entry["content_type"]):
@@ -682,10 +780,12 @@ async def verify_cutover(
     public_root: Path,
     private_root: Path,
     manifest: dict[str, Any] | None = None,
+    legacy_origins: Sequence[str] = (),
 ) -> dict[str, int]:
     public, private = _roots(public_root, private_root)
+    approved_origins = _origin_policy(legacy_origins)
     if manifest is not None:
-        _validate_manifest(manifest, public, private)
+        _validate_manifest(manifest, public, private, approved_origins=approved_origins)
     expected = {
         entry["order_id"]: entry for entry in (manifest or {}).get("existing_private", [])
     }
@@ -696,6 +796,8 @@ async def verify_cutover(
     unresolved_ids: set[int] = set()
     orders = (await session.scalars(_relevant_orders_query())).all()
     for order in orders:
+        if order.receipt_url is not None:
+            unresolved_ids.add(order.id)
         if not order.receipt_storage_key or not order.receipt_content_type:
             unresolved_ids.add(order.id)
             continue
@@ -766,7 +868,12 @@ async def _run(args: argparse.Namespace) -> int:
 
     async with async_session_maker() as session:
         if args.dry_run:
-            manifest = await build_manifest(session, public_root=public, private_root=private)
+            manifest = await build_manifest(
+                session,
+                public_root=public,
+                private_root=private,
+                legacy_origins=args.legacy_origin,
+            )
             manifest_path = manifest_path or _default_manifest_path(private)
             write_manifest(manifest_path, manifest)
             print(json.dumps({**_summary(manifest), "manifest": str(manifest_path)}))
@@ -781,6 +888,7 @@ async def _run(args: argparse.Namespace) -> int:
                 manifest,
                 public_root=public,
                 private_root=private,
+                legacy_origins=args.legacy_origin,
             )
             print(json.dumps(result))
             return 0 if not result["unresolved"] else 2
@@ -791,6 +899,7 @@ async def _run(args: argparse.Namespace) -> int:
             public_root=public,
             private_root=private,
             manifest=verify_manifest,
+            legacy_origins=args.legacy_origin,
         )
         print(json.dumps(result))
         return 0 if not result["unresolved"] and not result["public_receipts"] else 2
@@ -811,6 +920,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="read-only private reference and public path check",
     )
     parser.add_argument("--manifest", help="restricted local manifest path")
+    parser.add_argument(
+        "--legacy-origin",
+        action="append",
+        default=[],
+        metavar="ORIGIN",
+        help="explicitly reviewed historical HTTP(S) origin; repeat for each origin",
+    )
     return parser.parse_args(argv)
 
 

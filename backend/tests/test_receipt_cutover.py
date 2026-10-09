@@ -12,6 +12,7 @@ import sys
 import textwrap
 import time
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 import pytest
@@ -77,11 +78,11 @@ async def test_receipt_cutover_preserves_content(
     order = await _legacy_order(
         db_session,
         user,
-        receipt_url=f"https://shop.example/media/receipts/{user.id}.pdf",
+        receipt_url="pending",
         receipt_file_id="synthetic-telegram-file-id-must-not-enter-manifest",
     )
     # Receipt URLs are keyed by order id, so set the row first, then materialize its file.
-    order.receipt_url = f"https://shop.example/media/receipts/{order.id}.pdf"
+    order.receipt_url = _configured_receipt_url(cutover, order.id, "pdf")
     source = receipt_dir / f"{order.id}.pdf"
     source.write_bytes(original)
     original_hash = hashlib.sha256(original).hexdigest()
@@ -131,7 +132,7 @@ async def test_cutover_partial_failure_keeps_backup(
     (public_root / "receipts").mkdir(parents=True)
     original = b"backup remains until the database reference is verified"
     order = await _legacy_order(db_session, user, receipt_url=None)
-    order.receipt_url = f"https://shop.example/media/receipts/{order.id}.pdf"
+    order.receipt_url = _configured_receipt_url(cutover, order.id, "pdf")
     source = public_root / "receipts" / f"{order.id}.pdf"
     source.write_bytes(original)
     manifest = await cutover.build_manifest(
@@ -164,7 +165,7 @@ async def test_cutover_repeat_is_idempotent(
     (public_root / "receipts").mkdir(parents=True)
     original = b"one immutable receipt object"
     order = await _legacy_order(db_session, user, receipt_url=None)
-    order.receipt_url = f"https://shop.example/media/receipts/{order.id}.jpg"
+    order.receipt_url = _configured_receipt_url(cutover, order.id, "jpg")
     source = public_root / "receipts" / f"{order.id}.jpg"
     source.write_bytes(original)
     manifest = await cutover.build_manifest(
@@ -257,6 +258,185 @@ async def test_cutover_reports_file_id_only_and_unrecognized_references(
     assert not private_root.exists()
 
 
+async def test_cutover_rejects_unknown_network_path_and_credentialed_origins(
+    db_session: AsyncSession, user: User, tmp_path: Path
+) -> None:
+    cutover = _migrator()
+    public_root = tmp_path / "public"
+    private_root = tmp_path / "private"
+    receipt_dir = public_root / "receipts"
+    receipt_dir.mkdir(parents=True)
+    parsed_base = urlsplit(cutover.settings.media_base_url)
+    credentialed_netloc = f"user:synthetic@{parsed_base.netloc}"
+    unknown_order = await _legacy_order(db_session, user, receipt_url="pending")
+    unknown_order.receipt_url = (
+        f"https://unknown.example/media/receipts/{unknown_order.id}.jpg"
+    )
+    network_path_order = await _legacy_order(db_session, user, receipt_url="pending")
+    network_path_order.receipt_url = (
+        f"//{parsed_base.netloc}/media/receipts/{network_path_order.id}.jpg"
+    )
+    credentialed_order = await _legacy_order(db_session, user, receipt_url="pending")
+    credentialed_order.receipt_url = urlunsplit(
+        (
+            parsed_base.scheme,
+            credentialed_netloc,
+            f"{parsed_base.path.rstrip('/')}/receipts/{credentialed_order.id}.jpg",
+            "",
+            "",
+        )
+    )
+    for order in (unknown_order, network_path_order, credentialed_order):
+        (receipt_dir / f"{order.id}.jpg").write_bytes(b"same-looking local receipt")
+
+    manifest = await cutover.build_manifest(
+        db_session, public_root=public_root, private_root=private_root
+    )
+    unresolved = {entry["order_id"]: entry["reason"] for entry in manifest["unresolved"]}
+
+    assert manifest["entries"] == []
+    assert unresolved == {
+        unknown_order.id: "unrecognized_reference",
+        network_path_order.id: "unrecognized_reference",
+        credentialed_order.id: "unrecognized_reference",
+    }
+    assert not private_root.exists()
+
+
+async def test_missing_public_file_with_private_copy_keeps_stale_url_unresolved(
+    db_session: AsyncSession, user: User, tmp_path: Path
+) -> None:
+    cutover = _migrator()
+    public_root = tmp_path / "public"
+    private_root = tmp_path / "private"
+    (public_root / "receipts").mkdir(parents=True)
+    private_root.mkdir()
+    order = await _legacy_order(db_session, user, receipt_url="pending")
+    order.receipt_url = _configured_receipt_url(cutover, order.id, "jpg")
+    order.receipt_storage_key = f"{uuid4()}.jpg"
+    order.receipt_content_type = "image/jpeg"
+    (private_root / order.receipt_storage_key).write_bytes(b"already private receipt")
+    before = (order.receipt_url, order.receipt_storage_key, order.receipt_content_type)
+
+    manifest = await cutover.build_manifest(
+        db_session, public_root=public_root, private_root=private_root
+    )
+    verified = await cutover.verify_cutover(
+        db_session,
+        public_root=public_root,
+        private_root=private_root,
+        manifest=manifest,
+    )
+    verified_without_manifest = await cutover.verify_cutover(
+        db_session, public_root=public_root, private_root=private_root
+    )
+
+    assert manifest["entries"] == []
+    assert manifest["unresolved"] == [
+        {"order_id": order.id, "reason": "legacy_public_url_stale"}
+    ]
+    assert verified["unresolved"] == 1
+    assert verified_without_manifest["unresolved"] == 1
+    assert (order.receipt_url, order.receipt_storage_key, order.receipt_content_type) == before
+
+
+async def test_existing_private_public_url_resumes_when_source_matches(
+    db_session: AsyncSession, user: User, tmp_path: Path
+) -> None:
+    cutover = _migrator()
+    public_root = tmp_path / "public"
+    private_root = tmp_path / "private"
+    receipt_dir = public_root / "receipts"
+    receipt_dir.mkdir(parents=True)
+    private_root.mkdir()
+    order = await _legacy_order(db_session, user, receipt_url="pending")
+    order.receipt_url = _configured_receipt_url(cutover, order.id, "jpg")
+    order.receipt_storage_key = f"{uuid4()}.jpg"
+    order.receipt_content_type = "image/jpeg"
+    original = b"private copy written before the database reference"
+    (private_root / order.receipt_storage_key).write_bytes(original)
+    source = receipt_dir / f"{order.id}.jpg"
+    source.write_bytes(original)
+
+    manifest = await cutover.build_manifest(
+        db_session, public_root=public_root, private_root=private_root
+    )
+    result = await cutover.apply_manifest(
+        db_session,
+        manifest,
+        public_root=public_root,
+        private_root=private_root,
+    )
+    verified = await cutover.verify_cutover(
+        db_session,
+        public_root=public_root,
+        private_root=private_root,
+        manifest=manifest,
+    )
+
+    assert result["migrated"] == 1
+    assert order.receipt_url is None
+    assert order.receipt_storage_key is not None
+    assert (private_root / order.receipt_storage_key).read_bytes() == original
+    assert not source.exists()
+    assert verified["unresolved"] == 0
+    assert verified["public_receipts"] == 0
+
+
+async def test_explicit_legacy_origin_is_bound_to_manifest_apply_and_verify(
+    db_session: AsyncSession,
+    user: User,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cutover = _migrator()
+    public_root = tmp_path / "public"
+    private_root = tmp_path / "private"
+    receipt_dir = public_root / "receipts"
+    receipt_dir.mkdir(parents=True)
+    legacy_origins = ("https://legacy.kans.example",)
+    order = await _legacy_order(db_session, user, receipt_url="pending")
+    order.receipt_url = f"https://legacy.kans.example/media/receipts/{order.id}.jpg"
+    source = receipt_dir / f"{order.id}.jpg"
+    source.write_bytes(b"explicitly approved old-origin receipt")
+
+    manifest = await cutover.build_manifest(
+        db_session,
+        public_root=public_root,
+        private_root=private_root,
+        legacy_origins=legacy_origins,
+    )
+    with pytest.raises(cutover.CutoverError, match="origin policy"):
+        await cutover.apply_manifest(
+            db_session,
+            manifest,
+            public_root=public_root,
+            private_root=private_root,
+        )
+    assert source.read_bytes() == b"explicitly approved old-origin receipt"
+
+    result = await cutover.apply_manifest(
+        db_session,
+        manifest,
+        public_root=public_root,
+        private_root=private_root,
+        legacy_origins=legacy_origins,
+    )
+    monkeypatch.setattr(cutover.settings, "media_base_url", "https://changed.example/media")
+    with pytest.raises(cutover.CutoverError, match="origin policy"):
+        await cutover.verify_cutover(
+            db_session,
+            public_root=public_root,
+            private_root=private_root,
+            manifest=manifest,
+            legacy_origins=legacy_origins,
+        )
+
+    assert result["migrated"] == 1
+    assert order.receipt_url is None
+    assert not source.exists()
+
+
 async def test_cutover_refuses_private_root_inside_public(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
@@ -282,7 +462,7 @@ async def test_cutover_refuses_symlinked_public_receipt(
     outside = tmp_path / "outside.pdf"
     outside.write_bytes(b"must not follow this symlink")
     order = await _legacy_order(db_session, user, receipt_url=None)
-    order.receipt_url = f"https://shop.example/media/receipts/{order.id}.pdf"
+    order.receipt_url = _configured_receipt_url(cutover, order.id, "pdf")
     (receipt_dir / f"{order.id}.pdf").symlink_to(outside)
 
     with pytest.raises(cutover.CutoverError, match="symlink"):
@@ -361,6 +541,56 @@ async def test_cli_dry_run_and_verify_write_a_restricted_manifest(
     assert json.loads(applied.stdout)["migrated"] == 0
 
 
+async def test_cli_reuses_explicit_legacy_origin_policy_across_modes(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    manifest_path = tmp_path / "restricted" / "origin-policy.json"
+    legacy_origin = "https://legacy.kans.example"
+    script = [sys.executable, "-m", "scripts.migrate_private_receipts"]
+    common = ["--manifest", str(manifest_path)]
+    created = subprocess.run(
+        [*script, "--dry-run", *common, "--legacy-origin", legacy_origin],
+        cwd=Path(__file__).parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert created.returncode == 0, created.stderr
+    allowed_origins = json.loads(manifest_path.read_text())["approved_origins"]
+    assert legacy_origin in allowed_origins
+
+    omitted = subprocess.run(
+        [*script, "--apply", *common],
+        cwd=Path(__file__).parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert omitted.returncode == 1
+    assert "CutoverError" in omitted.stderr
+
+    applied = subprocess.run(
+        [*script, "--apply", *common, "--legacy-origin", legacy_origin],
+        cwd=Path(__file__).parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    verified = subprocess.run(
+        [*script, "--verify", *common, "--legacy-origin", legacy_origin],
+        cwd=Path(__file__).parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert applied.returncode == 0, applied.stderr
+    assert verified.returncode == 0, verified.stderr
+
+
 def _docker(args: list[str], *, timeout: int = 90) -> subprocess.CompletedProcess[str]:
     if shutil.which("docker") is None:
         pytest.skip("isolated cutover integration tests require Docker")
@@ -400,6 +630,10 @@ def _network(tmp_path: Path) -> tuple[str, str]:
 
 def _container_name(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:10]}"
+
+
+def _configured_receipt_url(cutover, order_id: int, extension: str) -> str:
+    return f"{cutover.settings.media_base_url.rstrip('/')}/receipts/{order_id}.{extension}"
 
 
 def _port(container_name: str, exposed_port: int = 80) -> int:
@@ -482,7 +716,7 @@ async def test_old_image_cannot_expose_receipts(
     db_session.add(order)
     # The database order id is assigned before the old image's public filename.
     await db_session.flush()
-    order.receipt_url = f"https://shop.example/media/receipts/{order.id}.png"
+    order.receipt_url = _configured_receipt_url(cutover, order.id, "png")
     original = b"old-image-public-copy"
     (receipt_dir / f"{order.id}.png").write_bytes(original)
     product = product_dir / "catalog.png"

@@ -51,11 +51,19 @@ tests, and migration are present in that SHA.
      --dry-run --manifest /app/private_media/.receipt-cutover/release-YYYYMMDD.json
    ```
 
-   The output contains counts and the manifest path, not receipt bytes, file IDs, or raw receipt
-   URLs. The manifest records hashes, order IDs, generated private keys, and safe relative paths.
-   Review every `unresolved` order and reason. File-ID-only, malformed, missing, symlinked, and
-   traversal references are not guessed. Stop and reconcile them explicitly; do not declare the
-   cutover complete while any reference is unresolved.
+   The configured `MEDIA_BASE_URL` origin is validated. Relative public paths are recognized only
+   in the documented receipt shape. Absolute historical URLs from another origin are eligible only
+   after the owner explicitly reviews that origin and passes `--legacy-origin <origin>` to dry-run,
+   apply, and verify. The value must contain only the scheme, host, and optional port, with no path
+   or credentials. Repeat the option for each approved old origin and pass the same list to all
+   three modes. A changed `MEDIA_BASE_URL` or origin list makes apply/verify reject the manifest
+   unless the exact reviewed origin set is explicitly reconstructed. The manifest records and
+   binds that policy. Protocol-relative, credentialed, unknown-origin, malformed, missing,
+   symlinked, and traversal references remain unresolved. A stale public URL with a valid private
+   object and no matching public source also remains unresolved, so the cutover cannot be declared
+   complete. The output contains counts and the manifest path, not receipt bytes, file IDs,
+   or raw receipt URLs. The mode-0600 manifest stores hashes, order IDs, generated private keys,
+   approved origins, and safe relative paths. Stop and reconcile every unresolved entry explicitly.
 
 5. **Apply the reviewed manifest and verify every reference.** Run the protected copy/DB-update/
    verify/delete sequence with the same manifest, then run the read-only verification:

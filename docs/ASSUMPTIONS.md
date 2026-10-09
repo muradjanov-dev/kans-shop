@@ -41,7 +41,9 @@ ambiguous or silent, the decision made and its rationale are logged here.
 - **Historical card-receipt storage**: earlier app images kept a Telegram `file_id` plus a file
   under public `MEDIA_ROOT/receipts/`. The purchase design superseded that behavior: current
   uploads use private `PRIVATE_MEDIA_ROOT`, while the cutover migrates only recognized local files
-  and leaves unresolved file-ID-only references for explicit follow-up.
+  and leaves unresolved file-ID-only references for explicit follow-up. Absolute legacy URLs require
+  the validated current media origin or a separately reviewed origin recorded in the restricted
+  manifest; a matching URL path alone never establishes the local file identity.
 - **Excel export** uses `openpyxl` directly (spec names this library).
 - **Rate limiting** implemented via a Redis fixed-window counter in a lightweight aiogram
   middleware + a FastAPI dependency (no extra framework), per spec's stated limits (20 req/min
