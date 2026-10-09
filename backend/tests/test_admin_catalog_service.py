@@ -365,49 +365,88 @@ async def test_admin_product_http_round_trip_preserves_editable_fields(
             product.barcode = "EXISTING-BARCODE"
             product.sort_order = 7
             category_id = product.category_id
+            destination = Category(
+                name_uz="Admin detail destination",
+                name_ru="Admin detail destination",
+                slug=f"admin-detail-{token_hex(4)}",
+            )
+            session.add(destination)
+            await session.flush()
+            destination_id = destination.id
             await session.commit()
 
-        listed = await case.client.get(
-            "/api/v1/admin/products", params={"category_id": category_id}
-        )
-        assert listed.status_code == 200
-        listed_product = next(
-            item for item in listed.json()["items"] if item["id"] == case.product_id
-        )
-        assert listed_product["barcode"] == "EXISTING-BARCODE"
-        assert listed_product["sort_order"] == 7
+        try:
+            listed = await case.client.get(
+                "/api/v1/admin/products", params={"category_id": category_id}
+            )
+            assert listed.status_code == 200
+            listed_product = next(
+                item for item in listed.json()["items"] if item["id"] == case.product_id
+            )
+            assert listed_product["barcode"] == "EXISTING-BARCODE"
+            assert listed_product["sort_order"] == 7
 
-        mutation_headers = {
-            "Origin": settings.webapp_origin,
-            "X-CSRF-Token": csrf_token,
-        }
-        changed = await case.client.patch(
-            f"/api/v1/admin/products/{case.product_id}",
-            headers=mutation_headers,
-            json={
-                "expected_edit_version": 0,
-                "barcode": "UPDATED-BARCODE",
-                "sort_order": 3,
-            },
-        )
-        assert changed.status_code == 200
-        assert changed.json()["barcode"] == "UPDATED-BARCODE"
-        assert changed.json()["sort_order"] == 3
+            mutation_headers = {
+                "Origin": settings.webapp_origin,
+                "X-CSRF-Token": csrf_token,
+            }
+            changed = await case.client.patch(
+                f"/api/v1/admin/products/{case.product_id}",
+                headers=mutation_headers,
+                json={
+                    "expected_edit_version": 0,
+                    "barcode": "UPDATED-BARCODE",
+                    "sort_order": 3,
+                },
+            )
+            assert changed.status_code == 200
+            assert changed.json()["barcode"] == "UPDATED-BARCODE"
+            assert changed.json()["sort_order"] == 3
 
-        renamed = await case.client.patch(
-            f"/api/v1/admin/products/{case.product_id}",
-            headers=mutation_headers,
-            json={"expected_edit_version": 1, "name_uz": "Renamed product"},
-        )
-        assert renamed.status_code == 200
-        assert renamed.json()["name_uz"] == "Renamed product"
-        assert renamed.json()["barcode"] == "UPDATED-BARCODE"
-        assert renamed.json()["sort_order"] == 3
+            public_product = await case.client.get(
+                f"/api/v1/catalog/products/{case.product_id}"
+            )
+            assert public_product.status_code == 200
+            assert "barcode" not in public_product.json()
+            assert "sort_order" not in public_product.json()
 
-        public_product = await case.client.get(f"/api/v1/catalog/products/{case.product_id}")
-        assert public_product.status_code == 200
-        assert "barcode" not in public_product.json()
-        assert "sort_order" not in public_product.json()
+            moved_out = await case.client.patch(
+                f"/api/v1/admin/products/{case.product_id}",
+                headers=mutation_headers,
+                json={
+                    "expected_edit_version": 1,
+                    "name_uz": "Renamed product",
+                    "category_id": destination_id,
+                    "is_active": False,
+                },
+            )
+            assert moved_out.status_code == 200
+            assert moved_out.json()["name_uz"] == "Renamed product"
+            assert moved_out.json()["barcode"] == "UPDATED-BARCODE"
+            assert moved_out.json()["sort_order"] == 3
+
+            old_page = await case.client.get(
+                "/api/v1/admin/products", params={"category_id": category_id}
+            )
+            assert old_page.status_code == 200
+            assert all(item["id"] != case.product_id for item in old_page.json()["items"])
+
+            detail = await case.client.get(f"/api/v1/admin/products/{case.product_id}")
+            assert detail.status_code == 200
+            assert detail.json()["category_id"] == destination_id
+            assert detail.json()["is_active"] is False
+            assert detail.json()["barcode"] == "UPDATED-BARCODE"
+            assert detail.json()["sort_order"] == 3
+
+            public_inactive = await case.client.get(
+                f"/api/v1/catalog/products/{case.product_id}"
+            )
+            assert public_inactive.status_code == 404
+        finally:
+            async with case.session_maker() as session:
+                await session.execute(delete(Product).where(Product.id == case.product_id))
+                await session.execute(delete(Category).where(Category.id == destination_id))
+                await session.commit()
 
 
 @pytest.mark.asyncio

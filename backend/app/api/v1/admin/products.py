@@ -49,6 +49,14 @@ async def list_products(
     )
 
 
+@router.get("/{product_id}", response_model=AdminProductOut)
+async def get_product(
+    product_id: int,
+    session: AsyncSession = Depends(get_db, scope="function"),
+) -> AdminProductOut:
+    return AdminProductOut.model_validate(await _load_product(session, product_id))
+
+
 @router.post("", response_model=AdminProductOut, status_code=201)
 async def create_product(
     payload: ProductCreateIn,
