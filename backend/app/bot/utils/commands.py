@@ -16,6 +16,7 @@ log = get_logger(__name__)
 _COMMANDS = (
     ("start", "commands.start"),
     ("menu", "commands.menu"),
+    ("web_login", "commands.web_login"),
     ("admin", "commands.admin"),
 )
 

@@ -9,9 +9,11 @@ from aiogram.types import (
     Message,
     ReplyKeyboardRemove,
 )
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.user.catalog import send_category_level, send_product_detail
+from app.bot.handlers.user.web_login import send_customer_login_code
 from app.bot.keyboards.callback_data import (
     ORIGIN_CATEGORY,
     ROOT_CATEGORY_ID,
@@ -107,8 +109,12 @@ async def _handle_deeplink(
     translator: Callable,
     payload: str,
     state: FSMContext,
+    user: User,
+    redis: Redis,
 ) -> None:
-    if payload.startswith("receipt_"):
+    if payload == "web_login":
+        await send_customer_login_code(message, user, redis, translator)
+    elif payload.startswith("receipt_"):
         try:
             order_id = int(payload.removeprefix("receipt_"))
         except ValueError:
@@ -162,6 +168,7 @@ async def cmd_start(
     _: Callable,
     state: FSMContext,
     admin: Admin | None,
+    redis: Redis,
 ) -> None:
     if command.args:
         await state.update_data(deeplink=command.args)
@@ -194,6 +201,8 @@ async def cmd_start(
             translator=_,
             payload=command.args,
             state=state,
+            user=user,
+            redis=redis,
         )
 
 
@@ -205,6 +214,7 @@ async def on_language_selected(
     user: User,
     state: FSMContext,
     admin: Admin | None,
+    redis: Redis,
 ) -> None:
     await user_repository.set_language(session, user, callback_data.code)
 
@@ -238,5 +248,7 @@ async def on_language_selected(
             translator=translator,
             payload=deeplink,
             state=state,
+            user=user,
+            redis=redis,
         )
     await callback.answer()

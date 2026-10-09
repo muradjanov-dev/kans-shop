@@ -9,6 +9,10 @@ class BotCodeAuthIn(BaseModel):
     code: str
 
 
+class CustomerCodeAuthIn(BaseModel):
+    code: str
+
+
 class RefreshIn(BaseModel):
     refresh_token: str
 

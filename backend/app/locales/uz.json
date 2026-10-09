@@ -37,7 +37,13 @@
   "commands": {
     "start": "Botni ishga tushirish",
     "menu": "Bosh menyu",
+    "web_login": "Veb ilovaga kirish kodi",
     "admin": "Admin panel"
+  },
+  "auth": {
+    "private_chat_only": "🔒 Xavfsizlik uchun bu buyruqni bot bilan shaxsiy chatda yuboring.",
+    "blocked": "🚫 Hisobingiz bloklangan. Yordam uchun do'kon ma'muriga murojaat qiling.",
+    "customer_code": "🔐 Veb ilovaga kirish kodingiz: <code>{code}</code>\n\nKod {minutes} daqiqa amal qiladi."
   },
   "catalog": {
     "title": "🛍 Katalog",

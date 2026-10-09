@@ -1,3 +1,4 @@
+import ipaddress
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -48,6 +49,7 @@ class Settings(BaseSettings):
     # --- Web / API ---
     webapp_url: str = Field(default="http://localhost:5173", alias="WEBAPP_URL")
     api_base_url: str = Field(default="http://localhost:8000", alias="API_BASE_URL")
+    trusted_proxy_cidrs: str = Field(default="", alias="TRUSTED_PROXY_CIDRS")
     media_root: str = Field(default="./media", alias="MEDIA_ROOT")
     media_base_url: str = Field(default="http://localhost:8000/media", alias="MEDIA_BASE_URL")
 
@@ -81,9 +83,34 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("trusted_proxy_cidrs")
+    @classmethod
+    def _validate_trusted_proxy_cidrs(cls, value: str) -> str:
+        networks: list[str] = []
+        for item in value.split(","):
+            cidr = item.strip()
+            if not cidr:
+                continue
+            try:
+                network = ipaddress.ip_network(cidr, strict=False)
+            except ValueError as exc:
+                raise ValueError(f"Invalid trusted proxy CIDR: {cidr}") from exc
+            if network.prefixlen == 0:
+                raise ValueError("Trusted proxy CIDRs cannot trust every address")
+            networks.append(str(network))
+        return ",".join(networks)
+
     @property
     def admin_ids_list(self) -> list[int]:
         return [int(x) for x in self.admin_ids.split(",") if x.strip()]
+
+    @property
+    def trusted_proxy_networks(
+        self,
+    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        return tuple(
+            ipaddress.ip_network(cidr) for cidr in self.trusted_proxy_cidrs.split(",") if cidr
+        )
 
     @property
     def media_root_path(self) -> Path:
