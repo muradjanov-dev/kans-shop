@@ -11,7 +11,7 @@ from app.bot.keyboards.inline.favorites import favorites_keyboard
 from app.bot.utils.i18n import menu_button_texts
 from app.bot.utils.messages import require_message
 from app.db.models.user import User
-from app.db.repositories import favorite_repository
+from app.services import favorite_service
 
 router = Router(name="favorites")
 
@@ -30,17 +30,23 @@ async def render_favorites(
     lang: str,
     translator: Callable[..., str],
 ) -> None:
-    favorites = await favorite_repository.list_by_user(session, user_id)
-    if not favorites:
+    page = await favorite_service.list_favorites(session, user_id)
+    products = list(page.items)
+    for page_number in range(2, page.total_pages + 1):
+        next_page = await favorite_service.list_favorites(
+            session, user_id, page=page_number, limit=page.limit
+        )
+        products.extend(next_page.items)
+    if not products:
         await send(translator("favorites.empty"))
         return
     lines = [translator("favorites.title"), ""]
-    for fav in favorites:
-        name = fav.product.name_uz if lang == "uz" else fav.product.name_ru
-        lines.append(f"{name} — {_format_price(fav.product.price)}")
+    for product in products:
+        name = product.name_uz if lang == "uz" else product.name_ru
+        lines.append(f"{name} — {_format_price(product.price)}")
     await send(
         "\n".join(lines),
-        reply_markup=favorites_keyboard(favorites, lang=lang, translator=translator),
+        reply_markup=favorites_keyboard(products, lang=lang, translator=translator),
     )
 
 
@@ -67,6 +73,6 @@ async def on_favorite_remove(
     async def edit(text: str, reply_markup=None) -> object:
         return await message.edit_text(text, reply_markup=reply_markup)
 
-    await favorite_repository.remove(session, user.id, callback_data.product_id)
+    await favorite_service.remove_favorite(session, user.id, callback_data.product_id)
     await render_favorites(edit, session, user.id, lang=lang, translator=_)
     await callback.answer(_("favorites.removed"))
