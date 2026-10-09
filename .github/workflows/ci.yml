@@ -34,7 +34,7 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      ENV_FILE: ${{ runner.temp }}/kans-shop-ci.env
+      ENV_FILE: /tmp/kans-shop-ci.env
       # tests/conftest.py creates kansshop_test itself from this URL.
       TEST_DATABASE_URL: postgresql+asyncpg://kansshop:kansshop@localhost:5432/kansshop_test
       # Settings are required-by-default; these are placeholders, never used to
@@ -52,8 +52,8 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://kansshop:kansshop@localhost:5432/kansshop
       DATABASE_URL_SYNC: postgresql+psycopg://kansshop:kansshop@localhost:5432/kansshop
       REDIS_URL: redis://localhost:6379/0
-      MEDIA_ROOT: ${{ runner.temp }}/kans-shop-ci-public-media
-      PRIVATE_MEDIA_ROOT: ${{ runner.temp }}/kans-shop-ci-private-media
+      MEDIA_ROOT: /tmp/kans-shop-ci-public-media
+      PRIVATE_MEDIA_ROOT: /tmp/kans-shop-ci-private-media
       MEDIA_BASE_URL: http://127.0.0.1/media
     steps:
       - uses: actions/checkout@v4
