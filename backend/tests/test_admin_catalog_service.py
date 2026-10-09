@@ -352,6 +352,65 @@ async def _admin_cookie(case: ApiCase) -> AsyncIterator[tuple[Admin, str]]:
 
 
 @pytest.mark.asyncio
+async def test_admin_product_http_round_trip_preserves_editable_fields(
+    test_engine: AsyncEngine,
+) -> None:
+    async with (
+        make_api_case(test_engine, base_url="https://testserver") as case,
+        _admin_cookie(case) as (_admin, csrf_token),
+    ):
+        async with case.session_maker() as session:
+            product = await session.get(Product, case.product_id)
+            assert product is not None
+            product.barcode = "EXISTING-BARCODE"
+            product.sort_order = 7
+            category_id = product.category_id
+            await session.commit()
+
+        listed = await case.client.get(
+            "/api/v1/admin/products", params={"category_id": category_id}
+        )
+        assert listed.status_code == 200
+        listed_product = next(
+            item for item in listed.json()["items"] if item["id"] == case.product_id
+        )
+        assert listed_product["barcode"] == "EXISTING-BARCODE"
+        assert listed_product["sort_order"] == 7
+
+        mutation_headers = {
+            "Origin": settings.webapp_origin,
+            "X-CSRF-Token": csrf_token,
+        }
+        changed = await case.client.patch(
+            f"/api/v1/admin/products/{case.product_id}",
+            headers=mutation_headers,
+            json={
+                "expected_edit_version": 0,
+                "barcode": "UPDATED-BARCODE",
+                "sort_order": 3,
+            },
+        )
+        assert changed.status_code == 200
+        assert changed.json()["barcode"] == "UPDATED-BARCODE"
+        assert changed.json()["sort_order"] == 3
+
+        renamed = await case.client.patch(
+            f"/api/v1/admin/products/{case.product_id}",
+            headers=mutation_headers,
+            json={"expected_edit_version": 1, "name_uz": "Renamed product"},
+        )
+        assert renamed.status_code == 200
+        assert renamed.json()["name_uz"] == "Renamed product"
+        assert renamed.json()["barcode"] == "UPDATED-BARCODE"
+        assert renamed.json()["sort_order"] == 3
+
+        public_product = await case.client.get(f"/api/v1/catalog/products/{case.product_id}")
+        assert public_product.status_code == 200
+        assert "barcode" not in public_product.json()
+        assert "sort_order" not in public_product.json()
+
+
+@pytest.mark.asyncio
 async def test_checkout_stock_version_rejects_stale_admin_edit(
     test_engine: AsyncEngine,
 ) -> None:

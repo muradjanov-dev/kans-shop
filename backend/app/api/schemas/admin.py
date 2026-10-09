@@ -13,6 +13,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.api.schemas.catalog import ProductOut
 from app.db.models.enums import (
     BroadcastStatus,
     BroadcastTarget,
@@ -20,6 +21,11 @@ from app.db.models.enums import (
     ProductUnit,
     UserSource,
 )
+
+
+class AdminProductOut(ProductOut):
+    barcode: str | None
+    sort_order: int
 
 
 class CategoryCreateIn(BaseModel):
