@@ -38,7 +38,7 @@ def mask_phone(phone: str | None) -> str | None:
     digits = "".join(character for character in phone if character.isdigit())
     if len(digits) <= 4:
         return "*" * len(digits) if digits else None
-    prefix_length = min(3, len(digits) - 4)
+    prefix_length = min(3, len(digits) - 5)
     return (
         ("+" if phone.strip().startswith("+") else "")
         + digits[:prefix_length]

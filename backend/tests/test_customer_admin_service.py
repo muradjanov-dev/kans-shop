@@ -66,11 +66,31 @@ async def _set_phone(case: ApiCase, user_id: int, phone: str) -> None:
         await session.commit()
 
 
+@pytest.mark.parametrize(
+    ("phone", "expected"),
+    [
+        ("12345", "*2345"),
+        ("123456", "1*3456"),
+        ("1234567", "12*4567"),
+        ("+998901234567", "+998*****4567"),
+        ("1234", "****"),
+        ("x12", "**"),
+        ("garbage", None),
+        ("", None),
+    ],
+)
+def test_phone_masking_never_leaks_short_stored_values(
+    phone: str, expected: str | None
+) -> None:
+    assert customer_admin_service.mask_phone(phone) == expected
+
+
 @pytest.mark.asyncio
 async def test_user_phone_masking_and_block_auth(test_engine: AsyncEngine) -> None:
     async with make_api_case(test_engine, base_url="https://testserver") as case:
         full_phone = "+998901234567"
         await _set_phone(case, case.user_id, full_phone)
+        await _set_phone(case, case.other_user_id, "12345")
 
         async with _admin_cookie(case, role=AdminRole.MANAGER) as (_admin_id, csrf_token):
             listed = await case.client.get("/api/v1/admin/users")
@@ -80,6 +100,10 @@ async def test_user_phone_masking_and_block_auth(test_engine: AsyncEngine) -> No
             )
             assert listed_user["phone"] != full_phone
             assert listed_user["phone"].endswith("4567")
+            listed_short_user = next(
+                item for item in listed.json()["items"] if item["id"] == case.other_user_id
+            )
+            assert listed_short_user["phone"] == "*2345"
 
             detail = await case.client.get(f"/api/v1/admin/users/{case.user_id}")
             assert detail.status_code == 200
