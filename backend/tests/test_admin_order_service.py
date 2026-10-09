@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
 from secrets import token_hex, token_urlsafe
-from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -211,24 +210,20 @@ async def test_order_permissions_and_detail_history(test_engine: AsyncEngine) ->
                     actor
                 )
                 try:
-                    with patch("app.api.v1.admin.orders.register_order_status_notifications"):
-                        transitioned = await case.client.patch(
-                            f"/api/v1/admin/orders/{order.id}/status",
-                            headers=headers,
-                            json={"status": "confirmed", "comment": "Synthetic confirmation"},
-                        )
+                    transitioned = await case.client.patch(
+                        f"/api/v1/admin/orders/{order.id}/status",
+                        headers=headers,
+                        json={"status": "confirmed", "comment": "Synthetic confirmation"},
+                    )
                     assert transitioned.status_code == 200, transitioned.text
                     assert transitioned.json()["status"] == "confirmed"
                     assert transitioned.headers["cache-control"] == "private, no-store"
 
-                    with patch(
-                        "app.api.v1.admin.payments.register_order_status_notifications"
-                    ):
-                        accepted = await case.client.post(
-                            f"/api/v1/admin/orders/{payment_order.id}/payment/accept",
-                            headers=headers,
-                            json={"expected_receipt_version": 1},
-                        )
+                    accepted = await case.client.post(
+                        f"/api/v1/admin/orders/{payment_order.id}/payment/accept",
+                        headers=headers,
+                        json={"expected_receipt_version": 1},
+                    )
                     assert accepted.status_code == 200, accepted.text
                     assert accepted.json()["payment_status"] == "paid"
                     assert accepted.json()["status"] == "new"

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
 from uuid import uuid4
@@ -12,7 +13,8 @@ from app.core.security import create_access_token
 from app.db.models.admin import Admin
 from app.db.models.cart import Cart, CartItem
 from app.db.models.category import Category
-from app.db.models.enums import AdminRole, ProductUnit
+from app.db.models.enums import AdminRole, NotificationOutboxStatus, ProductUnit
+from app.db.models.notification_outbox import NotificationOutbox
 from app.db.models.order import Order
 from app.db.models.product import Product
 from app.db.models.setting import Setting
@@ -20,6 +22,7 @@ from app.db.models.user import User
 from app.db.repositories import setting_repository
 from app.main import create_app
 from app.services.after_commit import commit_with_after_commit, register_after_commit
+from app.services.notification_outbox_worker import run_outbox_worker
 
 
 async def test_commit_failure_sends_no_notification() -> None:
@@ -116,9 +119,14 @@ async def _exercise_checkout_commit_order(
 
     events.clear()
 
+    stop = asyncio.Event()
+
     class FakeBot:
+        id = 8_700_000_000_000_000
+
         async def send_message(self, chat_id: int, text: str, **kwargs: object):
             events.append("telegram_send_started")
+            stop.set()
             if fail_notification:
                 raise RuntimeError("synthetic Telegram failure")
             return SimpleNamespace(message_id=44)
@@ -166,10 +174,6 @@ async def _exercise_checkout_commit_order(
 
             await self.application(scope, receive, record_send)
 
-    from app.bot.services import order_notifications
-
-    original_session_maker = order_notifications.async_session_maker
-    order_notifications.async_session_maker = session_maker
     client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=ResponseRecorder(app)),
         base_url="http://testserver",
@@ -188,21 +192,62 @@ async def _exercise_checkout_commit_order(
             },
         )
         assert response.status_code == 201
-        assert events.index("commit_finished") < events.index("telegram_send_started")
         assert events.index("commit_finished") < events.index("http_success_sent")
+        assert "telegram_send_started" not in events
 
         async with session_maker() as session:
             created_order = await session.scalar(
                 select(Order).where(Order.user_id == customer_id)
             )
+            assert created_order is not None
+            queued = list(
+                (
+                    await session.scalars(
+                        select(NotificationOutbox).where(
+                            NotificationOutbox.event_type == "order.created",
+                            NotificationOutbox.aggregate_id == str(created_order.id),
+                        )
+                    )
+                ).all()
+            )
         assert created_order is not None
+        assert len(queued) == 1
+        assert queued[0].status == NotificationOutboxStatus.PENDING
+        assert "telegram_send_started" not in events
+
+        from app.services import notification_outbox_worker
+
+        monkeypatch.setattr(
+            notification_outbox_worker,
+            "acquire_telegram_slot",
+            lambda *_args, **_kwargs: asyncio.sleep(0),
+        )
+
+        class FakeRedis:
+            pass
+
+        await run_outbox_worker(app.state.bot, session_maker, FakeRedis(), stop)
+        assert events.index("http_success_sent") < events.index("telegram_send_started")
+
+        async with session_maker() as session:
+            created_order = await session.get(Order, created_order.id)
+            queued_event = await session.get(NotificationOutbox, queued[0].id)
+            assert queued_event is not None
         if fail_notification:
-            assert not created_order.admin_message_ids
+            assert created_order is not None and not created_order.admin_message_ids
+            assert (
+                queued_event is not None
+                and queued_event.status == NotificationOutboxStatus.PENDING
+            )
         else:
+            assert created_order is not None
             assert created_order.admin_message_ids == {str(telegram_id + 1): 44}
+            assert (
+                queued_event is not None
+                and queued_event.status == NotificationOutboxStatus.SENT
+            )
     finally:
         await client.aclose()
-        order_notifications.async_session_maker = original_session_maker
         app.dependency_overrides.clear()
         async with session_maker() as session:
             await session.execute(delete(Order).where(Order.user_id == customer_id))
@@ -295,8 +340,14 @@ async def test_checkout_replay_skips_new_notification(test_engine, monkeypatch) 
         admin_id = admin.id
 
     class FakeBot:
+        id = 8_700_000_000_000_001
+
+        def __init__(self) -> None:
+            self.stop = asyncio.Event()
+
         async def send_message(self, chat_id: int, text: str, **kwargs: object):
             events.append("telegram_send_started")
+            self.stop.set()
             return SimpleNamespace(message_id=45)
 
     app = create_app()
@@ -327,10 +378,6 @@ async def test_checkout_replay_skips_new_notification(test_engine, monkeypatch) 
 
     fake_redis = FakeRedis()
     monkeypatch.setattr("app.api.rate_limit.get_redis", lambda: fake_redis)
-    from app.bot.services import order_notifications
-
-    original_session_maker = order_notifications.async_session_maker
-    order_notifications.async_session_maker = session_maker
     client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
     )
@@ -348,19 +395,57 @@ async def test_checkout_replay_skips_new_notification(test_engine, monkeypatch) 
             headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
             json=payload,
         )
+        assert first.status_code == 201
+        assert events.count("telegram_send_started") == 0
+        async with session_maker() as session:
+            first_order = await session.scalar(
+                select(Order).where(Order.user_id == customer_id)
+            )
+            assert first_order is not None
+            first_events = list(
+                (
+                    await session.scalars(
+                        select(NotificationOutbox).where(
+                            NotificationOutbox.event_type == "order.created",
+                            NotificationOutbox.aggregate_id == str(first_order.id),
+                        )
+                    )
+                ).all()
+            )
+            assert len(first_events) == 1
+        from app.services import notification_outbox_worker
+
+        monkeypatch.setattr(
+            notification_outbox_worker,
+            "acquire_telegram_slot",
+            lambda *_args, **_kwargs: asyncio.sleep(0),
+        )
+
+        class FakeRedis:
+            pass
+
+        await run_outbox_worker(app.state.bot, session_maker, FakeRedis(), app.state.bot.stop)
         sends_after_first = events.count("telegram_send_started")
         second = await client.post(
             "/api/v1/orders",
             headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
             json=payload,
         )
-        assert first.status_code == 201
         assert second.status_code == 200
         assert sends_after_first == 1
         assert events.count("telegram_send_started") == sends_after_first
+        async with session_maker() as session:
+            assert (
+                await session.scalar(
+                    select(NotificationOutbox.id).where(
+                        NotificationOutbox.event_type == "order.created",
+                        NotificationOutbox.aggregate_id == str(first_order.id),
+                    )
+                )
+                == first_events[0].id
+            )
     finally:
         await client.aclose()
-        order_notifications.async_session_maker = original_session_maker
         app.dependency_overrides.clear()
         async with session_maker() as session:
             await session.execute(delete(Order).where(Order.user_id == customer_id))

@@ -33,7 +33,6 @@ from app.bot.keyboards.inline.checkout import (
 )
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
 from app.bot.keyboards.reply.checkout import location_request_keyboard, phone_request_keyboard
-from app.bot.services.order_notifications import register_new_order_notification
 from app.bot.states.checkout import CheckoutStates
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.bot.utils.messages import require_message
@@ -887,19 +886,16 @@ async def on_confirm(
         await callback.answer()
         return
 
-    if result.created:
-        if receipt_file_id and receipt_content is not None:
-            order = await attach_card_transfer_receipt(
-                session,
-                PrivateReceiptStorage(settings.private_media_root_path),
-                order_id=order.id,
-                owner_user_id=user.id,
-                content=receipt_content,
-                declared_content_type=receipt_content_type or "",
-                telegram_file_id=receipt_file_id,
-            )
-
-        register_new_order_notification(session, bot, order.id)
+    if result.created and receipt_file_id and receipt_content is not None:
+        order = await attach_card_transfer_receipt(
+            session,
+            PrivateReceiptStorage(settings.private_media_root_path),
+            order_id=order.id,
+            owner_user_id=user.id,
+            content=receipt_content,
+            declared_content_type=receipt_content_type or "",
+            telegram_file_id=receipt_file_id,
+        )
 
     await commit_with_after_commit(session)
 

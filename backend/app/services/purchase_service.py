@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
@@ -19,6 +20,7 @@ from app.core.exceptions import (
     OutOfStockError,
     QuoteChangedError,
 )
+from app.db.models.admin import Admin
 from app.db.models.cart import Cart
 from app.db.models.enums import OrderStatus, OrderType, PaymentMethod
 from app.db.models.order import Order
@@ -26,6 +28,7 @@ from app.db.models.product import Product
 from app.db.repositories import cart_repository, order_repository, product_repository
 from app.services.checkout_quote import quote_checkout
 from app.services.checkout_settings import load_checkout_settings
+from app.services.notification_outbox_service import enqueue_outbox_event
 from app.services.purchase_locks import lock_customer_cart
 
 
@@ -46,6 +49,23 @@ class CheckoutCommand:
 class CheckoutResult:
     order: Order
     created: bool
+
+
+async def enqueue_order_created_notifications(session: AsyncSession, *, order_id: int) -> None:
+    """Queue one order-card event per active, notification-enabled admin in this transaction."""
+    recipients = await session.scalars(
+        select(Admin.id)
+        .where(Admin.is_active.is_(True), Admin.notifications_enabled.is_(True))
+        .order_by(Admin.id)
+    )
+    for admin_id in recipients:
+        await enqueue_outbox_event(
+            session,
+            event_type="order.created",
+            aggregate_id=order_id,
+            recipient_admin_id=admin_id,
+            dedupe_key=f"order:{order_id}:created:admin:{admin_id}",
+        )
 
 
 def normalize_checkout_command(command: CheckoutCommand) -> CheckoutCommand:
@@ -292,6 +312,8 @@ async def submit_checkout(
         session, order, from_status=None, to_status=OrderStatus.NEW
     )
     await cart_repository.clear(session, cart)
+
+    await enqueue_order_created_notifications(session, order_id=order.id)
 
     refreshed = await order_repository.get_by_id(session, order.id)
     assert refreshed is not None

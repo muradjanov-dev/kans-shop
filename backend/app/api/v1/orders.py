@@ -1,10 +1,9 @@
 from uuid import UUID
 
-from aiogram import Bot
 from fastapi import APIRouter, Depends, Header, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bot, get_current_user, get_db
+from app.api.deps import get_current_user, get_db
 from app.api.schemas.checkout import CheckoutQuoteIn, CheckoutQuoteOut
 from app.api.schemas.common import PageOut
 from app.api.schemas.customer_orders import OrderHistoryItemOut, OrderTimelineEventOut
@@ -16,7 +15,6 @@ from app.api.schemas.order import (
     PayIn,
     PayOut,
 )
-from app.bot.services.order_notifications import register_new_order_notification
 from app.core.config import settings
 from app.core.exceptions import (
     CheckoutValidationError,
@@ -73,7 +71,6 @@ async def checkout(
     checkout_key: UUID | None = Header(default=None, alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db, scope="function"),
-    bot: Bot = Depends(get_bot),
 ) -> OrderOut:
     if payload.payment_method == PaymentMethod.CARD_TRANSFER and (
         payload.purchase_contract_version is None
@@ -107,8 +104,6 @@ async def checkout(
         source="webapp",
         lang=user.language,
     )
-    if result.created:
-        register_new_order_notification(session, bot, result.order.id)
     response.status_code = 201 if result.created else 200
     response.headers["Cache-Control"] = "private, no-store"
     return OrderOut.model_validate(result.order)

@@ -1,11 +1,10 @@
 from datetime import date
 
-from aiogram import Bot
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bot, get_current_admin, get_db
+from app.api.deps import get_current_admin, get_db
 from app.api.schemas.admin import (
     AdminOrderDetailOut,
     AdminOrderMessageIn,
@@ -14,11 +13,6 @@ from app.api.schemas.admin import (
 )
 from app.api.schemas.common import PageOut
 from app.api.schemas.order import OrderOut
-from app.bot.services.order_notifications import (
-    ACTION_KEY_BY_STATUS,
-    STATUS_LABEL_KEYS,
-    register_order_status_notifications,
-)
 from app.db.models.admin import Admin
 from app.db.models.enums import OrderStatus
 from app.services import admin_order_service, order_service
@@ -78,7 +72,6 @@ async def update_order_status(
     payload: AdminOrderStatusUpdateIn,
     session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
-    bot: Bot = Depends(get_bot),
 ) -> OrderOut:
     live_admin = await admin_order_service.load_order_admin(
         session, admin_id=admin.id, lock=True
@@ -95,30 +88,6 @@ async def update_order_status(
         order = await order_service.advance_status(
             session, order, payload.status, admin_id=live_admin.id, comment=payload.comment
         )
-
-    if payload.status == OrderStatus.CANCELLED:
-        notification_key = "orders.cancelled_notification"
-        reason = order.cancel_reason or ""
-        status_key = None
-    elif payload.status == OrderStatus.CONFIRMED:
-        notification_key = "orders.confirmed_notification"
-        reason = None
-        status_key = None
-    else:
-        notification_key = "orders.status_changed_notification"
-        reason = None
-        status_key = STATUS_LABEL_KEYS[payload.status]
-
-    register_order_status_notifications(
-        session,
-        bot,
-        order.id,
-        notification_key,
-        status_key=status_key,
-        action_key=ACTION_KEY_BY_STATUS[payload.status],
-        admin_name=live_admin.full_name,
-        reason=reason,
-    )
 
     response.headers["Cache-Control"] = "private, no-store"
     return OrderOut.model_validate(order)

@@ -10,6 +10,7 @@ from app.core.exceptions import (
 from app.db.models.enums import AdminRole, OrderStatus, PaymentMethod, PaymentStatus
 from app.db.models.order import Order
 from app.db.repositories import order_repository
+from app.services import order_service
 from app.services.admin_actor_service import load_live_admin
 from app.services.admin_audit_service import write_audit_event
 from app.services.receipt_service import has_private_receipt_evidence
@@ -92,7 +93,7 @@ async def accept_card_transfer_payment(
         "payment_reviewed_by_admin_id": admin.id,
         "payment_reviewed_at": reviewed_at,
     }
-    await write_audit_event(
+    audit_event = await write_audit_event(
         session,
         admin_id=admin.id,
         action="manual_card_transfer_payment_accepted",
@@ -101,6 +102,9 @@ async def accept_card_transfer_payment(
         request_id=f"payment-accept:{order.id}:{current_version}",
         before=before,
         after=after,
+    )
+    await order_service.enqueue_manual_payment_notification(
+        session, order, audit_event_id=audit_event.id
     )
     session.info.setdefault(_NEW_ACCEPTANCE_IDS_KEY, set()).add(order.id)
     return order

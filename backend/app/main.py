@@ -1,3 +1,4 @@
+import asyncio
 import os
 import posixpath
 from collections.abc import AsyncIterator
@@ -20,8 +21,10 @@ from app.bot.services.system_notifications import notify_admins_deploy
 from app.bot.utils.commands import setup_bot_commands
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
+from app.core.redis import get_redis
 from app.core.security import verify_webhook_secret
 from app.db.session import async_session_maker
+from app.services.notification_outbox_worker import run_outbox_worker
 
 log = get_logger(__name__)
 
@@ -63,26 +66,38 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     bot = create_bot()
     app.state.bot = bot
     app.state.dispatcher = None
+    stop_outbox_worker = asyncio.Event()
+    session_maker = getattr(app.state, "session_maker", async_session_maker)
+    worker_task = asyncio.create_task(
+        run_outbox_worker(bot, session_maker, get_redis(), stop_outbox_worker),
+        name="notification-outbox-worker",
+    )
+    app.state.notification_outbox_stop = stop_outbox_worker
+    app.state.notification_outbox_task = worker_task
 
-    await setup_bot_commands(bot)
+    try:
+        await setup_bot_commands(bot)
 
-    if settings.webhook_url:
-        dispatcher = create_dispatcher()
-        app.state.dispatcher = dispatcher
-        await bot.set_webhook(
-            url=f"{settings.webhook_url}/webhook",
-            secret_token=settings.webhook_secret,
-            drop_pending_updates=True,
-        )
-        log.info("webhook_set", url=settings.webhook_url)
-        async with async_session_maker() as session:
-            await notify_admins_deploy(bot, session)
-    else:
-        log.info("webhook_disabled_use_bot_polling_py")
+        if settings.webhook_url:
+            dispatcher = create_dispatcher()
+            app.state.dispatcher = dispatcher
+            await bot.set_webhook(
+                url=f"{settings.webhook_url}/webhook",
+                secret_token=settings.webhook_secret,
+                drop_pending_updates=True,
+            )
+            log.info("webhook_set", url=settings.webhook_url)
+            async with session_maker() as session:
+                await notify_admins_deploy(session)
+                await session.commit()
+        else:
+            log.info("webhook_disabled_use_bot_polling_py")
 
-    yield
-
-    await bot.session.close()
+        yield
+    finally:
+        stop_outbox_worker.set()
+        await worker_task
+        await bot.session.close()
 
 
 def create_app() -> FastAPI:

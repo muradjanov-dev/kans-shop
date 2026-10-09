@@ -63,14 +63,12 @@ def _png_bytes() -> bytes:
 
 @contextmanager
 def _telegram_effects_are_injected(redis: Redis) -> Iterator[None]:
-    # Existing customer/admin rows make auth pure database work. Order notification
-    # registration is replaced at the HTTP boundary, so no test can send a Telegram call.
+    # Existing customer/admin rows make auth pure database work. Durable outbox events are
+    # written in the business transaction and no Telegram call runs in the HTTP request.
     with (
         patch("app.api.rate_limit.get_redis", return_value=redis),
         patch("app.api.v1.auth.get_redis", return_value=redis),
         patch("app.api.admin_security.get_redis", return_value=redis),
-        patch("app.api.v1.orders.register_new_order_notification"),
-        patch("app.api.v1.admin.payments.register_order_status_notifications"),
     ):
         yield
 

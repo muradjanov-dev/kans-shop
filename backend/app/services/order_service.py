@@ -9,14 +9,23 @@ from app.core.exceptions import (
     OrderAlreadyProcessedError,
     OrderNotFoundError,
 )
-from app.db.models.enums import OrderStatus, OrderType, PaymentMethod, PaymentStatus
+from app.db.models.admin import Admin
+from app.db.models.enums import (
+    OrderStatus,
+    OrderType,
+    PaymentMethod,
+    PaymentStatus,
+    PaymentTxState,
+)
 from app.db.models.order import Order
+from app.db.models.payment_transaction import PaymentTransaction
 from app.db.models.product import Product
 from app.db.repositories import (
     order_repository,
     product_repository,
     setting_repository,
 )
+from app.services.notification_outbox_service import enqueue_outbox_event
 from app.services.purchase_service import CheckoutCommand, submit_checkout
 
 # Statuses an admin/operator may move an order into from its current status. `cancelled` is
@@ -103,7 +112,99 @@ async def mark_paid(session: AsyncSession, order: Order) -> Order:
     if order.status == OrderStatus.NEW:
         order = await advance_status(session, order, OrderStatus.CONFIRMED)
     await session.flush()
+    payment_id = await session.scalar(
+        select(PaymentTransaction.id)
+        .where(
+            PaymentTransaction.order_id == order.id,
+            PaymentTransaction.state == PaymentTxState.PAID,
+        )
+        .order_by(PaymentTransaction.id.desc())
+        .limit(1)
+    )
+    if payment_id is not None:
+        await _enqueue_payment_notifications(
+            session,
+            order,
+            event_type="order.gateway_payment.confirmed",
+            admin_event_type="order.admin_card.gateway_payment_updated",
+            payload_id=payment_id,
+            dedupe_key=f"order-gateway-payment:{payment_id}",
+        )
     return order
+
+
+async def _enqueue_order_card_updates(
+    session: AsyncSession,
+    order: Order,
+    *,
+    event_type: str,
+    payload_id: int,
+    dedupe_key: str,
+) -> None:
+    try:
+        telegram_ids = [int(value) for value in order.admin_message_ids]
+    except (TypeError, ValueError):
+        telegram_ids = []
+    if not telegram_ids:
+        return
+    recipients = await session.execute(
+        select(Admin.id, Admin.telegram_id)
+        .where(
+            Admin.telegram_id.in_(telegram_ids),
+            Admin.is_active.is_(True),
+            Admin.notifications_enabled.is_(True),
+        )
+        .order_by(Admin.id)
+    )
+    for admin_id, _telegram_id in recipients:
+        await enqueue_outbox_event(
+            session,
+            event_type=event_type,
+            aggregate_id=order.id,
+            payload_id=payload_id,
+            recipient_admin_id=admin_id,
+            dedupe_key=f"{dedupe_key}:admin:{admin_id}",
+        )
+
+
+async def _enqueue_payment_notifications(
+    session: AsyncSession,
+    order: Order,
+    *,
+    event_type: str,
+    admin_event_type: str,
+    payload_id: int,
+    dedupe_key: str,
+) -> None:
+    await enqueue_outbox_event(
+        session,
+        event_type=event_type,
+        aggregate_id=order.id,
+        payload_id=payload_id,
+        recipient_user_id=order.user_id,
+        dedupe_key=f"{dedupe_key}:user:{order.user_id}",
+    )
+    await _enqueue_order_card_updates(
+        session,
+        order,
+        event_type=admin_event_type,
+        payload_id=payload_id,
+        dedupe_key=dedupe_key,
+    )
+
+
+async def enqueue_manual_payment_notification(
+    session: AsyncSession, order: Order, *, audit_event_id: int
+) -> None:
+    """Queue the manual-review customer message and existing admin-card refreshes atomically."""
+    await _enqueue_payment_notifications(
+        session,
+        order,
+        event_type="order.manual_payment.accepted",
+        admin_event_type="order.admin_card.manual_payment_updated",
+        payload_id=audit_event_id,
+        dedupe_key=f"order-manual-payment:{audit_event_id}",
+    )
 
 
 @dataclass(frozen=True)
@@ -174,7 +275,7 @@ async def advance_status(
         order.confirmed_at = datetime.now(UTC)
     if new_status == OrderStatus.COMPLETED:
         order.completed_at = datetime.now(UTC)
-    await order_repository.add_status_history(
+    history = await order_repository.add_status_history(
         session,
         order,
         from_status=old_status,
@@ -183,6 +284,22 @@ async def advance_status(
         comment=comment,
     )
     await session.flush()
+    if admin_id is not None:
+        await enqueue_outbox_event(
+            session,
+            event_type="order.status.changed",
+            aggregate_id=order.id,
+            payload_id=history.id,
+            recipient_user_id=order.user_id,
+            dedupe_key=f"order-status:{history.id}:user:{order.user_id}",
+        )
+        await _enqueue_order_card_updates(
+            session,
+            order,
+            event_type="order.admin_card.status_updated",
+            payload_id=history.id,
+            dedupe_key=f"order-status:{history.id}",
+        )
     return order
 
 
@@ -215,7 +332,7 @@ async def cancel_order(
                 await product_repository.adjust_stock(session, product, item.quantity)
                 await product_repository.increment_sold(session, product, -item.quantity)
 
-    await order_repository.add_status_history(
+    history = await order_repository.add_status_history(
         session,
         order,
         from_status=old_status,
@@ -224,6 +341,21 @@ async def cancel_order(
         comment=reason,
     )
     await session.flush()
+    await enqueue_outbox_event(
+        session,
+        event_type="order.status.changed",
+        aggregate_id=order.id,
+        payload_id=history.id,
+        recipient_user_id=order.user_id,
+        dedupe_key=f"order-status:{history.id}:user:{order.user_id}",
+    )
+    await _enqueue_order_card_updates(
+        session,
+        order,
+        event_type="order.admin_card.status_updated",
+        payload_id=history.id,
+        dedupe_key=f"order-status:{history.id}",
+    )
     return order
 
 

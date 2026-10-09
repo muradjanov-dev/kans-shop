@@ -127,6 +127,7 @@ async def _notify_active_admins(
     *,
     actor_admin_id: int,
     version: int,
+    audit_event_id: int,
 ) -> None:
     recipients = await session.scalars(
         select(Admin.id)
@@ -142,6 +143,7 @@ async def _notify_active_admins(
             session,
             event_type="store.settings.updated",
             aggregate_id=1,
+            payload_id=audit_event_id,
             dedupe_key=f"store-settings:{version}:admin:{recipient_admin_id}",
             recipient_admin_id=recipient_admin_id,
         )
@@ -178,7 +180,7 @@ async def patch_store_settings(
     await session.flush()
 
     after = {key: _stored_value(getattr(changes, key)) for key in changed_fields}
-    await write_audit_event(
+    audit_event = await write_audit_event(
         session,
         admin_id=actor.id,
         action="store_settings.update",
@@ -189,7 +191,10 @@ async def patch_store_settings(
         after=after,
     )
     await _notify_active_admins(
-        session, actor_admin_id=actor.id, version=state.settings_version
+        session,
+        actor_admin_id=actor.id,
+        version=state.settings_version,
+        audit_event_id=audit_event.id,
     )
 
     values = await setting_repository.get_all(session)

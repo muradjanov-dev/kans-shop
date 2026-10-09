@@ -22,11 +22,6 @@ from app.bot.keyboards.inline.admin_orders import (
     cancel_reason_keyboard,
     message_customer_keyboard,
 )
-from app.bot.services.order_notifications import (
-    ACTION_KEY_BY_STATUS,
-    STATUS_LABEL_KEYS,
-    register_order_status_notifications,
-)
 from app.bot.states.admin import AdminOrderStates
 from app.bot.utils.admin_order_card import build_admin_order_keyboard, build_admin_order_text
 from app.bot.utils.messages import require_message
@@ -86,14 +81,6 @@ async def on_accept_manual_payment(
         return
 
     if manual_payment_service.consume_new_acceptance_event(session, order.id):
-        register_order_status_notifications(
-            session,
-            bot,
-            order.id,
-            "orders.payment_confirmed_notification",
-            action_key="admin.payment_accepted_by",
-            admin_name=admin.full_name,
-        )
         await commit_with_after_commit(session)
         await callback.answer(_("admin.payment_accepted_alert"))
         return
@@ -229,14 +216,6 @@ async def on_confirm_order(
         await callback.answer(_("admin.not_admin_alert"), show_alert=True)
         return
 
-    register_order_status_notifications(
-        session,
-        bot,
-        order.id,
-        "orders.confirmed_notification",
-        action_key=ACTION_KEY_BY_STATUS[OrderStatus.CONFIRMED],
-        admin_name=live_admin.full_name,
-    )
     await commit_with_after_commit(session)
     await callback.answer()
 
@@ -276,15 +255,6 @@ async def on_advance_status(
         await callback.answer(_("admin.not_admin_alert"), show_alert=True)
         return
 
-    register_order_status_notifications(
-        session,
-        bot,
-        order.id,
-        "orders.status_changed_notification",
-        status_key=STATUS_LABEL_KEYS[to_status],
-        action_key=ACTION_KEY_BY_STATUS[to_status],
-        admin_name=live_admin.full_name,
-    )
     await commit_with_after_commit(session)
     await callback.answer()
 
@@ -375,15 +345,6 @@ async def on_custom_cancel_reason(
     order = await order_service.cancel_order(
         session, order, admin_id=live_admin.id, reason=reason_text
     )
-    register_order_status_notifications(
-        session,
-        bot,
-        order.id,
-        "orders.cancelled_notification",
-        action_key=ACTION_KEY_BY_STATUS[OrderStatus.CANCELLED],
-        admin_name=live_admin.full_name,
-        reason=reason_text,
-    )
     await commit_with_after_commit(session)
     await state.clear()
     await message.answer(
@@ -418,15 +379,6 @@ async def _finalize_cancel(
         await callback.answer(_("admin.not_admin_alert"), show_alert=True)
         return
 
-    register_order_status_notifications(
-        session,
-        bot,
-        order.id,
-        "orders.cancelled_notification",
-        action_key=ACTION_KEY_BY_STATUS[OrderStatus.CANCELLED],
-        admin_name=live_admin.full_name,
-        reason=reason_text,
-    )
     await commit_with_after_commit(session)
     await callback.answer()
 
