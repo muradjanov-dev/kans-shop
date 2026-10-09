@@ -84,7 +84,7 @@ Yangi `POST /api/v1/orders/quote` checkout turini va tanlangan to‘lov usulini 
 
 Do‘kon yopiq yoki kerakli sozlama yetishmasa katalog, savat va oldingi buyurtmalar ochiq qoladi, yangi checkout esa tushunarli xabar bilan to‘xtaydi. Yetkazish uchun uchta narx sozlamasi, pickup uchun minimum sozlamasi, barcha turlar uchun do‘kon ochiqligi tekshiriladi. Preorder minimum summadan ozod va narx sozlamalari yo‘qligi unga to‘siq bo‘lmaydi, ammo do‘kon yopiq bo‘lsa yangi so‘rov ham yaratilmaydi. Demo seed production’dagi narx, karta yoki mavjud katalogni almashtirmaydi.
 
-Checkout ism, O‘zbekiston telefon raqami va delivery uchun manzilni tekshiradi. Maydon xatolari blur yoki yuborishga urinishda ko‘rinadi; o‘chiq submit tugmasi yagona tushuntirish bo‘lib qolmaydi. Bu bosqich manzilni matn bilan qabul qiladi; xarita, saqlangan manzillar va to‘liq kabinet uchinchi bosqichga qoladi.
+Checkout ism, O‘zbekiston telefon raqami va HTTP/webapp delivery uchun bo‘sh bo‘lmagan matnli manzilni tekshiradi. Mavjud botning lokatsiya yuborish oqimi saqlanadi: bot-only delivery to‘liq latitude/longitude juftligi bilan matnsiz ishlashi mumkin. Har ikkala kanal koordinatalari yuborilsa finite bo‘lishi, latitude −90..90 va longitude −180..180 oraliqda bo‘lishi shart. Bu yangi xarita/geocoding yoki manzil kitobiga koordinata qo‘shmaydi. Maydon xatolari blur yoki yuborishga urinishda ko‘rinadi; o‘chiq submit tugmasi yagona tushuntirish bo‘lib qolmaydi. Bu bosqich manzilni matn bilan qabul qiladi; xarita, saqlangan manzillar va to‘liq kabinet uchinchi bosqichga qoladi.
 
 To‘lov qoidalari:
 
@@ -107,7 +107,7 @@ Orders jadvaliga nullable checkout key va request fingerprint qo‘shiladi; `(us
 
 Bir xil key va payload qayta kelganda original buyurtma qaytariladi; savat ikkinchi marta bo‘shatilmaydi, stock ikkinchi marta kamaymaydi va yangi buyurtma notification’i qayta boshlanmaydi. Bir xil key bilan boshqa payload `409 IDEMPOTENCY_CONFLICT` qaytaradi. Key boshqa foydalanuvchining buyurtmasini ochmaydi. Birinchi yaratilish 201, replay 200 qaytaradi.
 
-Version 1 HTTP checkout key, expected total va expected quote’ni majburiy qiladi. Versiyasiz eski frontend uchun bu maydonlar optional qoladi; legacy cash/tender checkout cart lock va stock checks’dan o‘tadi, ammo durable replay yoki oldingi quote tasdig‘i kafolatiga ega emas. Legacy HTTP card transfer esa DB yozuvidan oldin `409 CLIENT_UPDATE_REQUIRED` bilan rad etiladi va sahifani yangilashni tushuntiradi: eski bundle rekvizit/chek oqimini bajara olmaydi. Bot direct service adapter’i legacy frontend hisoblanmaydi. Yangi UI version 1 yuborishi va invalid/missing kontraktning rad etilishi test qilinadi. Deploy acceptance cached eski bundle’ni ham tekshiradi.
+Version 1 HTTP checkout key, expected total va expected quote’ni majburiy qiladi. Versiyasiz eski frontend uchun bu maydonlar optional qoladi; legacy cash/tender checkout ham typed quote orqali do‘kon ochiqligi, real sozlama, usul, cart va stock checks’dan o‘tadi, ammo durable replay yoki oldingi quote tasdig‘i kafolatiga ega emas. Legacy HTTP card transfer esa DB yozuvidan oldin `409 CLIENT_UPDATE_REQUIRED` bilan rad etiladi va sahifani yangilashni tushuntiradi: eski bundle rekvizit/chek oqimini bajara olmaydi. Bot direct service adapter’i legacy frontend hisoblanmaydi. Yangi UI version 1 yuborishi va invalid/missing kontraktning rad etilishi test qilinadi. Deploy acceptance cached eski bundle’ni ham tekshiradi.
 
 Transaction ichida user row, uning faol cart row’i va product row’lari shu tartibda lock qilinadi; productlar ID bo‘yicha olinadi. Barcha bot/API cart mutatsiyalari va checkout bir xil user/cart lock tartibidan foydalanadi. Lock’dan keyin cart qayta yuklanadi va idempotency natijasi qayta tekshiriladi. So‘ng mavjudlik, stock, sozlamalar, usul va expected total tekshiriladi.
 
@@ -192,3 +192,7 @@ Yangi release dalili: aynan deploy qilingan SHA uchun muvaffaqiyatli GitHub CI/d
 - `backend/app/api/v1/orders.py`, `backend/app/core/uploads.py`, `backend/app/bot/handlers/user/receipt_redirect.py`: chek upload va access.
 - `frontend/src/pages/CheckoutPage.tsx`, `frontend/src/pages/OrderDetailPage.tsx`: server quote, rekvizit va payment recovery UI.
 - `docs/ASSUMPTIONS.md`, `AGENTS.md`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`: saqlanadigan biznes va release qoidalari.
+
+## Implementatsiya davomidagi aniqlashtirish
+
+Koordinatali eski bot oqimini saqlash va HTTP’da manzil matnini talab qilish kanal adapterlarida ajratiladi. Har qanday yangi order, jumladan key/expected quote yubormaydigan eski cash/tender client ham, shared typed quote readiness’dan o‘tadi. Metadata yo‘qligi qayta tasdiqlash/replay kafolatini kamaytiradi; shop-open, real fee yoki payment availability talabini bekor qilmaydi. Missing qiymat uchun production fallback 0 qo‘llanmaydi.

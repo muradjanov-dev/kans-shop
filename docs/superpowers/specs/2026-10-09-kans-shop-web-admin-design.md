@@ -121,9 +121,9 @@ Bu at-least-once delivery. Telegram `sendMessage` idempotency key bermaydi, shun
 
 ## Audit va mutation qoidalari
 
-`admin_audit_events` har admin mutation’i bilan bir transaction’da yoziladi: actor admin ID, action, entity/entity ID, request ID, time, redacted before/after diff. Order status uchun mavjud `order_status_history` canonical qoladi; payment acceptance reviewer/version ham ko‘rinadi. Product/price/stock/category/settings/user block/team/source/broadcast preview-launch-cancel/session revoke amallari audit qilinadi.
+`admin_audit_events` har admin mutation’i bilan bir transaction’da yoziladi: actor admin ID va serverdan olingan actor_name_snapshot, action, entity/entity ID, request ID, time, redacted before/after diff. Snapshot staff hard-delete’dan keyin ham kim amal bajarganini saqlaydi. Order status uchun mavjud `order_status_history` canonical qoladi; payment acceptance reviewer/version ham ko‘rinadi. Product/price/stock/category/settings/user block/team/source/broadcast preview-launch-cancel/session revoke amallari audit qilinadi.
 
-Card number faqat masklangan oxirgi 4 raqam; provider secret, login code, session/CSRF token, receipt bytes va user telefonining to‘liq qiymati auditga tushmaydi. Audit yozuvlari o‘zgartirilmaydi va avtomatik o‘chirilmaydi. `GET /api/v1/admin/audit` filter/pagination beradi: superadmin barcha; manager operatsion/catalog/broadcast; operator faqat `actor_admin_id` o‘ziga teng bo‘lgan audit event’larni ko‘radi. Order detail’dagi mavjud `order_status_history` operatorning order-view ruxsati bo‘yicha ko‘rinadi.
+Card number faqat masklangan oxirgi 4 raqam; provider secret, login code, session/CSRF token, receipt bytes va user telefonining to‘liq qiymati auditga tushmaydi. Audit yozuvlari o‘zgartirilmaydi va avtomatik o‘chirilmaydi. `GET /api/v1/admin/audit` filter/pagination beradi: superadmin barcha; manager operatsion/catalog/broadcast; operator faqat `actor_admin_id` o‘ziga teng bo‘lgan order/payment/admin-order-message event’larni ko‘radi; o‘zining eski team/session/customer event’lari ham yopiq qoladi. Order detail’dagi mavjud `order_status_history` operatorning order-view ruxsati bo‘yicha ko‘rinadi.
 
 ## DB va xato kontrakti
 
