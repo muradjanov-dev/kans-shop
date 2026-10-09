@@ -299,9 +299,9 @@ async def test_customer_and_admin_codes_cannot_cross(
             )
 
         assert admin_code_as_customer.status_code == 401
-        assert customer_code_as_admin.status_code == 401
-        assert sorted(response.status_code for response in admin_races) == [200, 401]
-        assert await redis.get(f"admin_login:{admin_code}") is None
+        assert customer_code_as_admin.status_code == 410
+        assert sorted(response.status_code for response in admin_races) == [410, 410]
+        assert await redis.get(f"admin_login:{admin_code}") == str(telegram_id)
         assert await redis.get(f"customer_login:code:{customer_code}") == str(telegram_id)
 
 

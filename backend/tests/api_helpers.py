@@ -54,7 +54,9 @@ class ApiCase:
 
 
 @asynccontextmanager
-async def make_api_case(test_engine: AsyncEngine) -> AsyncIterator[ApiCase]:
+async def make_api_case(
+    test_engine: AsyncEngine, *, base_url: str = "http://testserver"
+) -> AsyncIterator[ApiCase]:
     session_maker = async_sessionmaker(test_engine, expire_on_commit=False)
     suffix = token_hex(8)
     telegram_id = 8_000_000_000_000_000 + randbelow(100_000_000)
@@ -112,9 +114,7 @@ async def make_api_case(test_engine: AsyncEngine) -> AsyncIterator[ApiCase]:
                 raise
 
     app.dependency_overrides[get_db] = get_case_db
-    client = httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-    )
+    client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=base_url)
     tokens = (
         create_access_token(user_id=user_id, telegram_id=telegram_id),
         create_access_token(user_id=other_user_id, telegram_id=telegram_id + 1),

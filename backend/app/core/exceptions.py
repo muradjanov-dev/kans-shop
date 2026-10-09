@@ -67,9 +67,35 @@ class UnauthorizedError(KansShopError):
     http_status = 401
 
 
+class AdminSessionRequiredError(UnauthorizedError):
+    code = "ADMIN_SESSION_REQUIRED"
+
+
+class AdminSessionInvalidError(AdminSessionRequiredError):
+    """A formerly valid session was revoked because its owner or lifetime changed."""
+
+
 class ForbiddenError(KansShopError):
     code = "FORBIDDEN"
     http_status = 403
+
+
+class CsrfFailedError(ForbiddenError):
+    code = "CSRF_FAILED"
+
+
+class UnsupportedMediaTypeError(KansShopError):
+    code = "UNSUPPORTED_MEDIA_TYPE"
+    http_status = 415
+
+
+class GoneError(KansShopError):
+    code = "GONE"
+    http_status = 410
+
+
+class InvalidOrExpiredAdminCodeError(UnauthorizedError):
+    code = "INVALID_OR_EXPIRED_CODE"
 
 
 class RateLimitedError(KansShopError):

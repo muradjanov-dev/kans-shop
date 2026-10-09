@@ -10,9 +10,8 @@ from app.api.schemas.auth import (
     TelegramAuthIn,
     TokenOut,
 )
-from app.bot.handlers.admin.auth import ADMIN_LOGIN_KEY_PREFIX
 from app.core.config import settings
-from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.exceptions import ForbiddenError, GoneError, UnauthorizedError
 from app.core.redis import get_redis
 from app.core.security import (
     create_access_token,
@@ -70,18 +69,10 @@ async def auth_telegram(
     return await _issue_tokens(session, user.telegram_id)
 
 
-@router.post("/telegram/code", response_model=TokenOut)
-async def auth_bot_code(
-    payload: BotCodeAuthIn, session: AsyncSession = Depends(get_db)
-) -> TokenOut:
-    """Admin-panel login fallback: exchanges a one-time code issued by /admin_login in the bot
-    for a JWT (used for local dev / non-HTTPS admin access, see docs/ASSUMPTIONS.md)."""
-    redis = get_redis()
-    key = f"{ADMIN_LOGIN_KEY_PREFIX}{payload.code}"
-    telegram_id_str = await redis.getdel(key)
-    if telegram_id_str is None:
-        raise UnauthorizedError("Invalid or expired code")
-    return await _issue_tokens(session, int(telegram_id_str))
+@router.post("/telegram/code")
+async def auth_bot_code(_payload: BotCodeAuthIn) -> None:
+    """Retired admin JWT exchange; browser admins must use the secure session flow."""
+    raise GoneError("Admin JWT code exchange has been retired")
 
 
 @router.post("/customer/code", response_model=TokenOut)

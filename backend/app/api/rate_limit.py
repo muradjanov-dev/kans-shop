@@ -17,6 +17,7 @@ CODE_EXCHANGE_WINDOW_SECONDS = 300
 CODE_EXCHANGE_PATHS = {
     "/api/v1/auth/customer/code",
     "/api/v1/auth/telegram/code",
+    "/api/v1/auth/admin/code/exchange",
 }
 _CODE_EXCHANGE_RATE_KEY_PREFIX = "ratelimit:auth_code:"
 

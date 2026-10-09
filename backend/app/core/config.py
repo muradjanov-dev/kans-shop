@@ -2,6 +2,7 @@ import ipaddress
 import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -103,6 +104,11 @@ class Settings(BaseSettings):
     @property
     def admin_ids_list(self) -> list[int]:
         return [int(x) for x in self.admin_ids.split(",") if x.strip()]
+
+    @property
+    def webapp_origin(self) -> str:
+        parsed = urlsplit(self.webapp_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
 
     @property
     def trusted_proxy_networks(

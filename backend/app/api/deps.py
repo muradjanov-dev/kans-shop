@@ -1,16 +1,29 @@
+import hmac
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+from datetime import UTC, datetime
 
 from aiogram import Bot
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.config import settings
+from app.core.exceptions import (
+    AdminSessionInvalidError,
+    AdminSessionRequiredError,
+    CsrfFailedError,
+    ForbiddenError,
+    UnauthorizedError,
+)
 from app.core.security import decode_token
 from app.db.models.admin import Admin
 from app.db.models.enums import AdminRole
 from app.db.models.user import User
-from app.db.repositories import admin_repository, user_repository
+from app.db.repositories import user_repository
 from app.db.session import async_session_maker
+from app.services.admin_session_service import (
+    AdminSessionPrincipal,
+    resolve_admin_session,
+)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -39,17 +52,52 @@ async def get_current_user(
     return user
 
 
+async def get_admin_session_principal(
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_db),
+) -> AdminSessionPrincipal:
+    try:
+        raw_cookie = request.cookies.get("__Host-kans-admin")
+    except Exception:
+        raise AdminSessionRequiredError("Admin session required") from None
+    if raw_cookie is None:
+        raise AdminSessionRequiredError("Admin session required")
+
+    try:
+        principal = await resolve_admin_session(
+            session, raw_token=raw_cookie, now=datetime.now(UTC)
+        )
+    except AdminSessionInvalidError:
+        # Persist revocation even though the authorization error aborts this request's unit of work.
+        await session.commit()
+        raise
+
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        csrf_token = request.headers.get("x-csrf-token")
+        if (
+            request.headers.get("origin") != settings.webapp_origin
+            or csrf_token is None
+            or not csrf_token.isascii()
+            or not hmac.compare_digest(csrf_token, principal.csrf_token)
+        ):
+            raise CsrfFailedError("Request origin or CSRF token check failed")
+
+    response.headers["Cache-Control"] = "private, no-store"
+    return principal
+
+
 async def get_current_admin(
-    user: User = Depends(get_current_user),
+    principal: AdminSessionPrincipal = Depends(get_admin_session_principal),
     session: AsyncSession = Depends(get_db),
 ) -> Admin:
-    admin = await admin_repository.get_by_telegram_id(session, user.telegram_id)
+    admin = await session.get(Admin, principal.admin_id)
     if admin is None or not admin.is_active:
-        raise ForbiddenError("Admin access required")
+        raise AdminSessionRequiredError("Admin session required")
     return admin
 
 
-def require_admin_roles(*roles: AdminRole) -> Callable[[Admin], Awaitable[Admin]]:
+def require_admin_roles(*roles: AdminRole) -> Callable[..., Awaitable[Admin]]:
     """Usage: `admin: Admin = Depends(require_admin_roles(AdminRole.MANAGER, ...))`."""
 
     async def _dependency(admin: Admin = Depends(get_current_admin)) -> Admin:
