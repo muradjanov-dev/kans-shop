@@ -7,12 +7,27 @@ from app.db.models.admin import Admin
 from app.db.models.enums import AdminRole
 
 
-async def get_by_telegram_id(session: AsyncSession, telegram_id: int) -> Admin | None:
-    return await session.scalar(select(Admin).where(Admin.telegram_id == telegram_id))
+async def get_by_telegram_id(
+    session: AsyncSession, telegram_id: int, *, for_update: bool = False
+) -> Admin | None:
+    statement = select(Admin).where(Admin.telegram_id == telegram_id)
+    if for_update:
+        statement = statement.with_for_update()
+    return await session.scalar(statement.execution_options(populate_existing=True))
 
 
-async def get_by_id(session: AsyncSession, admin_id: int) -> Admin | None:
-    return await session.get(Admin, admin_id)
+async def get_by_id(
+    session: AsyncSession, admin_id: int, *, for_update: bool = False
+) -> Admin | None:
+    if not for_update:
+        return await session.get(Admin, admin_id)
+    statement = (
+        select(Admin)
+        .where(Admin.id == admin_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return await session.scalar(statement)
 
 
 async def list_active(session: AsyncSession) -> Sequence[Admin]:

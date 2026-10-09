@@ -9,6 +9,7 @@ from app.api.v1.admin import (
     products,
     settings,
     stats,
+    team,
     users,
 )
 
@@ -22,3 +23,4 @@ router.include_router(settings.router)
 router.include_router(stats.router)
 router.include_router(broadcasts.router)
 router.include_router(audit.router)
+router.include_router(team.router)

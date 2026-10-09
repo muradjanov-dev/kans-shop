@@ -15,6 +15,7 @@ from pydantic import (
 
 from app.api.schemas.catalog import ProductOut
 from app.db.models.enums import (
+    AdminRole,
     BroadcastStatus,
     BroadcastTarget,
     OrderStatus,
@@ -26,6 +27,66 @@ from app.db.models.enums import (
 class AdminProductOut(ProductOut):
     barcode: str | None
     sort_order: int
+
+
+class AdminCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    telegram_id: int = Field(gt=0, lt=2**63, strict=True)
+    full_name: str = Field(min_length=1, max_length=128)
+    role: AdminRole
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_admin_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("full_name must not be empty")
+        return normalized
+
+
+class AdminChanges(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str | None = Field(default=None, min_length=1, max_length=128)
+    role: AdminRole | None = None
+    is_active: bool | None = Field(default=None, strict=True)
+    notifications_enabled: bool | None = Field(default=None, strict=True)
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_admin_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("full_name must not be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_admin_change(self) -> AdminChanges:
+        if not self.model_fields_set:
+            raise ValueError("at least one admin field must be provided")
+        for field_name in self.model_fields_set:
+            if getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null")
+        return self
+
+
+class AdminOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    telegram_id: int
+    full_name: str
+    role: AdminRole
+    is_active: bool
+    notifications_enabled: bool
+    created_at: datetime
+
+
+class AdminSessionsRevokedOut(BaseModel):
+    revoked_sessions: int = Field(ge=0)
 
 
 class CategoryCreateIn(BaseModel):

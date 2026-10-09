@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import (
+    AdminRoleRequiredError,
     AdminSessionInvalidError,
     AdminSessionRequiredError,
     CsrfFailedError,
@@ -101,7 +102,7 @@ def require_admin_roles(*roles: AdminRole) -> Callable[..., Awaitable[Admin]]:
 
     async def _dependency(admin: Admin = Depends(get_current_admin)) -> Admin:
         if roles and admin.role not in roles:
-            raise ForbiddenError("Insufficient role for this action")
+            raise AdminRoleRequiredError("Insufficient role for this action")
         return admin
 
     return _dependency

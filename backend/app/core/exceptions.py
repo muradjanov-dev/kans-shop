@@ -89,6 +89,10 @@ class ForbiddenError(KansShopError):
     http_status = 403
 
 
+class AdminRoleRequiredError(ForbiddenError):
+    code = "ADMIN_ROLE_REQUIRED"
+
+
 class CsrfFailedError(ForbiddenError):
     code = "CSRF_FAILED"
 
@@ -144,6 +148,16 @@ class CatalogEditConflictError(KansShopError):
 
 class StoreSettingsConflictError(KansShopError):
     code = "ENTITY_CONFLICT"
+    http_status = 409
+
+
+class AdminAlreadyExistsError(KansShopError):
+    code = "ENTITY_CONFLICT"
+    http_status = 409
+
+
+class LastSuperadminRequiredError(KansShopError):
+    code = "LAST_SUPERADMIN_REQUIRED"
     http_status = 409
 
 

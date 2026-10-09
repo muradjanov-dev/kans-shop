@@ -77,6 +77,19 @@ def admin_detail_keyboard(
                 ).pack(),
             )
         )
+        notification_key = (
+            "admin.admin_notifications_disable_button"
+            if admin.notifications_enabled
+            else "admin.admin_notifications_enable_button"
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=translator(notification_key),
+                callback_data=AdminManageActionCallback(
+                    admin_id=admin.id, action="notifications"
+                ).pack(),
+            )
+        )
         builder.row(
             InlineKeyboardButton(
                 text=translator("admin.admin_remove_button"),

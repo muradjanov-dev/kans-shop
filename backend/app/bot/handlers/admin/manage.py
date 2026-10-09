@@ -14,6 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas.admin import AdminChanges
 from app.bot.keyboards.callback_data import (
     AdminManageActionCallback,
     AdminManageAddCallback,
@@ -31,9 +32,17 @@ from app.bot.keyboards.inline.admin_manage import (
 from app.bot.states.admin_catalog import AdminManageFormStates
 from app.bot.utils.admin_guard import require_admin
 from app.bot.utils.messages import require_message
+from app.core.exceptions import (
+    AdminAlreadyExistsError,
+    AdminSessionRequiredError,
+    ForbiddenError,
+    LastSuperadminRequiredError,
+    NotFoundError,
+)
 from app.db.models.admin import Admin
 from app.db.models.enums import AdminRole
 from app.db.repositories import admin_repository, user_repository
+from app.services import admin_team_service
 
 router = Router(name="admin_manage")
 
@@ -75,6 +84,11 @@ async def render_admin_detail(
         username=username,
         role=translator(ROLE_LABEL_KEYS[target.role]),
         status=translator(status_key),
+        notifications_status=translator(
+            "admin.admin_notifications_on"
+            if target.notifications_enabled
+            else "admin.admin_notifications_off"
+        ),
         created_at=target.created_at.strftime("%Y-%m-%d"),
     )
     await send(
@@ -103,7 +117,7 @@ async def on_admin_detail(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY):
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
         return
     message = await require_message(callback, _)
     if message is None:
@@ -126,9 +140,13 @@ async def on_admin_detail(
 
 @router.callback_query(AdminManageAddCallback.filter())
 async def on_admin_add(
-    callback: CallbackQuery, admin: Admin | None, state: FSMContext, _: Callable
+    callback: CallbackQuery,
+    admin: Admin | None,
+    state: FSMContext,
+    session: AsyncSession,
+    _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY):
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
         return
     message = await require_message(callback, _)
     if message is None:
@@ -205,8 +223,9 @@ async def on_admin_role_chosen_for_new(
     state: FSMContext,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY):
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
@@ -218,18 +237,21 @@ async def on_admin_role_chosen_for_new(
         await callback.answer(_("common.error_generic"), show_alert=True)
         return
 
-    # Re-check: another superadmin may have added the same id while this form was open.
-    if await admin_repository.get_by_telegram_id(session, telegram_id) is not None:
+    try:
+        target = await admin_team_service.add_admin(
+            session,
+            actor_admin_id=admin.id,
+            telegram_id=telegram_id,
+            full_name=data.get("full_name", str(telegram_id)),
+            role=AdminRole(callback_data.role),
+        )
+    except AdminAlreadyExistsError:
         await callback.answer(_("admin.admin_already_exists"), show_alert=True)
         await render_admins_list(message.edit_text, session, translator=_)
         return
-
-    target = await admin_repository.create(
-        session,
-        telegram_id=telegram_id,
-        full_name=data.get("full_name", str(telegram_id)),
-        role=AdminRole(callback_data.role),
-    )
+    except (AdminSessionRequiredError, ForbiddenError):
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
+        return
     await callback.answer(_("admin.admin_created"))
     await render_admin_detail(message.edit_text, session, target, translator=_, is_self=False)
 
@@ -245,7 +267,7 @@ async def on_admin_role_menu(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY):
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
         return
     message = await require_message(callback, _)
     if message is None:
@@ -268,8 +290,9 @@ async def on_admin_role_changed(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY):
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
@@ -278,11 +301,22 @@ async def on_admin_role_changed(
         return
 
     new_role = AdminRole(callback_data.role)
-    if not await _may_demote(session, target, new_role=new_role, is_active=target.is_active):
+    try:
+        target = await admin_team_service.update_admin(
+            session,
+            actor_admin_id=admin.id,
+            admin_id=target.id,
+            changes=AdminChanges(role=new_role),
+        )
+    except LastSuperadminRequiredError:
         await callback.answer(_("admin.admin_last_superadmin"), show_alert=True)
         return
-
-    await admin_repository.set_role(session, target, new_role)
+    except NotFoundError:
+        await callback.answer(_("admin.admin_not_found"), show_alert=True)
+        return
+    except (AdminSessionRequiredError, ForbiddenError):
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
+        return
     await render_admin_detail(
         message.edit_text,
         session,
@@ -318,8 +352,9 @@ async def on_admin_toggle(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY):
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
@@ -328,17 +363,69 @@ async def on_admin_toggle(
         return
 
     new_active = not target.is_active
-    if not await _may_demote(session, target, new_role=target.role, is_active=new_active):
+    try:
+        target = await admin_team_service.update_admin(
+            session,
+            actor_admin_id=admin.id,
+            admin_id=target.id,
+            changes=AdminChanges(is_active=new_active),
+        )
+    except LastSuperadminRequiredError:
         await callback.answer(_("admin.admin_last_superadmin"), show_alert=True)
         return
-
-    await admin_repository.set_active(session, target, new_active)
+    except NotFoundError:
+        await callback.answer(_("admin.admin_not_found"), show_alert=True)
+        return
+    except (AdminSessionRequiredError, ForbiddenError):
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
+        return
     await render_admin_detail(
         message.edit_text,
         session,
         target,
         translator=_,
         is_self=admin is not None and target.id == admin.id,
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminManageActionCallback.filter(F.action == "notifications"))
+async def on_admin_notifications_toggled(
+    callback: CallbackQuery,
+    callback_data: AdminManageActionCallback,
+    session: AsyncSession,
+    admin: Admin | None,
+    _: Callable,
+) -> None:
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
+        return
+    assert admin is not None
+    message = await require_message(callback, _)
+    if message is None:
+        return
+    target = await _get_target_or_alert(callback, session, callback_data.admin_id, _)
+    if target is None:
+        return
+
+    try:
+        target = await admin_team_service.update_admin(
+            session,
+            actor_admin_id=admin.id,
+            admin_id=target.id,
+            changes=AdminChanges(notifications_enabled=not target.notifications_enabled),
+        )
+    except NotFoundError:
+        await callback.answer(_("admin.admin_not_found"), show_alert=True)
+        return
+    except (AdminSessionRequiredError, ForbiddenError):
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
+        return
+    await render_admin_detail(
+        message.edit_text,
+        session,
+        target,
+        translator=_,
+        is_self=target.id == admin.id,
     )
     await callback.answer()
 
@@ -351,7 +438,7 @@ async def on_admin_remove_request(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY):
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
         return
     message = await require_message(callback, _)
     if message is None:
@@ -374,21 +461,30 @@ async def on_admin_remove_confirm(
     admin: Admin | None,
     _: Callable,
 ) -> None:
-    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY):
+    if not await require_admin(callback, admin, _, roles=SUPERADMIN_ONLY, session=session):
         return
+    assert admin is not None
     message = await require_message(callback, _)
     if message is None:
         return
     target = await _get_target_or_alert(callback, session, callback_data.admin_id, _)
     if target is None:
         return
-    if admin is not None and target.id == admin.id:
+    try:
+        await admin_team_service.remove_admin(
+            session, actor_admin_id=admin.id, admin_id=target.id
+        )
+    except ForbiddenError:
         await callback.answer(_("admin.admin_cannot_remove_self"), show_alert=True)
         return
-    if not await _may_demote(session, target, new_role=target.role, is_active=False):
+    except LastSuperadminRequiredError:
         await callback.answer(_("admin.admin_last_superadmin"), show_alert=True)
         return
-
-    await admin_repository.delete(session, target)
+    except NotFoundError:
+        await callback.answer(_("admin.admin_not_found"), show_alert=True)
+        return
+    except AdminSessionRequiredError:
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
+        return
     await callback.answer(_("admin.admin_removed"))
     await render_admins_list(message.edit_text, session, translator=_)
