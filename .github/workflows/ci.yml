@@ -18,7 +18,8 @@ jobs:
         working-directory: backend
     services:
       postgres:
-        image: postgres:16
+        # Google's cache of official Docker Hub images avoids shared runner pull limits.
+        image: mirror.gcr.io/library/postgres:16
         env:
           POSTGRES_USER: kansshop
           POSTGRES_PASSWORD: kansshop
@@ -28,7 +29,7 @@ jobs:
           --health-cmd "pg_isready -U kansshop"
           --health-interval 5s --health-timeout 5s --health-retries 20
       redis:
-        image: redis:7
+        image: mirror.gcr.io/library/redis:7
         ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping"
