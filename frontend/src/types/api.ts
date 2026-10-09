@@ -3,6 +3,17 @@
 // here and parsed with parseFloat() at render time — see src/lib/format.ts.
 
 export type ProductUnit = "dona" | "quti" | "paket" | "komplekt";
+export type CatalogSort = "default" | "price_asc" | "price_desc" | "newest";
+
+export interface CatalogQuery {
+  q: string;
+  category: number | null;
+  min_price: string;
+  max_price: string;
+  in_stock: boolean;
+  sort: CatalogSort;
+  page: number;
+}
 export type OrderType = "delivery" | "pickup" | "preorder";
 export type OrderStatus =
   | "new"
@@ -35,6 +46,7 @@ export interface Category {
   name_uz: string;
   name_ru: string;
   slug: string;
+  edit_version?: number;
   description_uz: string | null;
   description_ru: string | null;
   image_url: string | null;
@@ -69,6 +81,7 @@ export interface Product {
   lot_url: string | null;
   views_count: number;
   sold_count: number;
+  edit_version?: number;
   images: ProductImage[];
 }
 

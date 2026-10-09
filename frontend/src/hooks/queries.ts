@@ -17,9 +17,23 @@ import type {
 export function useCategories(parentId?: number) {
   return useQuery({
     queryKey: ["categories", parentId ?? null],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const { data } = await api.get<Category[]>("/catalog/categories", {
         params: parentId ? { parent_id: parentId } : undefined,
+        signal,
+      });
+      return data;
+    },
+  });
+}
+
+export function useFeaturedProducts(limit = 10) {
+  return useQuery({
+    queryKey: ["featured-products", limit],
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<Product[]>("/catalog/featured", {
+        params: { limit },
+        signal,
       });
       return data;
     },
@@ -56,8 +70,8 @@ export function useProductSearch(query: string, page: number) {
 export function useProduct(productId: number | undefined) {
   return useQuery({
     queryKey: ["product", productId],
-    queryFn: async () => {
-      const { data } = await api.get<Product>(`/catalog/products/${productId}`);
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<Product>(`/catalog/products/${productId}`, { signal });
       return data;
     },
     enabled: productId !== undefined,
@@ -67,8 +81,8 @@ export function useProduct(productId: number | undefined) {
 export function usePublicSettings() {
   return useQuery({
     queryKey: ["public-settings"],
-    queryFn: async () => {
-      const { data } = await api.get<PublicSettings>("/settings/public");
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<PublicSettings>("/settings/public", { signal });
       return data;
     },
     staleTime: 5 * 60 * 1000,

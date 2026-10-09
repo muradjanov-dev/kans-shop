@@ -97,17 +97,22 @@ describe("responsive storefront shell", () => {
     };
     renderStorefront("/", (queryClient) => {
       queryClient.setQueryData(["categories", null], [category]);
-      queryClient.setQueryData(["category-products", 1, 1], {
-        items: [product],
-        total: 1,
+      queryClient.setQueryData(["catalog", {
+        q: "",
+        category: null,
+        min_price: "",
+        max_price: "",
+        in_stock: false,
+        sort: "default",
         page: 1,
-        limit: 12,
-        total_pages: 1,
+      }], {
+        pages: [{ items: [product], total: 1, page: 1, limit: 24, total_pages: 1 }],
+        pageParams: [1],
       });
     });
 
-    const productLink = await screen.findByRole("link", { name: /Daftar/ });
-    expect(productLink.parentElement).toHaveClass("grid-cols-2", "xl:grid-cols-4");
+    const productName = await screen.findByText("Daftar");
+    expect(productName.closest("article")?.parentElement).toHaveClass("grid-cols-2", "xl:grid-cols-4");
   });
 
   it("keeps favorites and addresses reachable from the active profile section", () => {
