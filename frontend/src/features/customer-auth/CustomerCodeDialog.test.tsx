@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axios, { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse } from "axios";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
@@ -317,6 +317,59 @@ describe("customer code dialog", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     } finally {
       resolveLogin();
+      axios.defaults.adapter = originalAxiosAdapter;
+    }
+  });
+
+  it("expires the pending add before exchanging a code when its dialog has been open for 24 hours", () => {
+    const createdAt = 1_800_000_000_000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(createdAt);
+    const originalApiAdapter = api.defaults.adapter;
+    const originalAxiosAdapter = axios.defaults.adapter;
+    let codeCalls = 0;
+    let addCalls = 0;
+    localStorage.setItem("kans-shop-pending-add", JSON.stringify({
+      productId: 12,
+      quantity: 1,
+      origin: "/",
+      mutationKey: "stable-key",
+      createdAt,
+    }));
+    axios.defaults.adapter = async (config) => {
+      codeCalls += 1;
+      return {
+        data: {
+          access_token: jwt(42),
+          refresh_token: "refresh-42",
+          token_type: "bearer",
+          is_admin: false,
+        },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        config,
+      };
+    };
+    api.defaults.adapter = async (config) => {
+      addCalls += 1;
+      return { data: { items: [], subtotal: "0", items_count: 0 }, status: 201, statusText: "Created", headers: new AxiosHeaders(), config };
+    };
+
+    try {
+      renderWithProviders(<LoginButton />, "/", true);
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      now.mockReturnValue(createdAt + 24 * 60 * 60 * 1000);
+      fireEvent.change(screen.getByLabelText("Kirish kodi"), { target: { value: "765432" } });
+      fireEvent.click(screen.getByRole("button", { name: "Kirish" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("Savat harakati muddati tugadi. Mahsulotni qayta qo'shing.");
+      expect(codeCalls).toBe(0);
+      expect(addCalls).toBe(0);
+      expect(localStorage.getItem("kans-shop-pending-add")).toBeNull();
+    } finally {
+      now.mockRestore();
+      api.defaults.adapter = originalApiAdapter;
       axios.defaults.adapter = originalAxiosAdapter;
     }
   });

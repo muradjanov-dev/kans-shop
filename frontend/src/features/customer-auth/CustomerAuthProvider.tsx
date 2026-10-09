@@ -9,10 +9,11 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
-import { api, getApiErrorCode } from "@/lib/api";
+import { api, cancelAuthenticatedRequests, getApiErrorCode } from "@/lib/api";
 import { useTranslate } from "@/lib/i18n";
 import {
   clearPendingAdd,
+  isPendingAddFresh,
   readPendingAdd,
   writePendingAdd,
   type PendingCartAdd,
@@ -39,9 +40,16 @@ function isPrivateQuery(queryKey: readonly unknown[]): boolean {
   return root === "cart" || root === "orders" || root === "order" || root === "lot-links";
 }
 
-function discardPrivateData(queryClient: ReturnType<typeof useQueryClient>): void {
-  void queryClient.cancelQueries({ predicate: (query) => isPrivateQuery(query.queryKey) });
-  queryClient.removeQueries({ predicate: (query) => isPrivateQuery(query.queryKey) });
+function discardPrivateData(
+  queryClient: ReturnType<typeof useQueryClient>,
+  ownerUserId: string,
+): void {
+  const isOwnedQuery = (query: { queryKey: readonly unknown[] }) =>
+    isPrivateQuery(query.queryKey) && (
+      query.queryKey[1] === ownerUserId || typeof query.queryKey[1] !== "string"
+    );
+  void queryClient.cancelQueries({ predicate: isOwnedQuery });
+  queryClient.removeQueries({ predicate: isOwnedQuery });
 }
 
 function makeMutationKey(): string {
@@ -69,6 +77,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   );
   const [actionPending, setActionPending] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [intentExpired, setIntentExpired] = useState(false);
   const pendingIntentRef = useRef<PendingCartAdd | null>(pendingIntent);
   const pendingOwnerRef = useRef<string | null>(useAuthStore.getState().userId);
   const previousAuthRef = useRef({ userId, authEpoch });
@@ -87,11 +96,24 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const expireIntent = useCallback((intent: PendingCartAdd) => {
+    if (pendingIntentRef.current?.mutationKey !== intent.mutationKey) return;
+    setIntent(null);
+    setDialogOpen(false);
+    setActionPending(false);
+    setErrorCode(null);
+    setIntentExpired(true);
+  }, [setIntent]);
+
   const runIntent = useCallback(async (
     intent: PendingCartAdd,
     expectedEpoch: number,
     expectedUserId: string,
   ) => {
+    if (!isPendingAddFresh(intent, Date.now())) {
+      expireIntent(intent);
+      return;
+    }
     if (runningKeysRef.current.has(intent.mutationKey)) return;
     runningKeysRef.current.add(intent.mutationKey);
     if (pendingOwnerRef.current === null) pendingOwnerRef.current = expectedUserId;
@@ -125,12 +147,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         setActionPending(false);
       }
     }
-  }, [navigate, queryClient, setIntent]);
+  }, [expireIntent, navigate, queryClient, setIntent]);
 
   useEffect(() => {
     const previous = previousAuthRef.current;
     if (previous.userId !== userId || previous.authEpoch !== authEpoch) {
-      discardPrivateData(queryClient);
+      if (previous.userId) {
+        cancelAuthenticatedRequests(previous.authEpoch);
+        discardPrivateData(queryClient, previous.userId);
+      }
       if (previous.userId && !userId) {
         setIntent(null);
         setDialogOpen(false);
@@ -159,6 +184,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const add = useCallback((productId: number, quantity: number, origin: string) => {
     if (pendingIntentRef.current) return;
+    setIntentExpired(false);
     const normalizedOrigin = origin.startsWith("/") ? origin : "/";
     const intent: PendingCartAdd = {
       productId,
@@ -191,6 +217,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setIntent(null);
     setDialogOpen(false);
     setErrorCode(null);
+    setIntentExpired(false);
     setActionPending(false);
     if (intent && location.pathname + location.search !== intent.origin) {
       navigate(intent.origin);
@@ -198,6 +225,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   }, [location.pathname, location.search, navigate, setIntent]);
 
   const submitCode = useCallback(async (code: string) => {
+    const pending = pendingIntentRef.current;
+    if (pending && !isPendingAddFresh(pending, Date.now())) {
+      expireIntent(pending);
+      return;
+    }
     const generation = ++loginGenerationRef.current;
     const expectedEpoch = useAuthStore.getState().authEpoch;
     setErrorCode(null);
@@ -212,10 +244,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       if (generation !== loginGenerationRef.current || current.authEpoch !== expectedEpoch) return;
       setErrorCode(getApiErrorCode(error) ?? "CUSTOMER_LOGIN_FAILED");
     }
-  }, [login]);
+  }, [expireIntent, login]);
 
   const openLogin = useCallback(() => {
     setErrorCode(null);
+    setIntentExpired(false);
     setDialogOpen(true);
   }, []);
 
@@ -225,8 +258,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setDialogOpen(false);
     setActionPending(false);
     setErrorCode(null);
-    discardPrivateData(queryClient);
-    useAuthStore.getState().clear();
+    setIntentExpired(false);
+    const current = useAuthStore.getState();
+    if (current.userId) {
+      cancelAuthenticatedRequests(current.authEpoch);
+      discardPrivateData(queryClient, current.userId);
+    }
+    current.clear();
   }, [queryClient, setIntent]);
 
   const value: CustomerAuthContextValue = {
@@ -262,6 +300,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
+      )}
+      {intentExpired && !dialogOpen && (
+        <p className="fixed bottom-28 left-3 right-3 z-[90] mx-auto max-w-md rounded-xl bg-amber-50 p-3 text-sm text-amber-900 shadow-lg dark:bg-amber-950/80 dark:text-amber-100" role="alert">
+          {t("cart.intent_expired")}
+        </p>
       )}
     </CustomerAuthContext.Provider>
   );

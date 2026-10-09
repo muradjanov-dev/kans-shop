@@ -21,12 +21,21 @@ function isPendingCartAdd(value: unknown): value is PendingCartAdd {
   );
 }
 
+export function isPendingAddFresh(intent: PendingCartAdd, nowMs: number): boolean {
+  return (
+    isPendingCartAdd(intent) &&
+    Number.isFinite(nowMs) &&
+    intent.createdAt <= nowMs &&
+    nowMs - intent.createdAt < MAX_AGE_MS
+  );
+}
+
 export function readPendingAdd(nowMs: number): PendingCartAdd | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    if (!isPendingCartAdd(parsed) || parsed.createdAt > nowMs || nowMs - parsed.createdAt >= MAX_AGE_MS) {
+    if (!isPendingCartAdd(parsed) || !isPendingAddFresh(parsed, nowMs)) {
       localStorage.removeItem(STORAGE_KEY);
       return null;
     }

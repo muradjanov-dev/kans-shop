@@ -1,9 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes, useLocation } from "react-router-dom";
 import axios from "axios";
 import { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse } from "axios";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Cart, Product } from "@/types/api";
 import { CartPage } from "@/pages/CartPage";
 import { renderWithProviders } from "@/test/renderWithProviders";
@@ -13,6 +13,7 @@ import { App } from "@/App";
 import { Layout } from "@/components/Layout";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 
 const product: Product = {
   id: 12,
@@ -57,6 +58,26 @@ function ProductToCartRoutes() {
       </Routes>
       <output data-testid="route-location">{location.pathname}</output>
     </>
+  );
+}
+
+function TestLogoutButton() {
+  const { logout } = useCustomerAuth();
+  return <button onClick={logout} type="button">Sign out test session</button>;
+}
+
+function TestSwitchAccountButton() {
+  return (
+    <button
+      onClick={() => useAuthStore.getState().setTokens({
+        access_token: jwt(99),
+        refresh_token: "refresh-99",
+        is_admin: false,
+      })}
+      type="button"
+    >
+      Switch test account
+    </button>
   );
 }
 
@@ -345,6 +366,146 @@ describe("cart action recovery", () => {
       expect(keys).toEqual([savedIntent.mutationKey, savedIntent.mutationKey]);
       expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/i);
     } finally {
+      api.defaults.adapter = originalAdapter;
+    }
+  });
+
+  it("aborts a cart update when the customer logs out", async () => {
+    useAuthStore.getState().setTokens({
+      access_token: jwt(42),
+      refresh_token: "refresh-42",
+      is_admin: false,
+    });
+    const originalAdapter = api.defaults.adapter;
+    let updateSignal: AbortSignal | undefined;
+    let releaseUpdate!: () => void;
+    let signalUpdate!: () => void;
+    const updateStarted = new Promise<void>((resolve) => { signalUpdate = resolve; });
+    const updateResponse = new Promise<void>((resolve) => { releaseUpdate = resolve; });
+    const initialCart: Cart = {
+      items: [{ id: 7, product_id: 12, quantity: 2, price_snapshot: "300", product: { ...product, stock_qty: 5 } }],
+      subtotal: "600",
+      items_count: 2,
+    };
+    const adapter: AxiosAdapter = async (config) => {
+      if (config.method === "patch") {
+        updateSignal = config.signal as AbortSignal;
+        signalUpdate();
+        await updateResponse;
+        return response(config, initialCart);
+      }
+      return response(config, initialCart, 200);
+    };
+    api.defaults.adapter = adapter;
+    const user = userEvent.setup();
+
+    try {
+      renderWithProviders(
+        <>
+          <CartPage />
+          <TestLogoutButton />
+        </>,
+        "/cart",
+        true,
+      );
+      await screen.findByText("2");
+      await user.click(screen.getByRole("button", { name: /miqdorni oshirish/i }));
+      await updateStarted;
+
+      await user.click(screen.getByRole("button", { name: "Sign out test session" }));
+
+      expect(updateSignal).toBeInstanceOf(AbortSignal);
+      expect(updateSignal?.aborted).toBe(true);
+    } finally {
+      releaseUpdate();
+      api.defaults.adapter = originalAdapter;
+    }
+  });
+
+  it("aborts the previous cart mutation when a different account signs in", async () => {
+    useAuthStore.getState().setTokens({
+      access_token: jwt(42),
+      refresh_token: "refresh-42",
+      is_admin: false,
+    });
+    const originalAdapter = api.defaults.adapter;
+    let updateSignal: AbortSignal | undefined;
+    let releaseUpdate!: () => void;
+    let signalUpdate!: () => void;
+    const updateStarted = new Promise<void>((resolve) => { signalUpdate = resolve; });
+    const updateResponse = new Promise<void>((resolve) => { releaseUpdate = resolve; });
+    const initialCart: Cart = {
+      items: [{ id: 7, product_id: 12, quantity: 2, price_snapshot: "300", product: { ...product, stock_qty: 5 } }],
+      subtotal: "600",
+      items_count: 2,
+    };
+    api.defaults.adapter = async (config) => {
+      if (config.method === "patch") {
+        updateSignal = config.signal as AbortSignal;
+        signalUpdate();
+        await updateResponse;
+        return response(config, initialCart);
+      }
+      return response(config, initialCart, 200);
+    };
+    const user = userEvent.setup();
+
+    try {
+      renderWithProviders(
+        <>
+          <CartPage />
+          <TestSwitchAccountButton />
+        </>,
+        "/cart",
+        true,
+      );
+      await screen.findByText("2");
+      await user.click(screen.getByRole("button", { name: /miqdorni oshirish/i }));
+      await updateStarted;
+      await user.click(screen.getByRole("button", { name: "Switch test account" }));
+      await waitFor(() => expect(updateSignal?.aborted).toBe(true));
+      expect(updateSignal).toBeInstanceOf(AbortSignal);
+      expect(useAuthStore.getState().userId).toBe("99");
+    } finally {
+      releaseUpdate();
+      api.defaults.adapter = originalAdapter;
+    }
+  });
+
+  it("does not retry a pending add after its 24-hour expiry", async () => {
+    const createdAt = 1_800_000_000_000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(createdAt);
+    useAuthStore.getState().setTokens({
+      access_token: jwt(42),
+      refresh_token: "refresh-42",
+      is_admin: false,
+    });
+    localStorage.setItem("kans-shop-pending-add", JSON.stringify({
+      productId: 12,
+      quantity: 1,
+      origin: "/",
+      mutationKey: "stable-key",
+      createdAt,
+    }));
+    const originalAdapter = api.defaults.adapter;
+    let addCalls = 0;
+    const adapter: AxiosAdapter = async (config) => {
+      addCalls += 1;
+      throw new AxiosError("Timeout", "ECONNABORTED", config);
+    };
+    api.defaults.adapter = adapter;
+
+    try {
+      renderWithProviders(<ProductCard product={product} />, "/", true);
+      await screen.findByRole("alert");
+      now.mockReturnValue(createdAt + 24 * 60 * 60 * 1000);
+      fireEvent.click(screen.getByRole("button", { name: "Qayta urinish" }));
+
+      await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Savat harakati muddati tugadi."));
+      expect(addCalls).toBe(1);
+      expect(localStorage.getItem("kans-shop-pending-add")).toBeNull();
+    } finally {
+      now.mockRestore();
       api.defaults.adapter = originalAdapter;
     }
   });

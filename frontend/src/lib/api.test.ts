@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse } from "axios";
 import { afterEach, describe, expect, it } from "vitest";
-import { api } from "@/lib/api";
+import { api, cancelAuthenticatedRequests } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 
 const originalApiAdapter = api.defaults.adapter;
@@ -29,6 +29,34 @@ afterEach(() => {
 });
 
 describe("authenticated API refresh", () => {
+  it("aborts protected API requests owned by a canceled auth epoch", async () => {
+    useAuthStore.getState().setTokens({
+      access_token: jwt(42),
+      refresh_token: "refresh-42",
+      is_admin: false,
+    });
+    let requestStarted!: () => void;
+    let requestSignal: AbortSignal | undefined;
+    const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+    const adapter: AxiosAdapter = (config) => new Promise((_, reject) => {
+      requestSignal = config.signal as AbortSignal | undefined;
+      requestStarted();
+      requestSignal?.addEventListener("abort", () => {
+        reject(new AxiosError("Canceled", "ERR_CANCELED", config));
+      });
+    });
+    api.defaults.adapter = adapter;
+
+    const request = api.get("/cart");
+    await started;
+    cancelAuthenticatedRequests(useAuthStore.getState().authEpoch);
+
+    await expect(request).rejects.toMatchObject({ code: "ERR_CANCELED" });
+    expect(requestSignal).toBeInstanceOf(AbortSignal);
+    expect(requestSignal?.aborted).toBe(true);
+    expect(useAuthStore.getState().accessToken).toBe(jwt(42));
+  });
+
   it("shares one refresh across three simultaneous unauthorized requests", async () => {
     useAuthStore.getState().setTokens({
       access_token: jwt(42, "old"),

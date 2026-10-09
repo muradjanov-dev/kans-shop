@@ -13,14 +13,64 @@ export const api = axios.create({ baseURL: API_BASE_URL });
 type AuthenticatedRequestConfig = InternalAxiosRequestConfig & {
   _authEpoch?: number;
   _retried?: boolean;
+  _authController?: AbortController;
+  _callerSignal?: InternalAxiosRequestConfig["signal"];
+  _callerSignalListener?: () => void;
 };
+
+const activeRequests = new Map<number, Set<AbortController>>();
+
+export function cancelAuthenticatedRequests(epoch?: number): void {
+  for (const [requestEpoch, controllers] of activeRequests) {
+    if (epoch !== undefined && requestEpoch !== epoch) continue;
+    for (const controller of controllers) controller.abort();
+    activeRequests.delete(requestEpoch);
+  }
+}
+
+function registerAuthenticatedRequest(config: InternalAxiosRequestConfig, epoch: number): void {
+  const request = config as AuthenticatedRequestConfig;
+  const callerSignal = request._callerSignal ?? config.signal;
+  const controller = new AbortController();
+  const controllers = activeRequests.get(epoch) ?? new Set<AbortController>();
+  controllers.add(controller);
+  activeRequests.set(epoch, controllers);
+
+  request._authEpoch = epoch;
+  request._authController = controller;
+  request._callerSignal = callerSignal;
+  if (callerSignal) {
+    const relayAbort = () => controller.abort();
+    request._callerSignalListener = relayAbort;
+    if (callerSignal.aborted) relayAbort();
+    else callerSignal.addEventListener?.("abort", relayAbort);
+  }
+  config.signal = controller.signal;
+}
+
+function releaseAuthenticatedRequest(config: InternalAxiosRequestConfig | undefined): void {
+  if (!config) return;
+  const request = config as AuthenticatedRequestConfig;
+  const controller = request._authController;
+  if (controller && request._authEpoch !== undefined) {
+    const controllers = activeRequests.get(request._authEpoch);
+    controllers?.delete(controller);
+    if (controllers?.size === 0) activeRequests.delete(request._authEpoch);
+    if (config.signal === controller.signal) config.signal = request._callerSignal;
+  }
+  if (request._callerSignal && request._callerSignalListener) {
+    request._callerSignal.removeEventListener?.("abort", request._callerSignalListener);
+  }
+  request._authController = undefined;
+  request._callerSignalListener = undefined;
+}
 
 api.interceptors.request.use((config) => {
   const auth = useAuthStore.getState();
   const token = auth.accessToken;
   if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
-    (config as AuthenticatedRequestConfig)._authEpoch = auth.authEpoch;
+    registerAuthenticatedRequest(config, auth.authEpoch);
   }
   return config;
 });
@@ -60,6 +110,7 @@ async function refreshAccessToken(
       current.authEpoch === expectedEpoch &&
       current.refreshToken === expectedRefreshToken
     ) {
+      cancelAuthenticatedRequests(expectedEpoch);
       current.clear();
     }
     return null;
@@ -82,6 +133,7 @@ function sharedRefresh(
 
 api.interceptors.response.use(
   (response: AxiosResponse) => {
+    releaseAuthenticatedRequest(response.config);
     const request = response.config as AuthenticatedRequestConfig;
     const currentEpoch = useAuthStore.getState().authEpoch;
     if (request._authEpoch !== undefined && request._authEpoch !== currentEpoch) {
@@ -93,6 +145,7 @@ api.interceptors.response.use(
   },
   async (error: AxiosError<ApiErrorBody>) => {
     const original = error.config as AuthenticatedRequestConfig | undefined;
+    releaseAuthenticatedRequest(original);
     const current = useAuthStore.getState();
     const requestEpoch = original?._authEpoch;
     const sameSession = requestEpoch !== undefined && requestEpoch === current.authEpoch;
@@ -113,6 +166,7 @@ api.interceptors.response.use(
       requestEpoch !== undefined &&
       requestEpoch === latest.authEpoch
     ) {
+      cancelAuthenticatedRequests(requestEpoch);
       useAuthStore.getState().clear();
     }
 
