@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     trusted_proxy_cidrs: str = Field(default="", alias="TRUSTED_PROXY_CIDRS")
     media_root: str = Field(default="./media", alias="MEDIA_ROOT")
     media_base_url: str = Field(default="http://localhost:8000/media", alias="MEDIA_BASE_URL")
+    private_media_root: str = Field(default="/app/private_media", alias="PRIVATE_MEDIA_ROOT")
 
     # --- Misc ---
     default_language: str = Field(default="uz", alias="DEFAULT_LANGUAGE")
@@ -121,6 +122,15 @@ class Settings(BaseSettings):
     @property
     def media_root_path(self) -> Path:
         path = Path(self.media_root)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def private_media_root_path(self) -> Path:
+        path = Path(self.private_media_root).expanduser().resolve()
+        public_root = self.media_root_path.resolve()
+        if path == public_root or public_root in path.parents:
+            raise ValueError("PRIVATE_MEDIA_ROOT must be outside MEDIA_ROOT")
         path.mkdir(parents=True, exist_ok=True)
         return path
 

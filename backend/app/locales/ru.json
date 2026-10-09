@@ -123,6 +123,7 @@
     "payment_payme": "🟢 Payme",
     "payment_paynet": "🟣 Paynet",
     "card_details": "💳 Номер карты: <code>{card_number}</code>\n👤 Получатель: {card_holder}\n💰 Сумма: {total} сум\n\nПереведите сумму и отправьте фото чека 📸",
+    "payment_instructions_unavailable": "Для этого старого заказа реквизиты карты не сохранены. Перед оплатой обратитесь в поддержку.",
     "pay_now": "Нажмите кнопку ниже, чтобы оплатить:",
     "pay_button": "💳 Оплатить",
     "invalid_receipt": "Пожалуйста, отправьте фото или файл чека (jpg/png/webp/pdf, до 5МБ).",

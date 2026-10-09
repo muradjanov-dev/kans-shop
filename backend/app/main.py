@@ -1,5 +1,9 @@
+import os
+import posixpath
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
+from urllib.parse import unquote
 
 from aiogram import Dispatcher
 from aiogram.types import Update
@@ -20,6 +24,37 @@ from app.core.security import verify_webhook_secret
 from app.db.session import async_session_maker
 
 log = get_logger(__name__)
+
+
+class PublicMediaFiles(StaticFiles):
+    """Serve public media while refusing receipt paths at static-file lookup time."""
+
+    def lookup_path(self, path: str) -> tuple[str, os.stat_result | None]:
+        if self._is_private_receipt_path(path):
+            return "", None
+        return super().lookup_path(path)
+
+    def _is_private_receipt_path(self, path: str) -> bool:
+        decoded = path
+        for _ in range(16):
+            next_decoded = unquote(decoded)
+            if next_decoded == decoded:
+                break
+            decoded = next_decoded
+        decoded = decoded.replace("\\", "/")
+        normalized = posixpath.normpath(decoded.lstrip("/"))
+        if normalized.split("/", maxsplit=1)[0].casefold() == "receipts":
+            return True
+        if self.directory is None:
+            return False
+        root = Path(self.directory).resolve()
+        candidate = (root / decoded.lstrip("/")).resolve()
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError:
+            return False
+        parts = relative.parts
+        return bool(parts and parts[0].casefold() == "receipts")
 
 
 @asynccontextmanager
@@ -65,7 +100,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(api_v1_router)
     app.include_router(payments_webhooks_router)
-    app.mount("/media", StaticFiles(directory=settings.media_root_path), name="media")
+    app.mount("/media", PublicMediaFiles(directory=settings.media_root_path), name="media")
 
     @app.get("/health")
     async def health() -> dict[str, str]:

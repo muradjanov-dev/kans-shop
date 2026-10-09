@@ -22,16 +22,14 @@ from app.core.exceptions import (
     ForbiddenError,
     InvalidFileError,
 )
-from app.core.uploads import (
-    ALLOWED_RECEIPT_MIME_TYPES,
-    MAX_RECEIPT_SIZE_BYTES,
-    MIME_EXTENSIONS,
-)
+from app.core.uploads import MAX_RECEIPT_SIZE_BYTES
 from app.db.models.enums import PaymentMethod
 from app.db.models.user import User
 from app.db.repositories import order_repository
 from app.services import order_service, payment_service, purchase_service
 from app.services.checkout_quote import quote_checkout
+from app.services.receipt_service import attach_card_transfer_receipt
+from app.services.receipt_storage import PrivateReceiptStorage
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -139,20 +137,18 @@ async def upload_receipt(
         raise ForbiddenError("Not your order")
 
     content_type = file.content_type or ""
-    if content_type not in ALLOWED_RECEIPT_MIME_TYPES:
-        raise InvalidFileError("Unsupported file type", details={"content_type": content_type})
-    data = await file.read()
+    data = await file.read(MAX_RECEIPT_SIZE_BYTES + 1)
     if len(data) > MAX_RECEIPT_SIZE_BYTES:
         raise InvalidFileError("File too large", details={"max_bytes": MAX_RECEIPT_SIZE_BYTES})
 
-    ext = MIME_EXTENSIONS[content_type]
-    receipts_dir = settings.media_root_path / "receipts"
-    receipts_dir.mkdir(parents=True, exist_ok=True)
-    destination = receipts_dir / f"{order.id}.{ext}"
-    destination.write_bytes(data)
-    url = f"{settings.media_base_url}/receipts/{destination.name}"
-
-    order = await order_service.attach_receipt(session, order, file_id=None, url=url)
+    order = await attach_card_transfer_receipt(
+        session,
+        PrivateReceiptStorage(settings.private_media_root_path),
+        order_id=order_id,
+        owner_user_id=user.id,
+        content=data,
+        declared_content_type=content_type,
+    )
     return OrderOut.model_validate(order)
 
 

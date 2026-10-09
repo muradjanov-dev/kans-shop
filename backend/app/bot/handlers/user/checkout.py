@@ -37,12 +37,14 @@ from app.bot.services.order_notifications import register_new_order_notification
 from app.bot.states.checkout import CheckoutStates
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.bot.utils.messages import require_message
+from app.bot.utils.receipt_upload import download_telegram_receipt
 from app.core.config import settings
 from app.core.exceptions import (
     CartEmptyError,
     CheckoutUnavailableError,
     CheckoutValidationError,
     IdempotencyConflictError,
+    InvalidFileError,
     MinOrderAmountError,
     OutOfStockError,
     PaymentNotConfiguredError,
@@ -56,6 +58,8 @@ from app.db.repositories import setting_repository
 from app.services import cart_service, order_service, payment_service, purchase_service
 from app.services.after_commit import commit_with_after_commit
 from app.services.checkout_quote import CheckoutQuote, quote_checkout
+from app.services.receipt_service import attach_card_transfer_receipt
+from app.services.receipt_storage import PrivateReceiptStorage
 
 router = Router(name="checkout")
 
@@ -623,12 +627,20 @@ async def on_payment_back(callback: CallbackQuery, state: FSMContext, _: Callabl
 
 @router.message(CheckoutStates.uploading_receipt, F.photo)
 async def on_receipt_photo(
-    message: Message, session: AsyncSession, state: FSMContext, lang: str, _: Callable
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+    lang: str,
+    _: Callable,
 ) -> None:
     if not message.photo:
         return
     file_id = message.photo[-1].file_id
-    await state.update_data(receipt_file_id=file_id, receipt_is_document=False)
+    await state.update_data(
+        receipt_file_id=file_id,
+        receipt_is_document=False,
+        receipt_content_type="image/jpeg",
+    )
     await _show_confirmation(message, session, state, lang=lang, _=_)
 
 
@@ -649,7 +661,11 @@ async def on_receipt_document(
             _("checkout.receipt_too_large"), reply_markup=back_cancel_keyboard(_)
         )
         return
-    await state.update_data(receipt_file_id=doc.file_id, receipt_is_document=True)
+    await state.update_data(
+        receipt_file_id=doc.file_id,
+        receipt_is_document=True,
+        receipt_content_type=doc.mime_type,
+    )
     await _show_confirmation(message, session, state, lang=lang, _=_)
 
 
@@ -781,6 +797,9 @@ async def on_confirm(
         await callback.answer()
         return
 
+    receipt_file_id = data.get("receipt_file_id")
+    receipt_content = None
+    receipt_content_type = data.get("receipt_content_type")
     command = purchase_service.CheckoutCommand(
         order_type=OrderType(data["order_type"]),
         customer_name=data.get("name", ""),
@@ -807,6 +826,11 @@ async def on_confirm(
             await _show_confirmation(message, session, state, lang=lang, _=_)
             await callback.answer(_("checkout.quote_changed"), show_alert=True)
             return
+
+        if receipt_file_id:
+            receipt_content = await download_telegram_receipt(
+                bot, receipt_file_id, receipt_content_type or ""
+            )
 
         result = await purchase_service.submit_checkout(
             session,
@@ -846,15 +870,27 @@ async def on_confirm(
     except IdempotencyConflictError:
         await callback.answer(_("checkout.already_submitted"), show_alert=True)
         return
+    except InvalidFileError as exc:
+        key = (
+            "checkout.receipt_too_large"
+            if exc.details.get("max_bytes") is not None
+            else "checkout.receipt_bad_type"
+        )
+        await state.set_state(CheckoutStates.uploading_receipt)
+        await message.answer(_(key), reply_markup=back_cancel_keyboard(_))
+        await callback.answer()
+        return
 
     if result.created:
-        receipt_file_id = data.get("receipt_file_id")
-        if receipt_file_id:
-            receipt_url = await _persist_receipt(
-                bot, order.id, receipt_file_id, data.get("receipt_is_document", False)
-            )
-            await order_service.attach_receipt(
-                session, order, file_id=receipt_file_id, url=receipt_url
+        if receipt_file_id and receipt_content is not None:
+            order = await attach_card_transfer_receipt(
+                session,
+                PrivateReceiptStorage(settings.private_media_root_path),
+                order_id=order.id,
+                owner_user_id=user.id,
+                content=receipt_content,
+                declared_content_type=receipt_content_type or "",
+                telegram_file_id=receipt_file_id,
             )
 
         register_new_order_notification(session, bot, order.id)
@@ -890,15 +926,6 @@ async def on_confirm(
         )
     await message.answer(_("menu.choose_action"), reply_markup=main_menu_inline_keyboard(_))
     await callback.answer()
-
-
-async def _persist_receipt(bot: Bot, order_id: int, file_id: str, is_document: bool) -> str:
-    receipts_dir = settings.media_root_path / "receipts"
-    receipts_dir.mkdir(parents=True, exist_ok=True)
-    ext = "pdf" if is_document else "jpg"
-    destination = receipts_dir / f"{order_id}.{ext}"
-    await bot.download(file_id, destination=destination)
-    return f"{settings.media_base_url}/receipts/{destination.name}"
 
 
 @router.callback_query(

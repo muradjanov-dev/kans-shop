@@ -93,7 +93,8 @@ def build_admin_order_text(
     lines.append(translator("admin.total_line", value=_format_price(order.total)))
 
     method_key = ADMIN_PAYMENT_LABEL_KEYS.get(order.payment_method, "admin.payment_card")
-    if order.receipt_file_id:
+    has_receipt = bool(order.receipt_file_id or order.receipt_storage_key or order.receipt_url)
+    if has_receipt:
         receipt_suffix = translator("admin.receipt_uploaded_suffix")
     elif (
         order.payment_method != PaymentMethod.CASH
@@ -119,6 +120,7 @@ def build_admin_order_keyboard(
     order: Order, *, translator: Callable[..., str]
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    has_receipt = bool(order.receipt_file_id or order.receipt_storage_key)
 
     if order.status == OrderStatus.NEW:
         builder.row(
@@ -183,7 +185,7 @@ def build_admin_order_keyboard(
             callback_data=AdminMessageCustomerCallback(order_id=order.id).pack(),
         )
     ]
-    if order.payment_method == PaymentMethod.CARD_TRANSFER and order.receipt_file_id:
+    if order.payment_method == PaymentMethod.CARD_TRANSFER and has_receipt:
         utility_row.append(
             InlineKeyboardButton(
                 text=translator("admin.view_receipt_button"),

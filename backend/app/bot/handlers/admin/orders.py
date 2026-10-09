@@ -5,7 +5,7 @@ from functools import partial
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, FSInputFile, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.callback_data import (
@@ -32,6 +32,7 @@ from app.bot.states.admin import AdminOrderStates
 from app.bot.utils.admin_order_card import build_admin_order_keyboard, build_admin_order_text
 from app.bot.utils.i18n import translate
 from app.bot.utils.messages import require_message
+from app.core.config import settings
 from app.core.exceptions import OrderAlreadyProcessedError, OrderNotFoundError
 from app.db.models.admin import Admin
 from app.db.models.enums import OrderStatus
@@ -39,8 +40,48 @@ from app.db.models.order import Order
 from app.db.repositories import admin_repository, user_repository
 from app.services import order_service
 from app.services.after_commit import commit_with_after_commit
+from app.services.receipt_service import open_order_receipt
+from app.services.receipt_storage import PrivateReceiptStorage
 
 router = Router(name="admin_orders")
+
+
+async def send_receipt_to_admin(
+    bot: Bot,
+    session: AsyncSession,
+    order: Order,
+    *,
+    admin_id: int,
+    chat_id: int,
+    storage: PrivateReceiptStorage | None = None,
+) -> None:
+    if order.receipt_file_id:
+        content_type = order.receipt_content_type
+        if content_type is None:
+            content_type = (
+                "application/pdf"
+                if (order.receipt_url or "").lower().endswith(".pdf")
+                else "image/jpeg"
+            )
+        if content_type in {"application/pdf", "image/webp"}:
+            await bot.send_document(chat_id, order.receipt_file_id)
+        else:
+            await bot.send_photo(chat_id, order.receipt_file_id)
+        return
+
+    receipt = await open_order_receipt(
+        session,
+        storage or PrivateReceiptStorage(settings.private_media_root_path),
+        order_id=order.id,
+        user_id=0,
+        admin_id=admin_id,
+    )
+    filename = f"order-{order.id}-receipt{receipt.path.suffix}"
+    upload = FSInputFile(receipt.path, filename=filename)
+    if receipt.content_type in {"application/pdf", "image/webp"}:
+        await bot.send_document(chat_id, upload)
+    else:
+        await bot.send_photo(chat_id, upload)
 
 
 async def _require_admin(
@@ -107,10 +148,10 @@ async def on_confirm_order(
 ) -> None:
     if not await _require_admin(callback, admin, _):
         return
+    assert admin is not None
     order = await _get_order_or_alert(callback, session, callback_data.order_id, _)
     if order is None:
         return
-    assert admin is not None
 
     try:
         order = await order_service.confirm_order(session, order, admin_id=admin.id)
@@ -421,17 +462,20 @@ async def on_view_receipt(
 ) -> None:
     if not await _require_admin(callback, admin, _):
         return
+    assert admin is not None
     order = await _get_order_or_alert(callback, session, callback_data.order_id, _)
     if order is None:
         return
-    if not order.receipt_file_id:
+    if not order.receipt_file_id and not order.receipt_storage_key:
         await callback.answer(_("admin.no_receipt"), show_alert=True)
         return
 
-    is_pdf = order.receipt_url is not None and order.receipt_url.endswith(".pdf")
     if callback.message is not None:
-        if is_pdf:
-            await bot.send_document(callback.message.chat.id, order.receipt_file_id)
-        else:
-            await bot.send_photo(callback.message.chat.id, order.receipt_file_id)
+        await send_receipt_to_admin(
+            bot,
+            session,
+            order,
+            admin_id=admin.id,
+            chat_id=callback.message.chat.id,
+        )
     await callback.answer()

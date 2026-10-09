@@ -2,7 +2,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.db.models.enums import (
@@ -89,12 +96,23 @@ class OrderOut(BaseModel):
     payment_method: PaymentMethod
     payment_status: PaymentStatus
     receipt_url: str | None
+    payment_instructions: dict | None
+    receipt_version: int
+    payment_reviewed_by_admin_id: int | None
+    payment_reviewed_at: datetime | None
+    receipt_file_id: str | None = Field(default=None, exclude=True)
+    receipt_storage_key: str | None = Field(default=None, exclude=True)
     cancel_reason: str | None
     created_at: datetime
     confirmed_at: datetime | None
     completed_at: datetime | None
     cancelled_at: datetime | None
     items: list[OrderItemOut]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def has_receipt(self) -> bool:
+        return bool(self.receipt_storage_key or self.receipt_file_id or self.receipt_url)
 
 
 class LotLinkOut(BaseModel):

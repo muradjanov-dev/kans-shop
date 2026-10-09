@@ -123,6 +123,7 @@
     "payment_payme": "🟢 Payme",
     "payment_paynet": "🟣 Paynet",
     "card_details": "💳 Karta raqami: <code>{card_number}</code>\n👤 Egasi: {card_holder}\n💰 Summa: {total} so'm\n\nTo'lovni amalga oshirib, chek rasmini yuboring 📸",
+    "payment_instructions_unavailable": "Bu eski buyurtma uchun karta ma'lumotlari saqlanmagan. To'lov qilishdan oldin yordam xizmatiga murojaat qiling.",
     "pay_now": "To'lovni amalga oshirish uchun quyidagi tugmani bosing:",
     "pay_button": "💳 To'lash",
     "invalid_receipt": "Iltimos, chek rasmi yoki hujjat yuboring (jpg/png/webp/pdf, 5MB gacha).",

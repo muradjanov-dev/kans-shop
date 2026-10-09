@@ -39,10 +39,12 @@ services:
       DATABASE_URL: postgresql+asyncpg://kansshop:kansshop@postgres:5432/kansshop
       DATABASE_URL_SYNC: postgresql+psycopg://kansshop:kansshop@postgres:5432/kansshop
       REDIS_URL: redis://redis:6379/0
+      PRIVATE_MEDIA_ROOT: /app/private_media
     ports:
       - "8000:8000"
     volumes:
       - kansshop_media:/app/media
+      - kansshop_private_media:/app/private_media
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,11 +62,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://kansshop:kansshop@postgres:5432/kansshop
       DATABASE_URL_SYNC: postgresql+psycopg://kansshop:kansshop@postgres:5432/kansshop
       REDIS_URL: redis://redis:6379/0
+      PRIVATE_MEDIA_ROOT: /app/private_media
       # Polling mode is only meant for local docker-compose testing without a public webhook URL.
       # In production, leave this container stopped/unused and let `api` run the webhook instead.
       WEBHOOK_URL: ""
     volumes:
       - kansshop_media:/app/media
+      - kansshop_private_media:/app/private_media
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,3 +97,4 @@ volumes:
   kansshop_pgdata:
   kansshop_redisdata:
   kansshop_media:
+  kansshop_private_media:

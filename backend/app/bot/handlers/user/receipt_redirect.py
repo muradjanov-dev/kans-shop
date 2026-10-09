@@ -6,20 +6,19 @@ from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.states.receipt_redirect import ReceiptRedirectStates
+from app.bot.utils.receipt_upload import download_telegram_receipt
 from app.core.config import settings
-from app.db.repositories import order_repository
-from app.services import order_service
+from app.core.exceptions import (
+    ForbiddenError,
+    InvalidFileError,
+    OrderAlreadyProcessedError,
+    OrderNotFoundError,
+)
+from app.db.models.user import User
+from app.services.receipt_service import attach_card_transfer_receipt
+from app.services.receipt_storage import PrivateReceiptStorage
 
 router = Router(name="receipt_redirect")
-
-
-async def _persist_receipt(bot: Bot, order_id: int, file_id: str, is_document: bool) -> str:
-    receipts_dir = settings.media_root_path / "receipts"
-    receipts_dir.mkdir(parents=True, exist_ok=True)
-    ext = "pdf" if is_document else "jpg"
-    destination = receipts_dir / f"{order_id}.{ext}"
-    await bot.download(file_id, destination=destination)
-    return f"{settings.media_base_url}/receipts/{destination.name}"
 
 
 async def _finish(
@@ -27,21 +26,42 @@ async def _finish(
     session: AsyncSession,
     bot: Bot,
     state: FSMContext,
+    user: User,
     *,
     file_id: str,
-    is_document: bool,
+    declared_content_type: str,
     translator: Callable[..., str],
 ) -> None:
     data = await state.get_data()
     order_id = data.get("order_id")
-    await state.clear()
     if not order_id:
+        await state.clear()
         return
-    order = await order_repository.get_by_id(session, order_id)
-    if order is None:
+    try:
+        content = await download_telegram_receipt(bot, file_id, declared_content_type)
+        order = await attach_card_transfer_receipt(
+            session,
+            PrivateReceiptStorage(settings.private_media_root_path),
+            order_id=order_id,
+            owner_user_id=user.id,
+            content=content,
+            declared_content_type=declared_content_type,
+            telegram_file_id=file_id,
+        )
+    except InvalidFileError as exc:
+        key = (
+            "checkout.receipt_too_large"
+            if exc.details.get("max_bytes") is not None
+            else "checkout.receipt_bad_type"
+        )
+        await message.answer(translator(key))
         return
-    receipt_url = await _persist_receipt(bot, order.id, file_id, is_document)
-    await order_service.attach_receipt(session, order, file_id=file_id, url=receipt_url)
+    except (ForbiddenError, OrderAlreadyProcessedError, OrderNotFoundError):
+        await state.clear()
+        await message.answer(translator("checkout.invalid_receipt"))
+        return
+
+    await state.clear()
     await message.answer(
         translator("checkout.receipt_uploaded_success", order_number=order.order_number)
     )
@@ -49,7 +69,12 @@ async def _finish(
 
 @router.message(ReceiptRedirectStates.uploading, F.photo)
 async def on_photo(
-    message: Message, session: AsyncSession, bot: Bot, state: FSMContext, _: Callable
+    message: Message,
+    session: AsyncSession,
+    bot: Bot,
+    state: FSMContext,
+    user: User,
+    _: Callable,
 ) -> None:
     if not message.photo:
         return
@@ -58,21 +83,34 @@ async def on_photo(
         session,
         bot,
         state,
+        user,
         file_id=message.photo[-1].file_id,
-        is_document=False,
+        declared_content_type="image/jpeg",
         translator=_,
     )
 
 
 @router.message(ReceiptRedirectStates.uploading, F.document)
 async def on_document(
-    message: Message, session: AsyncSession, bot: Bot, state: FSMContext, _: Callable
+    message: Message,
+    session: AsyncSession,
+    bot: Bot,
+    state: FSMContext,
+    user: User,
+    _: Callable,
 ) -> None:
     doc = message.document
     if doc is None:
         return
     await _finish(
-        message, session, bot, state, file_id=doc.file_id, is_document=True, translator=_
+        message,
+        session,
+        bot,
+        state,
+        user,
+        file_id=doc.file_id,
+        declared_content_type=doc.mime_type or "",
+        translator=_,
     )
 
 
