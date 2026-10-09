@@ -219,6 +219,7 @@ describe("cart action recovery", () => {
     try {
       renderWithProviders(<ProductRoute />, "/product/12", true);
       expect(await screen.findByText("3")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /orqaga/i })).toHaveClass("min-h-11", "focus-visible:outline-2");
       expect(screen.getByRole("button", { name: /miqdorni kamaytirish/i })).toBeDisabled();
 
       const increase = screen.getByRole("button", { name: /miqdorni oshirish/i });

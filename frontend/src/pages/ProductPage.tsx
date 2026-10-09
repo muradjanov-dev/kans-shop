@@ -33,7 +33,7 @@ export function ProductPage() {
 
   return (
     <div className="pb-24">
-      <Link to="/" className="ml-4 mt-4 mb-3 inline-flex rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-brand shadow dark:bg-black/60">
+      <Link to="/" className="ml-4 mt-4 mb-3 inline-flex min-h-11 items-center rounded-full bg-white/90 px-3 text-sm font-medium text-brand shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:bg-black/60">
         ← {t("common.back")}
       </Link>
       <div className="flex aspect-square items-center justify-center bg-gray-50 dark:bg-white/5">
