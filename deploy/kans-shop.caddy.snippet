@@ -1,0 +1,13 @@
+# Import inside the kans.standart-eko.uz site block only. Keep this before any
+# broader app/static route so receipt paths are denied at the public edge.
+route {
+	@kansShopReceiptPaths path /media/receipts /media/receipts/*
+	respond @kansShopReceiptPaths 404
+	# Go decodes a request path once before matching. Reject encoded separators/dots too,
+	# including a second layer of encoding that could become traversal at the upstream.
+	@kansShopEncodedMediaPaths path_regexp (?i)^/media/.*%(2e|2f|5c|25)
+	respond @kansShopEncodedMediaPaths 404
+
+	@kansShopAPI path /api/* /webhook /payments/* /media/* /health
+	reverse_proxy @kansShopAPI kans-api:8000
+}

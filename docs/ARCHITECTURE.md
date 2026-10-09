@@ -2,25 +2,21 @@
 
 ## Overview
 
-Kans Shop is an online stationery/office-supplies storefront for the Uzbekistan market (Tashkent),
-delivered through three coordinated clients that all share **one database and one business-logic
-layer**:
+Kans Shop is one online stationery and office-supplies store in Tashkent. Its customer and admin
+surfaces share **one database and one business-logic layer**:
 
-1. **Telegram Bot** (aiogram 3.x) — primary customer channel **and** the only admin operations
-   console (orders, products, categories, stats, broadcasts, users). There is no separate web
-   admin panel — this was explicitly cut from scope; see docs/ASSUMPTIONS.md's "Phase 8+" entry.
-2. **Telegram Mini App** (React + TypeScript, served as a Telegram WebApp) — customer-only visual
-   storefront (catalog, product, cart, checkout, orders).
+1. **Telegram Bot** (aiogram 3.x) — customer ordering and bot administration.
+2. **Web admin** (React + TypeScript) — operator workflows under `/admin`.
+3. **Customer storefront** (React + TypeScript) — catalog, cart, checkout, and customer account in
+   browsers and Telegram Mini App.
 
-The bot and the Mini App never talk to the database directly for business operations — both go
-through the **service layer** (`app/services/*`). The bot calls services in-process (same Python
-process/import), the Mini App calls the same services through the **FastAPI REST API**
-(`app/api/v1/*`), which is a thin HTTP wrapper around the identical services. This guarantees the
-cart, catalog, and order logic can never drift between bot and web.
+The bot and React app go through the **service layer** (`app/services/*`). The bot calls services
+in-process; the customer storefront and web admin call the same services through FastAPI
+(`app/api/v1/*`). This keeps cart, catalog, order, and admin rules in one place.
 
 ```
                         ┌─────────────────────┐
-                        │   PostgreSQL 15+     │
+                        │   PostgreSQL 16      │
                         └───────────▲──────────┘
                                     │ SQLAlchemy 2.0 async (repositories)
                         ┌───────────┴──────────┐
@@ -34,8 +30,8 @@ cart, catalog, and order logic can never drift between bot and web.
                  ┌──────────────┘       └───────────────┐
                  │                                       │
         ┌────────┴────────┐                    ┌─────────┴─────────┐
-        │  aiogram Bot     │                    │  React Mini App    │
-        │  (polling/webhook)│                   │  + Web Admin Panel │
+        │  aiogram Bot     │                    │  React Web App     │
+        │ customer + admin │                    │ admin + storefront │
         └──────────────────┘                    └────────────────────┘
 ```
 
@@ -47,12 +43,9 @@ cart, catalog, and order logic can never drift between bot and web.
   (pure data access, no business rules — one repository per aggregate).
 - `services/` — business logic. Handlers/routers call services; services call repositories.
   Services own transactions (`async with session.begin(): ...`).
-- `api/v1/` — FastAPI routers (`catalog`, `cart`, `orders`, `auth`, `settings`) consumed by the
-  Mini App. `deps.py` provides `get_db`, `get_current_user` (initData JWT), `get_current_admin`
-  (role guard). An `admin/*` router set (categories, products, orders, users, stats, broadcasts)
-  also exists and is fully implemented/tested, but currently has no consumer — admin control is
-  done through the bot exclusively (see docs/ASSUMPTIONS.md). Kept rather than deleted in case a
-  web admin panel is wanted later.
+- `api/v1/` — FastAPI routers for the customer storefront and `/admin` console. Customer routes
+  use buyer bearer tokens; admin routes use a separate cookie session with CSRF checks, live role
+  validation, and audit records.
 - `bot/` — aiogram application: `handlers/user` (customer flows), `handlers/admin` (admin console),
   `keyboards/`, `states/` (FSM state groups), `middlewares/` (db-session injection, i18n,
   throttling, user auto-registration, last_active_at touch).
@@ -67,8 +60,8 @@ method takes an `AsyncSession` explicitly (no ambient/global session).
 ## Data flow: adding to cart (bot vs Mini App)
 
 1. Bot: `handlers/user/catalog.py` calls `cart_service.add_item(session, user_id, product_id, qty)`.
-2. Mini App: `POST /api/v1/cart/items` → router resolves `current_user` from validated initData →
-   calls the exact same `cart_service.add_item(...)`.
+2. Browser or Mini App: `POST /api/v1/cart/items` → router resolves the buyer from the active
+   customer session → calls the exact same `cart_service.add_item(...)`.
 3. Both paths hit the same `carts`/`cart_items` rows, so the cart shown in the bot and in the Mini
    App is always identical — there is one cart per user, not one per client.
 
@@ -78,41 +71,40 @@ Order creation runs inside a DB transaction that locks the relevant `products` r
 `SELECT ... FOR UPDATE`, re-validates `stock_qty >= quantity` for every line, decrements stock, and
 only then commits the order. This prevents overselling under concurrent checkouts.
 
-## Admin notification fan-out & race safety
+## Admin notification and audit records
 
-When an order is created, `order_service.notify_admins(...)` sends the order card to every active
-admin with `notifications_enabled=true` and stores `{admin_telegram_id: message_id}` in
-`orders.admin_message_ids` (JSONB). When any admin acts on the order (confirm/cancel), the service
-edits **every** stored message to reflect the new state and tags who acted, and subsequent taps by
-other admins get `answer_callback_query(..., show_alert=True)` instead of a duplicate action. The
-state check and update happen inside one transaction keyed on `orders.status`, so the first commit
-wins.
+Admin changes record audit and notification-outbox events in the business transaction. The durable
+notification dispatcher and broadcast worker must be present and verified in the release SHA
+before queue delivery is treated as an operational guarantee. Earlier direct order-card fan-out
+described in the historical notes is not evidence of restart-safe delivery.
 
 ## Frontend (`frontend/src`)
 
-Single Vite React app, customer-only Mini App: catalog (categories → products, search), product
-detail, cart, checkout, orders + order detail. Authenticates via Telegram WebApp `initData` →
-`POST /api/v1/auth/telegram` → JWT pair stored via Zustand (`persist` middleware, localStorage).
+Single Vite React app with customer storefront and web-admin routes. The storefront includes the
+catalog, product details, favorites, cart, quote-based checkout, orders, profile, and saved
+addresses. Telegram Mini App uses validated `initData`; browser customers can sign in through the
+bot's one-time code flow. The admin console uses a separate cookie and CSRF-protected API client.
 
-State: Zustand for auth/language (small, persisted, non-server state), TanStack Query for all
-server state (catalog, cart, orders — fetch/cache/invalidate). No Redux.
+State: Zustand for auth/language (small, persisted, non-server state), TanStack Query for customer
+and admin server state (fetch/cache/invalidate). No Redux.
 
 ## Infra
 
-- `docker-compose.yml`: `postgres`, `redis`, `api` (uvicorn, runs FastAPI + webhook), `bot`
-  (separate container running `bot_polling.py` for environments without a public webhook URL — in
-  production the `api` container handles the webhook instead and `bot` is not started), `nginx`
-  (serves the built frontend + reverse-proxies `/api` to `api`).
+- `docker-compose.yml`: local `postgres`, `redis`, `api` (uvicorn and webhook), optional polling
+  `bot`, and root `nginx` (serves the built web app and routes local API/webhook requests).
 - Alembic migrations run automatically on container start (`entrypoint.sh` → `alembic upgrade head`
   → start process).
-- Railway: one service per container, `DATABASE_URL`/`REDIS_URL` injected by Railway's Postgres/
-  Redis plugins; webhook mode is used in production (see `docs/DEPLOY.md`).
+- Current production uses the Netcup stack and Caddy for public API, webhook, payment callback, and
+  media routing. Railway instructions are historical; see `docs/DEPLOY.md`.
+- Product images remain in public `MEDIA_ROOT`. Payment receipts use separate persistent
+  `PRIVATE_MEDIA_ROOT`; the Kans Caddy site denies `/media/receipts` before app routing. Keep that
+  denial installed through an old-image rollback.
 
 ## Why these boundaries
 
-- **One business-logic layer** — the master requirement is that bot and Mini App carts/orders stay
-  in sync; putting logic in `services/` and never in handlers/routers is what makes that true by
-  construction rather than by convention.
+- **One business-logic layer** — the master requirement is that bot and web cart/order operations
+  stay in sync and admin rules stay consistent across the bot and `/admin`; putting logic in
+  `services/` keeps that true by construction rather than by convention.
 - **Repository pattern** — keeps SQLAlchemy specifics out of business logic, makes services
   testable with a fake repository if ever needed, and keeps handlers/routers under the 50-line
   function / 400-line file budget.

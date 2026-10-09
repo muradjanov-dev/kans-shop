@@ -1,21 +1,21 @@
 # Kans Shop
 
-Online storefront for a stationery/office-supplies business in Tashkent, Uzbekistan — a Telegram
-bot (customer ordering **and** the full admin console) plus a Telegram Mini App (customer
-storefront), sharing one PostgreSQL database, one business-logic layer, and one REST API.
+Online store for stationery and office supplies in Tashkent, Uzbekistan. Kans Shop has a Telegram
+bot for customer ordering and bot administration, a web admin console, and a customer storefront
+that runs in browsers and Telegram Mini App. All three use one PostgreSQL database and shared
+business services through one REST API.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together,
 [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) for the data model, and
-[docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md) for every non-obvious decision made along the way
-(including the scope change that dropped the web admin panel — admin control is bot-only).
+[docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md) for non-obvious decisions and historical scope changes.
 
 ## Stack
 
 - **Backend**: Python 3.12/3.13, FastAPI, aiogram 3.x, SQLAlchemy 2.0 (async), Alembic, PostgreSQL
   16, Redis (FSM storage + rate limiting), structlog.
-- **Mini App**: React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query, Zustand,
-  react-router-dom, @twa-dev/sdk.
-- **Infra**: Docker Compose (`postgres`, `redis`, `api`, `nginx` serving the built Mini App +
+- **Web app**: React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query, Zustand,
+  react-router-dom, @twa-dev/sdk. It contains both the customer storefront and `/admin` console.
+- **Infra**: Docker Compose (`postgres`, `redis`, `api`, `nginx` serving the built web app +
   reverse-proxying `/api`); pushes to `main` run GitHub Actions, which builds and pushes images
   to GHCR before deploying them to netcup.
 
@@ -70,10 +70,10 @@ make format   # ruff --fix + black (backend)
 
 ## Deploying to production
 
-Push to `main` runs the GitHub CI, builds GHCR images, and deploys to netcup
-through `.github/workflows/deploy.yml`. The deployment waits for healthy
-containers. [docs/DEPLOY.md](docs/DEPLOY.md) describes the former Railway path
-and is historical.
+Pushes to `main` run GitHub CI, build GHCR images, and deploy to Netcup through
+`.github/workflows/deploy.yml`. The deployment waits for healthy containers. Railway instructions
+in [docs/DEPLOY.md](docs/DEPLOY.md) are historical. Purchase release and private-receipt cutover
+require the owner review described in [docs/RELEASE_PURCHASE.md](docs/RELEASE_PURCHASE.md).
 
 ## Project layout
 
@@ -86,11 +86,12 @@ backend/
     db/         # SQLAlchemy models, repositories, seed script
     services/   # business logic shared by the bot and the API
     locales/    # uz.json / ru.json — every user-facing string
-  alembic/      # one migration, hand-patched for native enum types + trigram indexes
+  alembic/      # additive purchase, admin, and storefront migrations
   tests/        # pytest, Postgres-backed via a real test DB + savepoint rollback per test
 frontend/
   src/
-    pages/      # Catalog, Product, Cart, Checkout, Orders, Order detail
+    pages/      # Storefront, account, and customer-order pages
+    admin/      # Web admin auth shell, routes, and API client
     components/ Layout, ProductCard, CategoryCard, QuantityStepper, ...
     hooks/      # TanStack Query hooks (queries.ts) + Telegram auth bootstrap
     store/      # Zustand: auth (JWT), language

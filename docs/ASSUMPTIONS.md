@@ -38,10 +38,10 @@ ambiguous or silent, the decision made and its rationale are logged here.
 - **Mini App auth session length**: access token 30 min / refresh 7 days, per spec's Web Admin JWT
   numbers — reused identically for Mini App tokens for consistency (spec didn't separately specify
   Mini App token TTL).
-- **Card payment receipt storage**: receipts are stored the same way as product images — Telegram
-  `file_id` (fast bot re-send/preview) *and* a copy under `MEDIA_ROOT/receipts/` with a public
-  `receipt_url` (for the web admin panel), mirroring the product-image dual-storage rule the spec
-  states explicitly for products.
+- **Historical card-receipt storage**: earlier app images kept a Telegram `file_id` plus a file
+  under public `MEDIA_ROOT/receipts/`. The purchase design superseded that behavior: current
+  uploads use private `PRIVATE_MEDIA_ROOT`, while the cutover migrates only recognized local files
+  and leaves unresolved file-ID-only references for explicit follow-up.
 - **Excel export** uses `openpyxl` directly (spec names this library).
 - **Rate limiting** implemented via a Redis fixed-window counter in a lightweight aiogram
   middleware + a FastAPI dependency (no extra framework), per spec's stated limits (20 req/min
@@ -94,10 +94,9 @@ ambiguous or silent, the decision made and its rationale are logged here.
 - **`product_name_snapshot` is captured in the customer's checkout-time language** (`uz` or
   `ru`), since `order_items` has a single snapshot column (per docs/DB_SCHEMA.md), not one per
   language. `order_service.checkout()` takes a `lang` parameter for this.
-- **Receipts mirror the product-image dual-storage pattern** (Telegram `file_id` + a copy on
-  disk under `MEDIA_ROOT/receipts/`), but the disk copy is only written *after* the order is
-  created (inside the confirm handler), because the filename is keyed by `order.id`, which
-  doesn't exist yet while the user is still in the `uploading_receipt` FSM step.
+- **Historical receipt paths** were keyed by `order.id` and written after order creation. Current
+  receipt uploads use immutable private storage keys outside the public product-media root; see
+  `docs/RELEASE_PURCHASE.md` for the reviewed legacy cutover procedure.
 - **Preorder skips the payment step entirely**; `payment_method` defaults to `cash` internally
   for those orders (enum has no "n/a" value — see Phase 2 assumption on this).
 
@@ -200,25 +199,21 @@ ambiguous or silent, the decision made and its rationale are logged here.
   live category with children. Fixed to a plain `==` comparison, which SQLAlchemy compiles to
   `IS NULL` for a literal `None` and to a normal bound-parameter `=` otherwise.
 
-## Phase 8+ — scope change: web admin panel dropped, Mini App is customer-only
-- **Web admin panel (originally Phase 9) was cancelled by the user mid-build**: "web admin panel
-  no need, i need only admin panel that controls everywhere from bot." All admin control stays
-  exclusively in the Telegram bot (Phases 5–6: orders, products, categories, stats, broadcasts,
-  users). The Mini App (Phase 8) is customer-facing only — catalog, product, cart, checkout,
-  orders — with no admin UI.
-- **Phase 7's `/api/v1/admin/*` REST routes were NOT deleted** even though their originally
-  intended consumer (the web admin panel) no longer exists. They're complete, tested, and
-  harmless to keep (no dead-code/stub issue — every handler is fully implemented), and ripping
-  out a full day's already-verified work on a scope change alone seemed like the wrong call
-  without being asked to. Bot-based admin control (Phases 5–6) is what's actually wired up and
-  used; the admin API is unused-but-functional infrastructure, should it be wanted later.
-- **Deploy notification**: per the user's request ("after finish deploy and send notification to
-  admins... from bot"), `app/main.py`'s lifespan now calls `notify_admins_deploy()` once, right
-  after the webhook is registered — i.e., every time the production app starts up after a real
-  deploy or restart. It only messages active admins (never customers), and only fires in webhook
-  mode (`WEBHOOK_URL` set) — `bot_polling.py` (local dev) does not trigger it. This satisfies the
-  request without me actually running the Railway deploy myself (still no Railway credentials —
-  see docs/DEPLOY.md, which the user runs manually).
+## Historical Phase 8+ decision (later superseded)
+
+The following records a temporary mid-build scope decision. The later approved phase-two and
+phase-three designs restored the web admin and expanded the customer storefront. The integrated
+React app now contains both `/admin` and customer-facing routes, and the bot remains an admin
+surface too. The `/api/v1/admin/*` routes are consumed by the web admin; admin sessions are
+separate from customer JWTs and require CSRF checks, live role checks, and audit records.
+
+The notification outbox schema and producers are present. Treat durable dispatch and broadcast
+restart/retry behavior as a release guarantee only after the phase-two workers and their checks are
+integrated into the exact release SHA.
+- **Deploy notification**: per the user's request, `app/main.py`'s lifespan calls
+  `notify_admins_deploy()` after webhook registration. It messages active admins and runs only in
+  webhook mode; local polling does not trigger it. Current production deploys through the Netcup
+  GitHub workflow. Railway instructions are historical.
 - **Product image management for existing products**: the Phase 6 admin bot could only attach
   photos while *creating* a new product (`products_form.py`) — there was no way to add photos to
   a product afterward. `AdminProductActionCallback`'s docstring already anticipated an
@@ -256,10 +251,10 @@ ambiguous or silent, the decision made and its rationale are logged here.
   wouldn't exist on a fresh clone until someone manually ran `npm run build` — breaking the "just
   `docker-compose up`" requirement. Added `frontend/Dockerfile` (multi-stage: `node:24-alpine`
   build → `nginx:1.27-alpine` serving the built `dist/`) and switched the compose service to
-  `build: context: ./frontend` instead. `VITE_API_BASE_URL` is baked in at Docker build time via
-  a build arg, defaulting to the relative `/api/v1` (nginx proxies same-origin in production);
-  Railway needs it set to the API's full public URL instead since the two services get separate
-  domains there — documented in docs/DEPLOY.md.
+  `build: context: ./frontend` instead. `VITE_API_BASE_URL` is baked in at Docker build time via a
+  build arg. Local Compose's root nginx owns API routing; the frontend image itself serves the SPA,
+  and Netcup Caddy owns production API routing. The former Railway setup used separate service
+  domains and is historical.
 - **pytest's `kansshop_test` database bootstrap was undocumented-and-manual**: `conftest.py`
   connected straight to `kansshop_test` assuming it already existed, but nothing in the repo ever
   created it — it only existed because it was created once by hand earlier in the build and
@@ -279,14 +274,15 @@ ambiguous or silent, the decision made and its rationale are logged here.
   the project's drive. Relocating it permanently requires Docker Desktop → Settings → Resources →
   Advanced → "Disk image location" → a `D:` path — a GUI-only setting with no safe CLI/config-file
   equivalent found.
-- **Full stack verified end-to-end via `docker compose up -d --build`** against a completely reset
+- **Local stack verified end-to-end via `docker compose up -d --build`** against a completely reset
   Postgres/Redis (fresh volumes): migrations auto-apply (`entrypoint.sh` → `alembic upgrade head`),
   `python -m app.db.seed` populates the catalog, and nginx correctly serves the Mini App SPA,
   proxies `/api/*` to the API container, proxies `/webhook`, and falls back to `index.html` for
-  client-side routes (`/product/1` → 200, not 404). No errors in any container's logs.
+  client-side routes (`/product/1` → 200, not 404). This local Compose check does not verify the
+  Netcup deployment.
 
-## Deferred/out of scope unless requested later
-- Payment gateway *callbacks* for Click/Payme are modeled in the `payment_method` enum and the
-  order/payment flow is built to accommodate them, but the spec's actual checkout flow only
-  requires cash and manual card-transfer-with-receipt-screenshot — no live Click/Payme API
-  integration is implemented (would need merchant credentials not provided).
+## Payment verification limits
+- Click and Payme callback routes exist and preserve their provider response envelopes. Tests use
+  no real merchant credentials or paid transaction; only fake invalid callback requests are
+  appropriate for route checks. Paynet remains unavailable until its merchant protocol and
+  credentials are separately reviewed.
