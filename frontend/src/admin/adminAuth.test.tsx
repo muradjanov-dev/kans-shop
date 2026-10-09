@@ -10,6 +10,7 @@ import axios, {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { App } from "@/App";
+import { AdminAuthProvider, useAdminAuth } from "@/admin/AdminAuthProvider";
 import { adminApi, setAdminCsrfToken, type AdminSession } from "@/admin/api";
 import { useAuthStore } from "@/store/auth";
 
@@ -45,6 +46,38 @@ function unauthorized(config: Parameters<AxiosAdapter>[0]): Promise<never> {
 function headerValue(config: Parameters<AxiosAdapter>[0], name: string): string | undefined {
   const value = config.headers.get(name);
   return typeof value === "string" ? value : undefined;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function AdminAuthHarness() {
+  const auth = useAdminAuth();
+  return (
+    <div>
+      <output data-testid="admin-auth-status">{auth.status}</output>
+      <output data-testid="admin-auth-name">{auth.session?.full_name ?? "anonymous"}</output>
+      <button onClick={() => void auth.login("123456").catch(() => undefined)} type="button">Complete admin login</button>
+      <button onClick={() => void auth.logout().catch(() => undefined)} type="button">Log out admin</button>
+    </div>
+  );
+}
+
+function renderAuthHarness() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <AdminAuthProvider><AdminAuthHarness /></AdminAuthProvider>
+    </QueryClientProvider>,
+  );
+  return { ...view, queryClient };
 }
 
 function renderAdmin(path = "/admin") {
@@ -201,5 +234,117 @@ describe("admin session authentication", () => {
     await adminApi.logoutAll();
 
     expect(requests[0]).toMatchObject({ url: "/auth/admin/logout-all", method: "post", csrf: adminSession.csrf_token });
+  });
+
+  it("ignores an older bootstrap 401 after code exchange and keeps admin CSRF and buyer state", async () => {
+    useAuthStore.getState().setTokens({ access_token: "buyer-access-token", refresh_token: "buyer-refresh-token", is_admin: false });
+    const oldSession = deferred<AxiosResponse<AdminSession>>();
+    const sessionRequestStarted = deferred<void>();
+    let oldSessionConfig: Parameters<AxiosAdapter>[0] | undefined;
+    const csrfHeaders: Array<string | undefined> = [];
+    adminApi.defaults.adapter = async (config) => {
+      if (config.url?.endsWith("/auth/admin/session")) {
+        oldSessionConfig = config;
+        sessionRequestStarted.resolve();
+        return oldSession.promise;
+      }
+      if (config.url?.endsWith("/auth/admin/code/exchange")) return response(config, adminSession);
+      csrfHeaders.push(headerValue(config, "X-CSRF-Token"));
+      return response(config, { ok: true });
+    };
+    const user = userEvent.setup();
+    renderAuthHarness();
+    await sessionRequestStarted.promise;
+
+    await user.click(screen.getByRole("button", { name: "Complete admin login" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-auth-status")).toHaveTextContent("authenticated");
+      expect(screen.getByTestId("admin-auth-name")).toHaveTextContent(adminSession.full_name);
+    });
+    await adminApi.post("/admin/probe", { operation: "write" });
+
+    const requestConfig = oldSessionConfig!;
+    oldSession.reject(new AxiosError(
+      "Request failed",
+      "ERR_BAD_REQUEST",
+      requestConfig,
+      undefined,
+      response(requestConfig, { error: { code: "ADMIN_SESSION_REQUIRED" } }, 401),
+    ));
+
+    await waitFor(() => expect(screen.getByTestId("admin-auth-status")).toHaveTextContent("authenticated"));
+    await adminApi.post("/admin/probe", { operation: "write-again" });
+    expect(csrfHeaders).toEqual([adminSession.csrf_token, adminSession.csrf_token]);
+    expect(useAuthStore.getState().accessToken).toBe("buyer-access-token");
+  });
+
+  it("does not restore a session from an old bootstrap 200 after logout", async () => {
+    const oldSession = deferred<AxiosResponse<AdminSession>>();
+    const sessionRequestStarted = deferred<void>();
+    const probeHeaders: Array<string | undefined> = [];
+    let oldSessionConfig: Parameters<AxiosAdapter>[0] | undefined;
+    adminApi.defaults.adapter = async (config) => {
+      if (config.url?.endsWith("/auth/admin/session")) {
+        oldSessionConfig = config;
+        sessionRequestStarted.resolve();
+        return oldSession.promise;
+      }
+      if (config.url?.endsWith("/auth/admin/code/exchange")) return response(config, adminSession);
+      if (config.url?.endsWith("/admin/probe")) probeHeaders.push(headerValue(config, "X-CSRF-Token"));
+      return response(config, { ok: true });
+    };
+    const user = userEvent.setup();
+    renderAuthHarness();
+    await sessionRequestStarted.promise;
+
+    await user.click(screen.getByRole("button", { name: "Complete admin login" }));
+    await waitFor(() => expect(screen.getByTestId("admin-auth-status")).toHaveTextContent("authenticated"));
+    await user.click(screen.getByRole("button", { name: "Log out admin" }));
+    await waitFor(() => expect(screen.getByTestId("admin-auth-status")).toHaveTextContent("anonymous"));
+
+    const requestConfig = oldSessionConfig!;
+    oldSession.resolve(response(requestConfig, adminSession));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await adminApi.post("/admin/probe", { operation: "after-logout" });
+
+    expect(screen.getByTestId("admin-auth-status")).toHaveTextContent("anonymous");
+    expect(screen.getByTestId("admin-auth-name")).toHaveTextContent("anonymous");
+    expect(probeHeaders).toEqual([undefined]);
+  });
+
+  it("discards an old domain response before it can populate the new admin cache", async () => {
+    const oldDomain = deferred<AxiosResponse<{ owner: string }>>();
+    const domainRequestStarted = deferred<void>();
+    let domainRequestConfig: Parameters<AxiosAdapter>[0] | undefined;
+    const secondSession = { ...adminSession, csrf_token: "new-admin-csrf-token", full_name: "New Admin" };
+    adminApi.defaults.adapter = async (config) => {
+      if (config.url?.endsWith("/auth/admin/session")) return response(config, adminSession);
+      if (config.url?.endsWith("/auth/admin/code/exchange")) return response(config, secondSession);
+      if (config.url?.endsWith("/admin/private-data")) {
+        domainRequestConfig = config;
+        domainRequestStarted.resolve();
+        return oldDomain.promise;
+      }
+      return response(config, { ok: true });
+    };
+    const user = userEvent.setup();
+    const { queryClient } = renderAuthHarness();
+    await waitFor(() => expect(screen.getByTestId("admin-auth-status")).toHaveTextContent("authenticated"));
+
+    const oldPrivateRequest = adminApi.get<{ owner: string }>("/admin/private-data").then(({ data }) => {
+      queryClient.setQueryData(["admin", "private-data"], data);
+      return data;
+    });
+    await domainRequestStarted.promise;
+    await user.click(screen.getByRole("button", { name: "Log out admin" }));
+    await waitFor(() => expect(screen.getByTestId("admin-auth-status")).toHaveTextContent("anonymous"));
+    await user.click(screen.getByRole("button", { name: "Complete admin login" }));
+    await waitFor(() => expect(screen.getByTestId("admin-auth-name")).toHaveTextContent("New Admin"));
+
+    const requestConfig = domainRequestConfig!;
+    oldDomain.resolve(response(requestConfig, { owner: adminSession.full_name }));
+
+    await expect(oldPrivateRequest).rejects.toMatchObject({ name: "StaleAdminResponseError" });
+    expect(queryClient.getQueryData(["admin", "private-data"])).toBeUndefined();
   });
 });

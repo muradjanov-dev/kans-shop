@@ -13,6 +13,7 @@ import {
   getAdminApiErrorCode,
   onAdminUnauthorized,
   setAdminCsrfToken,
+  StaleAdminResponseError,
   type AdminSession,
 } from "@/admin/api";
 
@@ -68,7 +69,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     try {
       setSession(await adminApi.loadSession());
       setStatus("authenticated");
-    } catch {
+    } catch (error) {
+      if (isStaleAdminResponse(error)) return;
       clearSession(Boolean(sessionRef.current));
       setNotice("unavailable");
     }
@@ -84,7 +86,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       setStatus("authenticated");
       setNotice(null);
     }).catch((error: unknown) => {
-      if (cancelled) return;
+      if (cancelled || isStaleAdminResponse(error)) return;
       clearSession(Boolean(sessionRef.current));
       if (!isUnauthorized(error)) setNotice("unavailable");
     });
@@ -102,7 +104,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       setSession(await adminApi.exchangeCode(code));
       setStatus("authenticated");
     } catch (error) {
-      setLoginErrorCode(getAdminApiErrorCode(error) ?? "ADMIN_LOGIN_FAILED");
+      if (!isStaleAdminResponse(error)) {
+        setLoginErrorCode(getAdminApiErrorCode(error) ?? "ADMIN_LOGIN_FAILED");
+      }
       throw error;
     }
   }, [setSession]);
@@ -157,4 +161,10 @@ export function useAdminAuth(): AdminAuthContextValue {
 function isUnauthorized(error: unknown): boolean {
   return typeof error === "object" && error !== null &&
     "response" in error && (error as { response?: { status?: number } }).response?.status === 401;
+}
+
+function isStaleAdminResponse(error: unknown): boolean {
+  return error instanceof StaleAdminResponseError ||
+    (typeof error === "object" && error !== null && "name" in error &&
+      (error as { name?: string }).name === "StaleAdminResponseError");
 }
