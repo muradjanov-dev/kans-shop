@@ -262,6 +262,36 @@ async def test_payment_method_readiness(
     assert not payment_service.is_provider_configured(PaymentProvider.PAYNET)
 
 
+async def test_configured_click_quote_reports_minimum_blocker(
+    db_session, user, product, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    quote_checkout = _quote_checkout_function()
+    for key, value in {
+        "click_service_id": "service",
+        "click_merchant_id": "merchant",
+        "click_merchant_user_id": "merchant-user",
+        "click_secret_key": "click-secret",
+    }.items():
+        monkeypatch.setattr(payment_service.settings, key, value)
+    await _set_checkout_settings(db_session, min_order_amount=6_000)
+    await _replace_cart(db_session, user.id, [(product, 1)])
+
+    quote = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.PICKUP,
+        payment_method=PaymentMethod.CLICK,
+    )
+
+    assert payment_service.is_provider_configured(PaymentProvider.CLICK)
+    assert not quote.ready
+    assert not quote.payment_methods
+    assert any("Minimum order amount" in reason for reason in quote.reasons)
+    assert not any(
+        "Click merchant credentials are incomplete" in reason for reason in quote.reasons
+    )
+
+
 async def test_same_total_different_cart_changes_quote(
     db_session, user, product, category
 ) -> None:
@@ -389,6 +419,8 @@ async def test_quote_api_returns_decimal_strings_and_public_readiness(test_engin
             assert public.status_code == 200
             public_settings = public.json()
             assert "payment_method_readiness" in public_settings
+            for key in ("delivery_fee", "free_delivery_from", "min_order_amount"):
+                assert type(public_settings[key]) is int
             assert "click_secret_key" not in public_settings
             assert "payme_secret_key" not in public_settings
         finally:

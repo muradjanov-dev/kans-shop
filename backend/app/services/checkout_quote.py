@@ -216,20 +216,30 @@ async def quote_checkout(
         for item in items
         if item.product is not None and not item.product.lot_url
     ]
+    method_capabilities = {
+        PaymentMethod.CASH: True,
+        PaymentMethod.CARD_TRANSFER: bool(settings.card_number and settings.card_holder),
+        PaymentMethod.CLICK: payment_service.is_provider_configured(PaymentProvider.CLICK),
+        PaymentMethod.PAYME: payment_service.is_provider_configured(PaymentProvider.PAYME),
+        PaymentMethod.PAYNET: False,
+        PaymentMethod.TENDER: bool(lot_links),
+    }
 
     if base_ready:
         methods.append(PaymentMethod.CASH)
         if order_type == OrderType.PREORDER:
             methods = [PaymentMethod.CASH]
         else:
-            if settings.card_number and settings.card_holder:
-                methods.append(PaymentMethod.CARD_TRANSFER)
-            if payment_service.is_provider_configured(PaymentProvider.CLICK):
-                methods.append(PaymentMethod.CLICK)
-            if payment_service.is_provider_configured(PaymentProvider.PAYME):
-                methods.append(PaymentMethod.PAYME)
-            if lot_links:
-                methods.append(PaymentMethod.TENDER)
+            methods.extend(
+                method
+                for method in (
+                    PaymentMethod.CARD_TRANSFER,
+                    PaymentMethod.CLICK,
+                    PaymentMethod.PAYME,
+                    PaymentMethod.TENDER,
+                )
+                if method_capabilities[method]
+            )
 
     if payment_method == PaymentMethod.TENDER and missing_lot_names:
         reasons.extend(
@@ -248,9 +258,7 @@ async def quote_checkout(
             blockers.append(
                 "Preorders use cash as the technical default and have no payment step."
             )
-        elif payment_method in method_reasons and not any(
-            reason.startswith("CHECKOUT_UNAVAILABLE:") for reason in blockers
-        ):
+        elif payment_method in method_reasons and not method_capabilities[payment_method]:
             blockers.append(method_reasons[payment_method])
         elif payment_method == PaymentMethod.CASH and not blockers:
             blockers.append("CHECKOUT_UNAVAILABLE: Cash checkout is unavailable.")

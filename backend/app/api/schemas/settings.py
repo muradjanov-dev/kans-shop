@@ -1,12 +1,10 @@
-from decimal import Decimal
-
 from pydantic import BaseModel, Field
 
 
 class PublicSettingsOut(BaseModel):
-    delivery_fee: Decimal | None = None
-    free_delivery_from: Decimal | None = None
-    min_order_amount: Decimal | None = None
+    delivery_fee: float | int | None = None
+    free_delivery_from: float | int | None = None
+    min_order_amount: float | int | None = None
     work_hours: str | None = None
     card_number: str | None = None
     card_holder: str | None = None

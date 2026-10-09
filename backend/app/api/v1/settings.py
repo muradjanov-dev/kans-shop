@@ -41,14 +41,15 @@ async def get_public_settings(session: AsyncSession = Depends(get_db)) -> Public
         for key, value in settings_map.items()
         if key in PublicSettingsOut.model_fields
     }
-    for key in (
-        "delivery_fee",
-        "free_delivery_from",
-        "min_order_amount",
-        "is_shop_open",
-        "card_number",
-        "card_holder",
-    ):
+    # Keep the established integer/float JSON types for these public fields. The strict
+    # Decimal parser still validates them, and the quote endpoint exposes Decimal strings.
+    for key in ("delivery_fee", "free_delivery_from", "min_order_amount"):
+        public_values[key] = (
+            settings_map[key]
+            if checkout.field_states.get(key) in {"valid", "negative"}
+            else None
+        )
+    for key in ("is_shop_open", "card_number", "card_holder"):
         public_values[key] = getattr(checkout, key)
     return PublicSettingsOut(
         **public_values,
