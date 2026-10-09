@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import ipaddress
 import json
+import os
 import random
 import shutil
 import socket
@@ -16,7 +17,7 @@ from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.db.models.enums import OrderStatus, OrderType, PaymentMethod, PaymentStatus
 from app.db.models.order import Order
@@ -64,6 +65,17 @@ async def _legacy_order(
     session.add(order)
     await session.flush()
     return order
+
+
+def _migration_cli_environment(test_engine: AsyncEngine) -> dict[str, str]:
+    """Point CLI subprocesses at the isolated schema that pytest created."""
+    env = os.environ.copy()
+    test_url = test_engine.url
+    env["DATABASE_URL"] = test_url.render_as_string(hide_password=False)
+    env["DATABASE_URL_SYNC"] = test_url.set(drivername="postgresql+psycopg").render_as_string(
+        hide_password=False
+    )
+    return env
 
 
 async def test_receipt_cutover_preserves_content(
@@ -472,8 +484,21 @@ async def test_cutover_refuses_symlinked_public_receipt(
 
 
 async def test_cli_dry_run_and_verify_write_a_restricted_manifest(
-    db_session: AsyncSession, tmp_path: Path
+    db_session: AsyncSession,
+    test_engine: AsyncEngine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    wrong_application_url = test_engine.url.set(database="kansshop")
+    monkeypatch.setenv(
+        "DATABASE_URL", wrong_application_url.render_as_string(hide_password=False)
+    )
+    monkeypatch.setenv(
+        "DATABASE_URL_SYNC",
+        wrong_application_url.set(drivername="postgresql+psycopg").render_as_string(
+            hide_password=False
+        ),
+    )
     manifest_path = tmp_path / "restricted" / "cutover.json"
     result = subprocess.run(
         [
@@ -485,6 +510,7 @@ async def test_cli_dry_run_and_verify_write_a_restricted_manifest(
             str(manifest_path),
         ],
         cwd=Path(__file__).parents[1],
+        env=_migration_cli_environment(test_engine),
         check=False,
         capture_output=True,
         text=True,
@@ -514,6 +540,7 @@ async def test_cli_dry_run_and_verify_write_a_restricted_manifest(
             str(manifest_path),
         ],
         cwd=Path(__file__).parents[1],
+        env=_migration_cli_environment(test_engine),
         check=False,
         capture_output=True,
         text=True,
@@ -532,6 +559,7 @@ async def test_cli_dry_run_and_verify_write_a_restricted_manifest(
             str(manifest_path),
         ],
         cwd=Path(__file__).parents[1],
+        env=_migration_cli_environment(test_engine),
         check=False,
         capture_output=True,
         text=True,
@@ -542,8 +570,21 @@ async def test_cli_dry_run_and_verify_write_a_restricted_manifest(
 
 
 async def test_cli_reuses_explicit_legacy_origin_policy_across_modes(
-    db_session: AsyncSession, tmp_path: Path
+    db_session: AsyncSession,
+    test_engine: AsyncEngine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    wrong_application_url = test_engine.url.set(database="kansshop")
+    monkeypatch.setenv(
+        "DATABASE_URL", wrong_application_url.render_as_string(hide_password=False)
+    )
+    monkeypatch.setenv(
+        "DATABASE_URL_SYNC",
+        wrong_application_url.set(drivername="postgresql+psycopg").render_as_string(
+            hide_password=False
+        ),
+    )
     manifest_path = tmp_path / "restricted" / "origin-policy.json"
     legacy_origin = "https://legacy.kans.example"
     script = [sys.executable, "-m", "scripts.migrate_private_receipts"]
@@ -551,6 +592,7 @@ async def test_cli_reuses_explicit_legacy_origin_policy_across_modes(
     created = subprocess.run(
         [*script, "--dry-run", *common, "--legacy-origin", legacy_origin],
         cwd=Path(__file__).parents[1],
+        env=_migration_cli_environment(test_engine),
         check=False,
         capture_output=True,
         text=True,
@@ -563,6 +605,7 @@ async def test_cli_reuses_explicit_legacy_origin_policy_across_modes(
     omitted = subprocess.run(
         [*script, "--apply", *common],
         cwd=Path(__file__).parents[1],
+        env=_migration_cli_environment(test_engine),
         check=False,
         capture_output=True,
         text=True,
@@ -574,6 +617,7 @@ async def test_cli_reuses_explicit_legacy_origin_policy_across_modes(
     applied = subprocess.run(
         [*script, "--apply", *common, "--legacy-origin", legacy_origin],
         cwd=Path(__file__).parents[1],
+        env=_migration_cli_environment(test_engine),
         check=False,
         capture_output=True,
         text=True,
@@ -582,6 +626,7 @@ async def test_cli_reuses_explicit_legacy_origin_policy_across_modes(
     verified = subprocess.run(
         [*script, "--verify", *common, "--legacy-origin", legacy_origin],
         cwd=Path(__file__).parents[1],
+        env=_migration_cli_environment(test_engine),
         check=False,
         capture_output=True,
         text=True,
