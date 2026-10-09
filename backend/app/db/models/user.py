@@ -17,6 +17,9 @@ class User(IDMixin, TimestampMixin, Base):
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str] = mapped_column(String(128))
     last_name: Mapped[str | None] = mapped_column(String(128))
+    display_name: Mapped[str] = mapped_column(
+        String(128), server_default="Foydalanuvchi", nullable=False
+    )
     phone: Mapped[str | None] = mapped_column(String(20))
     language: Mapped[str] = mapped_column(String(2), server_default="uz", nullable=False)
     is_blocked: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)

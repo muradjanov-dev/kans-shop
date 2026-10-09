@@ -47,6 +47,11 @@ class IdempotencyConflictError(KansShopError):
     http_status = 409
 
 
+class AddressLimitExceededError(KansShopError):
+    code = "ADDRESS_LIMIT_EXCEEDED"
+    http_status = 409
+
+
 class ClientUpdateRequiredError(KansShopError):
     code = "CLIENT_UPDATE_REQUIRED"
     http_status = 409

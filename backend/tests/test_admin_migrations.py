@@ -1,4 +1,4 @@
-"""Integration checks for the additive web-admin schema migration."""
+"""Integration checks for additive schema migrations after the first purchase release."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,7 +17,7 @@ from app.core.config import settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 PHASE1_HEAD = "1e6b8d02a9c4"
-PHASE2_REVISION = "2f7c9e13b0d5"
+CURRENT_HEAD = "3a8d0f24c1e6"
 
 
 @contextmanager
@@ -94,16 +94,16 @@ def _insert_admin_session(
     )
 
 
-def test_phase2_migration_from_phase1_head(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_current_migration_from_phase1_head(monkeypatch: pytest.MonkeyPatch) -> None:
     with _migration_database(monkeypatch) as (config, engine):
         command.upgrade(config, PHASE1_HEAD)
         assert _version(engine) == PHASE1_HEAD
 
         command.upgrade(config, "head")
-        assert _version(engine) == PHASE2_REVISION
+        assert _version(engine) == CURRENT_HEAD
 
 
-def test_phase2_upgrade_preserves_orders_receipts_and_media_refs(
+def test_current_upgrade_preserves_orders_receipts_and_media_refs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with _migration_database(monkeypatch) as (config, engine):
@@ -355,8 +355,8 @@ def test_phase2_upgrade_preserves_orders_receipts_and_media_refs(
             )
 
 
-def test_phase2_has_single_head() -> None:
+def test_current_migration_history_has_single_head() -> None:
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     config.set_main_option("path_separator", "os")
-    assert ScriptDirectory.from_config(config).get_heads() == [PHASE2_REVISION]
+    assert ScriptDirectory.from_config(config).get_heads() == [CURRENT_HEAD]

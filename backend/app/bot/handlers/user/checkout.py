@@ -97,8 +97,7 @@ def _format_price(price: Decimal) -> str:
 
 
 def _default_name(user: User) -> str:
-    parts = [user.first_name, user.last_name]
-    return " ".join(p for p in parts if p)
+    return user.display_name
 
 
 def _pay_link_keyboard(url: str, *, translator: Callable[..., str]) -> InlineKeyboardMarkup:
@@ -361,9 +360,14 @@ async def on_name_back(callback: CallbackQuery, state: FSMContext, _: Callable) 
 # --- Step: name ---
 
 
-async def _advance_to_phone(message: Message, state: FSMContext, _: Callable) -> None:
+async def _advance_to_phone(
+    message: Message, state: FSMContext, user: User, _: Callable
+) -> None:
     await state.set_state(CheckoutStates.entering_phone)
-    await message.answer(_("checkout.enter_phone"), reply_markup=phone_request_keyboard(_))
+    await message.answer(
+        _("checkout.enter_phone"),
+        reply_markup=phone_request_keyboard(_, default_phone=user.phone),
+    )
 
 
 @router.callback_query(CheckoutStates.entering_name, UseDefaultNameCallback.filter())
@@ -374,17 +378,19 @@ async def on_use_default_name(
     if message is None:
         return
     await state.update_data(name=_default_name(user))
-    await _advance_to_phone(message, state, _)
+    await _advance_to_phone(message, state, user, _)
     await callback.answer()
 
 
 @router.message(CheckoutStates.entering_name, F.text)
-async def on_name_entered(message: Message, state: FSMContext, _: Callable) -> None:
+async def on_name_entered(
+    message: Message, state: FSMContext, user: User, _: Callable
+) -> None:
     name = (message.text or "").strip()
     if not name:
         return
     await state.update_data(name=name)
-    await _advance_to_phone(message, state, _)
+    await _advance_to_phone(message, state, user, _)
 
 
 # --- Step: phone ---

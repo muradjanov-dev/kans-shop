@@ -1,4 +1,5 @@
 from app.db.base import Base
+from app.db.models.address import Address
 from app.db.models.admin import Admin
 from app.db.models.admin_audit_event import AdminAuditEvent
 from app.db.models.admin_order_message import AdminOrderMessage
@@ -22,6 +23,7 @@ from app.db.models.traffic_source import TrafficSource
 from app.db.models.user import User
 
 __all__ = [
+    "Address",
     "Admin",
     "AdminAuditEvent",
     "AdminOrderMessage",
