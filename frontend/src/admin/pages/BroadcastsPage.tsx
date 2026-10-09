@@ -219,7 +219,12 @@ export function BroadcastsPage({ route }: AdminPageProps) {
     if (!preview || !validContent(draft) || broadcast !== null) return;
     setPageError(null);
     setNotice("");
-    createDraft.mutate({ ...contentPayload(draft), preview_fingerprint: preview.preview_fingerprint, preview_count: preview.preview_count });
+    createDraft.mutate({
+      ...contentPayload(draft),
+      preview_fingerprint: preview.preview_fingerprint,
+      preview_content_fingerprint: preview.preview_content_fingerprint,
+      preview_count: preview.preview_count,
+    });
   }
 
   function beginLaunch() {

@@ -241,7 +241,7 @@ describe("admin forms use the versioned REST contracts", () => {
       }
       if (url === "/admin/broadcasts/preview" && config.method === "post") {
         previews.push({ body: parseRequestBody(config.data), csrf: config.headers.get("X-CSRF-Token") as string | undefined });
-        return response(config, { preview_fingerprint: "a".repeat(64), preview_count: 12 });
+        return response(config, { preview_fingerprint: "a".repeat(64), preview_content_fingerprint: "d".repeat(64), preview_count: 12 });
       }
       if (url === "/admin/broadcasts" && config.method === "post") {
         drafts.push({ body: parseRequestBody(config.data), csrf: config.headers.get("X-CSRF-Token") as string | undefined });
@@ -291,7 +291,7 @@ describe("admin forms use the versioned REST contracts", () => {
 
     await user.click(screen.getByRole("button", { name: /qoralama yaratish/i }));
     await waitFor(() => expect(drafts).toHaveLength(1));
-    expect(drafts[0]?.body).toMatchObject({ preview_fingerprint: "a".repeat(64), preview_count: 12, target: "active", text: "Synthetic announcement", photo_storage_key: "photo-asset-123", photo_file_id: null, button_text: "Open shop", button_url: "https://shop.example.test" });
+    expect(drafts[0]?.body).toMatchObject({ preview_fingerprint: "a".repeat(64), preview_content_fingerprint: "d".repeat(64), preview_count: 12, target: "active", text: "Synthetic announcement", photo_storage_key: "photo-asset-123", photo_file_id: null, button_text: "Open shop", button_url: "https://shop.example.test" });
     expect(drafts[0]?.csrf).toBe("csrf");
     expect(launches).toHaveLength(0);
 
@@ -334,7 +334,7 @@ describe("admin forms use the versioned REST contracts", () => {
       if (url === "/admin/broadcasts/preview" && config.method === "post") {
         previews.push(parseRequestBody(config.data));
         previewCount += 1;
-        return response(config, { preview_fingerprint: String(previewCount).padStart(64, "b"), preview_count: previewCount === 1 ? 5 : 7 });
+        return response(config, { preview_fingerprint: String(previewCount).padStart(64, "b"), preview_content_fingerprint: "e".repeat(64), preview_count: previewCount === 1 ? 5 : 7 });
       }
       if (url === "/admin/broadcasts" && config.method === "post") {
         drafts.push(parseRequestBody(config.data));
@@ -365,6 +365,7 @@ describe("admin forms use the versioned REST contracts", () => {
     await waitFor(() => expect(previews).toHaveLength(2));
     await user.click(screen.getByRole("button", { name: /qoralama yaratish/i }));
     await waitFor(() => expect(drafts).toHaveLength(2));
+    expect(drafts[1]).toMatchObject({ preview_fingerprint: `${"b".repeat(63)}2`, preview_content_fingerprint: "e".repeat(64), preview_count: 7 });
 
     await user.click(screen.getByRole("button", { name: /yuborishni ko'rib chiqish/i }));
     await user.click(screen.getByRole("button", { name: /yuborishni tasdiqlash/i }));
@@ -378,6 +379,7 @@ describe("admin forms use the versioned REST contracts", () => {
     await waitFor(() => expect(launches).toHaveLength(2));
     expect(launches[0]?.preview_fingerprint).toBe(`${"b".repeat(63)}2`);
     expect(launches[1]?.preview_fingerprint).toBe(`${"b".repeat(63)}3`);
+    expect(launches.every((body) => !("preview_content_fingerprint" in body))).toBe(true);
     expect(launches[0]?.idempotency_key).not.toBe(launches[1]?.idempotency_key);
     expect(drafts).toHaveLength(2);
   });
@@ -394,7 +396,7 @@ describe("admin forms use the versioned REST contracts", () => {
     adminApi.defaults.adapter = async (config) => {
       const url = config.url ?? "";
       if (url === "/auth/admin/session") return response(config, { admin_id: 9, full_name: "Manager", role: "manager", csrf_token: "csrf" });
-      if (url === "/admin/broadcasts/preview" && config.method === "post") return response(config, { preview_fingerprint: "c".repeat(64), preview_count: 3 });
+      if (url === "/admin/broadcasts/preview" && config.method === "post") return response(config, { preview_fingerprint: "c".repeat(64), preview_content_fingerprint: "f".repeat(64), preview_count: 3 });
       if (url === "/admin/broadcasts" && config.method === "post") return response(config, broadcast);
       if (url === "/admin/broadcasts/31/launch" && config.method === "post") {
         launches += 1;

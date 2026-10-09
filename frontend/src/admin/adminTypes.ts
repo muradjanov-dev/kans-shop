@@ -236,6 +236,7 @@ export interface AdminBroadcastPreviewIn extends AdminBroadcastContent {}
 
 export interface AdminBroadcastDraftIn extends AdminBroadcastContent {
   preview_fingerprint: string;
+  preview_content_fingerprint: string;
   preview_count: number;
 }
 
@@ -247,6 +248,7 @@ export interface AdminBroadcastLaunchIn {
 
 export interface AdminBroadcastPreview {
   preview_fingerprint: string;
+  preview_content_fingerprint: string;
   preview_count: number;
 }
 
