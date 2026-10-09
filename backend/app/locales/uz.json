@@ -174,7 +174,7 @@
     "status_changed_notification": "📦 Buyurtma <b>#{order_number}</b> holati o'zgardi: {status}",
     "cancelled_notification": "❌ Buyurtma <b>#{order_number}</b> bekor qilindi.\nSabab: {reason}",
     "confirmed_notification": "✅ Buyurtma <b>#{order_number}</b> tasdiqlandi!",
-    "payment_confirmed_notification": "✅ To'lovingiz qabul qilindi! Buyurtma <b>#{order_number}</b> tasdiqlandi."
+    "payment_confirmed_notification": "✅ Buyurtma <b>#{order_number}</b> uchun to'lov qabul qilindi."
   },
   "admin": {
     "new_users_batch_notification": "👥 Tizimga yana 5 ta yangi mijoz qo'shildi!\n\nJami foydalanuvchilar soni: {total} ta.",
@@ -200,6 +200,12 @@
     "payment_paynet": "Paynet",
     "receipt_uploaded_suffix": " (chek yuborilgan)",
     "paid_suffix": " (to'landi ✅)",
+    "accept_payment_button": "✅ To‘lovni tasdiqlash",
+    "payment_accepted_by": "💳 To‘lov {admin} tomonidan qabul qilindi — {time}",
+    "payment_accepted_alert": "To‘lov qabul qilindi.",
+    "payment_already_confirmed_alert": "Bu to‘lov allaqachon tasdiqlangan.",
+    "payment_receipt_changed_alert": "Chek yangilangan. Buyurtma kartasini yangilang.",
+    "payment_not_accept_alert": "Bu buyurtma to‘lovini tasdiqlab bo‘lmaydi.",
     "timestamp_line": "🕐 {value}",
     "confirm_button": "✅ Tasdiqlash",
     "cancel_button": "❌ Bekor qilish",

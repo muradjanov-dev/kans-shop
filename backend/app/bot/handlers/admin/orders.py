@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, FSInputFile, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.callback_data import (
+    AdminAcceptPaymentCallback,
     AdminAdvanceCallback,
     AdminBackToOrderCallback,
     AdminCancelReasonCallback,
@@ -33,17 +34,73 @@ from app.bot.utils.admin_order_card import build_admin_order_keyboard, build_adm
 from app.bot.utils.i18n import translate
 from app.bot.utils.messages import require_message
 from app.core.config import settings
-from app.core.exceptions import OrderAlreadyProcessedError, OrderNotFoundError
+from app.core.exceptions import (
+    AdminSessionRequiredError,
+    OrderAlreadyProcessedError,
+    OrderNotFoundError,
+    PaymentAcceptanceUnavailableError,
+    ReceiptVersionConflictError,
+)
 from app.db.models.admin import Admin
 from app.db.models.enums import OrderStatus
 from app.db.models.order import Order
 from app.db.repositories import admin_repository, user_repository
-from app.services import order_service
+from app.services import manual_payment_service, order_service
 from app.services.after_commit import commit_with_after_commit
 from app.services.receipt_service import open_order_receipt
 from app.services.receipt_storage import PrivateReceiptStorage
 
 router = Router(name="admin_orders")
+
+
+@router.callback_query(AdminAcceptPaymentCallback.filter())
+async def on_accept_manual_payment(
+    callback: CallbackQuery,
+    callback_data: AdminAcceptPaymentCallback,
+    session: AsyncSession,
+    admin: Admin | None,
+    bot: Bot,
+    _: Callable,
+) -> None:
+    if not await _require_admin(callback, admin, _):
+        return
+    assert admin is not None
+
+    try:
+        order = await manual_payment_service.accept_card_transfer_payment(
+            session,
+            order_id=callback_data.order_id,
+            admin_id=admin.id,
+            expected_receipt_version=callback_data.receipt_version,
+        )
+    except OrderNotFoundError:
+        await callback.answer(_("admin.order_not_found"), show_alert=True)
+        return
+    except ReceiptVersionConflictError:
+        await callback.answer(_("admin.payment_receipt_changed_alert"), show_alert=True)
+        return
+    except PaymentAcceptanceUnavailableError:
+        await callback.answer(_("admin.payment_not_accept_alert"), show_alert=True)
+        return
+    except AdminSessionRequiredError:
+        await callback.answer(_("admin.not_admin_alert"), show_alert=True)
+        return
+
+    if manual_payment_service.consume_new_acceptance_event(session, order.id):
+        register_order_status_notifications(
+            session,
+            bot,
+            order.id,
+            "orders.payment_confirmed_notification",
+            action_key="admin.payment_accepted_by",
+            admin_name=admin.full_name,
+        )
+        await commit_with_after_commit(session)
+        await callback.answer(_("admin.payment_accepted_alert"))
+        return
+
+    await commit_with_after_commit(session)
+    await callback.answer(_("admin.payment_already_confirmed_alert"), show_alert=True)
 
 
 async def send_receipt_to_admin(

@@ -6,6 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.keyboards.callback_data import (
+    AdminAcceptPaymentCallback,
     AdminAdvanceCallback,
     AdminCancelRequestCallback,
     AdminConfirmCallback,
@@ -94,7 +95,9 @@ def build_admin_order_text(
 
     method_key = ADMIN_PAYMENT_LABEL_KEYS.get(order.payment_method, "admin.payment_card")
     has_receipt = bool(order.receipt_file_id or order.receipt_storage_key or order.receipt_url)
-    if has_receipt:
+    if order.payment_status == PaymentStatus.PAID:
+        receipt_suffix = translator("admin.paid_suffix")
+    elif has_receipt:
         receipt_suffix = translator("admin.receipt_uploaded_suffix")
     elif (
         order.payment_method != PaymentMethod.CASH
@@ -177,6 +180,22 @@ def build_admin_order_keyboard(
                 text=translator("admin.cancel_button"),
                 callback_data=AdminCancelRequestCallback(order_id=order.id).pack(),
             ),
+        )
+
+    if (
+        order.status not in (OrderStatus.COMPLETED, OrderStatus.CANCELLED)
+        and order.payment_method == PaymentMethod.CARD_TRANSFER
+        and order.payment_status == PaymentStatus.RECEIPT_UPLOADED
+        and has_receipt
+    ):
+        builder.row(
+            InlineKeyboardButton(
+                text=translator("admin.accept_payment_button"),
+                callback_data=AdminAcceptPaymentCallback(
+                    order_id=order.id,
+                    receipt_version=order.receipt_version or 0,
+                ).pack(),
+            )
         )
 
     utility_row = [

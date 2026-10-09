@@ -174,7 +174,7 @@
     "status_changed_notification": "📦 Статус заказа <b>#{order_number}</b> изменён: {status}",
     "cancelled_notification": "❌ Заказ <b>#{order_number}</b> отменён.\nПричина: {reason}",
     "confirmed_notification": "✅ Заказ <b>#{order_number}</b> подтверждён!",
-    "payment_confirmed_notification": "✅ Оплата получена! Заказ <b>#{order_number}</b> подтверждён."
+    "payment_confirmed_notification": "✅ Оплата заказа <b>#{order_number}</b> принята."
   },
   "admin": {
     "new_users_batch_notification": "👥 К системе присоединились еще 5 новых клиентов!\n\nОбщее количество пользователей: {total}.",
@@ -200,6 +200,12 @@
     "payment_paynet": "Paynet",
     "receipt_uploaded_suffix": " (чек отправлен)",
     "paid_suffix": " (оплачено ✅)",
+    "accept_payment_button": "✅ Подтвердить оплату",
+    "payment_accepted_by": "💳 Оплату принял {admin} — {time}",
+    "payment_accepted_alert": "Оплата принята.",
+    "payment_already_confirmed_alert": "Эта оплата уже подтверждена.",
+    "payment_receipt_changed_alert": "Чек заменён. Обновите карточку заказа.",
+    "payment_not_accept_alert": "Нельзя подтвердить оплату этого заказа.",
     "timestamp_line": "🕐 {value}",
     "confirm_button": "✅ Подтвердить",
     "cancel_button": "❌ Отменить",

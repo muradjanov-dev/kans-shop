@@ -118,6 +118,16 @@ class OrderAlreadyProcessedError(KansShopError):
     http_status = 409
 
 
+class ReceiptVersionConflictError(KansShopError):
+    code = "RECEIPT_VERSION_CONFLICT"
+    http_status = 409
+
+
+class PaymentAcceptanceUnavailableError(KansShopError):
+    code = "PAYMENT_ACCEPTANCE_UNAVAILABLE"
+    http_status = 409
+
+
 class CategoryInUseError(KansShopError):
     code = "CATEGORY_IN_USE"
     http_status = 409

@@ -147,6 +147,12 @@ class AdminOrderStatusUpdateIn(BaseModel):
     comment: str | None = None
 
 
+class AdminAcceptPaymentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_receipt_version: int = Field(ge=0, strict=True)
+
+
 class BroadcastCreateIn(BaseModel):
     text: str
     photo_file_id: str | None = None

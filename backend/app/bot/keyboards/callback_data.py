@@ -122,6 +122,11 @@ class AdminConfirmCallback(CallbackData, prefix="aconf"):
     order_id: int
 
 
+class AdminAcceptPaymentCallback(CallbackData, prefix="apay"):
+    order_id: int
+    receipt_version: int
+
+
 class AdminAdvanceCallback(CallbackData, prefix="aadv"):
     order_id: int
     to_status: str  # OrderStatus.value

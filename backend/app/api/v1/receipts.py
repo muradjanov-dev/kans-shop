@@ -31,7 +31,7 @@ async def _receipt_actor(
     request: Request,
     response: Response,
     authorization: str | None = Header(default=None),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> ReceiptActor:
     # An explicit bearer identity always wins. In particular, an owner token cannot use an
     # unrelated admin cookie to bypass order ownership.
@@ -52,7 +52,7 @@ async def get_order_receipt(
     order_id: int,
     response: Response,
     actor: ReceiptActor = Depends(_receipt_actor),
-    session: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileResponse:
     receipt = await open_order_receipt(
         session,
