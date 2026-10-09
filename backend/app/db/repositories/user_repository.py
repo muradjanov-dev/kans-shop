@@ -15,7 +15,11 @@ async def get_by_telegram_id(session: AsyncSession, telegram_id: int) -> User | 
     return await session.scalar(select(User).where(User.telegram_id == telegram_id))
 
 
-async def get_by_id(session: AsyncSession, user_id: int) -> User | None:
+async def get_by_id(
+    session: AsyncSession, user_id: int, *, for_update: bool = False
+) -> User | None:
+    if for_update:
+        return await session.scalar(select(User).where(User.id == user_id).with_for_update())
     return await session.get(User, user_id)
 
 

@@ -8,7 +8,9 @@ from app.db.models.cart import Cart, CartItem
 from app.db.models.product import Product
 
 
-async def get_active_cart(session: AsyncSession, user_id: int) -> Cart | None:
+async def get_active_cart(
+    session: AsyncSession, user_id: int, *, for_update: bool = False
+) -> Cart | None:
     stmt = (
         select(Cart)
         .where(Cart.user_id == user_id, Cart.is_active.is_(True))
@@ -22,6 +24,8 @@ async def get_active_cart(session: AsyncSession, user_id: int) -> Cart | None:
         # query (e.g. remove_item/clear) — force this call to always reflect current DB state.
         .execution_options(populate_existing=True)
     )
+    if for_update:
+        stmt = stmt.with_for_update()
     return await session.scalar(stmt)
 
 

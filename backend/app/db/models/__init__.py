@@ -2,6 +2,7 @@ from app.db.base import Base
 from app.db.models.admin import Admin
 from app.db.models.broadcast import Broadcast
 from app.db.models.cart import Cart, CartItem
+from app.db.models.cart_mutation import CartMutation
 from app.db.models.category import Category
 from app.db.models.favorite import Favorite
 from app.db.models.order import Order
@@ -20,6 +21,7 @@ __all__ = [
     "Broadcast",
     "Cart",
     "CartItem",
+    "CartMutation",
     "Category",
     "Favorite",
     "Order",

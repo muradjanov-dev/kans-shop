@@ -37,6 +37,16 @@ class OutOfStockError(KansShopError):
     http_status = 409
 
 
+class MinimumOrderQuantityError(KansShopError):
+    code = "MIN_ORDER_QUANTITY"
+    http_status = 400
+
+
+class IdempotencyConflictError(KansShopError):
+    code = "IDEMPOTENCY_CONFLICT"
+    http_status = 409
+
+
 class MinOrderAmountError(KansShopError):
     code = "MIN_ORDER_AMOUNT"
     http_status = 400

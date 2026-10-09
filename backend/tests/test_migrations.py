@@ -25,7 +25,7 @@ def _revisions() -> dict[str, str | None]:
         source = path.read_text(encoding="utf-8")
         revision = re.search(r"^revision: str = ['\"]([^'\"]+)['\"]", source, re.M)
         down = re.search(
-            r"^down_revision: Union\[str, None\] = (?:['\"]([^'\"]+)['\"]|None)", source, re.M
+            r"^down_revision: [^=]+ = (?:['\"]([^'\"]+)['\"]|None)$", source, re.M
         )
         assert revision, f"{path.name} has no revision id"
         assert down, f"{path.name} has no down_revision"
@@ -54,7 +54,9 @@ def test_migration_history_is_a_single_unbranched_chain() -> None:
 
 def test_every_model_table_is_created_by_some_migration() -> None:
     missing = [
-        name for name in Base.metadata.tables if f"'{name}'" not in _ALL_MIGRATION_SOURCE
+        name
+        for name in Base.metadata.tables
+        if re.search(rf"['\"]{re.escape(name)}['\"]", _ALL_MIGRATION_SOURCE) is None
     ]
     assert missing == [], f"tables with no migration: {missing}"
 
@@ -68,9 +70,19 @@ def test_new_columns_are_covered_by_a_migration() -> None:
         ("traffic_sources", "code"),
         ("traffic_sources", "clicks_count"),
         ("payment_transactions", "provider_transaction_id"),
+        ("orders", "checkout_key"),
+        ("orders", "checkout_fingerprint"),
+        ("orders", "payment_instructions"),
+        ("orders", "receipt_storage_key"),
+        ("orders", "receipt_content_type"),
+        ("orders", "receipt_version"),
+        ("orders", "payment_reviewed_by_admin_id"),
+        ("orders", "payment_reviewed_at"),
     ):
         assert column in Base.metadata.tables[table].c, f"{table}.{column} missing from model"
-        assert f"'{column}'" in _ALL_MIGRATION_SOURCE, f"{table}.{column} has no migration"
+        assert re.search(
+            rf"['\"]{re.escape(column)}['\"]", _ALL_MIGRATION_SOURCE
+        ), f"{table}.{column} has no migration"
 
 
 def test_new_payment_method_enum_values_are_added_in_migrations() -> None:

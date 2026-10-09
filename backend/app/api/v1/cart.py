@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.api.schemas.cart import AddCartItemIn, CartOut, UpdateCartItemIn
 from app.db.models.cart import Cart
 from app.db.models.user import User
-from app.services import cart_service
+from app.services import cart_replay_service, cart_service
 
 router = APIRouter(prefix="/cart", tags=["cart"])
 
@@ -29,11 +31,21 @@ async def get_cart(
 @router.post("/items", response_model=CartOut, status_code=201)
 async def add_cart_item(
     payload: AddCartItemIn,
+    idempotency_key: UUID | None = Header(default=None, alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> CartOut:
-    await cart_service.add_item(session, user.id, payload.product_id, payload.quantity)
-    cart = await cart_service.get_cart(session, user.id)
+    if idempotency_key is None:
+        await cart_service.add_item(session, user.id, payload.product_id, payload.quantity)
+        cart = await cart_service.get_cart(session, user.id)
+    else:
+        cart = await cart_replay_service.add_item_once(
+            session,
+            user_id=user.id,
+            product_id=payload.product_id,
+            quantity=payload.quantity,
+            mutation_key=idempotency_key,
+        )
     return _cart_to_out(cart)
 
 

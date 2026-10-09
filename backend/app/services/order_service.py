@@ -22,6 +22,7 @@ from app.db.repositories import (
     product_repository,
     setting_repository,
 )
+from app.services.purchase_locks import lock_customer_cart
 
 # Statuses an admin/operator may move an order into from its current status. `cancelled` is
 # reachable from any non-terminal status via cancel_order(), not through this map.
@@ -81,8 +82,8 @@ async def checkout(
     source: str = "bot",
     lang: str = "uz",
 ) -> Order:
-    cart = await cart_repository.get_active_cart(session, user_id)
-    if cart is None or not cart.items:
+    cart = await lock_customer_cart(session, user_id)
+    if not cart.items:
         raise CartEmptyError("Cart is empty")
 
     locked_products = await _lock_and_validate_stock(session, cart)

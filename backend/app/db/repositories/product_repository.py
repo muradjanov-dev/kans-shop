@@ -18,7 +18,14 @@ async def get_by_id(
     if for_update:
         # SELECT ... FOR UPDATE is incompatible with eager-loading joins/subqueries in some
         # dialects; row-lock the bare product row here, callers load images separately if needed.
-        stmt = select(Product).where(Product.id == product_id).with_for_update()
+        # Cart loading may already have placed a stale Product in the identity map before this
+        # lock waits. Refresh its columns from the locked row before validating stock or price.
+        stmt = (
+            select(Product)
+            .where(Product.id == product_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
     return await session.scalar(stmt)
 
 
