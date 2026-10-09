@@ -220,4 +220,50 @@ export interface AdminAuditEvent {
   after_json: Record<string, unknown> | null;
 }
 
+export type AdminBroadcastTarget = "all" | "active" | "buyers";
+export type AdminBroadcastStatus = "draft" | "sending" | "completed" | "failed" | "cancelled";
+
+export interface AdminBroadcastContent {
+  target: AdminBroadcastTarget;
+  text: string;
+  photo_storage_key: string | null;
+  photo_file_id: string | null;
+  button_text: string | null;
+  button_url: string | null;
+}
+
+export interface AdminBroadcastPreviewIn extends AdminBroadcastContent {}
+
+export interface AdminBroadcastDraftIn extends AdminBroadcastContent {
+  preview_fingerprint: string;
+  preview_count: number;
+}
+
+export interface AdminBroadcastLaunchIn {
+  preview_fingerprint: string;
+  preview_count: number;
+  idempotency_key: string;
+}
+
+export interface AdminBroadcastPreview {
+  preview_fingerprint: string;
+  preview_count: number;
+}
+
+export interface AdminBroadcastMediaOut {
+  photo_storage_key: string;
+}
+
+export interface AdminBroadcast extends AdminBroadcastContent {
+  id: number;
+  status: AdminBroadcastStatus;
+  sent_count: number;
+  failed_count: number;
+  pending_count: number;
+  sending_count: number;
+  cancelled_count: number;
+  created_at: string;
+  launched_at: string | null;
+}
+
 export type AdminSessionContext = AdminSession;

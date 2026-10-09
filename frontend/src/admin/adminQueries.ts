@@ -4,6 +4,12 @@ import { useAdminAuth } from "@/admin/AdminAuthProvider";
 import { adminApi } from "@/admin/api";
 import type {
   AdminAuditEvent,
+  AdminBroadcast,
+  AdminBroadcastDraftIn,
+  AdminBroadcastLaunchIn,
+  AdminBroadcastMediaOut,
+  AdminBroadcastPreview,
+  AdminBroadcastPreviewIn,
   AdminCategory,
   AdminOrder,
   AdminOrderDetail,
@@ -34,6 +40,7 @@ export const adminQueryKeys = {
   sources: (page: number) => ["admin", "sources", page] as const,
   source: (id: number) => ["admin", "source", id] as const,
   audit: (filters: AdminAuditFilters) => ["admin", "audit", filters] as const,
+  broadcast: (id: number) => ["admin", "broadcast", id] as const,
 };
 
 export interface AdminOrderFilters {
@@ -281,4 +288,40 @@ export async function invalidateAdminCatalog(queryClient: ReturnType<typeof useQ
   await queryClient.invalidateQueries({ queryKey: ["admin", "categories"] });
   await queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
   await queryClient.invalidateQueries({ queryKey: ["admin", "product"] });
+}
+
+export async function uploadAdminBroadcastPhoto(file: File): Promise<AdminBroadcastMediaOut> {
+  const data = new FormData();
+  data.append("file", file);
+  return (await adminApi.post<AdminBroadcastMediaOut>("/admin/broadcasts/media", data)).data;
+}
+
+export async function previewAdminBroadcast(content: AdminBroadcastPreviewIn): Promise<AdminBroadcastPreview> {
+  return send<AdminBroadcastPreview>("post", "/admin/broadcasts/preview", content);
+}
+
+export async function createAdminBroadcastDraft(body: AdminBroadcastDraftIn): Promise<AdminBroadcast> {
+  return send<AdminBroadcast>("post", "/admin/broadcasts", body);
+}
+
+export async function launchAdminBroadcast(id: number, body: AdminBroadcastLaunchIn): Promise<AdminBroadcast> {
+  return send<AdminBroadcast>("post", `/admin/broadcasts/${id}/launch`, body);
+}
+
+export async function getAdminBroadcastProgress(id: number): Promise<AdminBroadcast> {
+  return get<AdminBroadcast>(`/admin/broadcasts/${id}`);
+}
+
+export async function cancelAdminBroadcast(id: number): Promise<AdminBroadcast> {
+  return send<AdminBroadcast>("post", `/admin/broadcasts/${id}/cancel`);
+}
+
+export function useAdminBroadcastProgress(id: number | null) {
+  const { session, status } = useAdminAuth();
+  return useQuery({
+    queryKey: [...adminQueryKeys.broadcast(id ?? 0), session?.admin_id ?? "anonymous"],
+    queryFn: () => getAdminBroadcastProgress(id!),
+    enabled: status === "authenticated" && Boolean(session) && id !== null,
+    refetchInterval: (query) => query.state.data?.status === "sending" ? 2000 : false,
+  });
 }

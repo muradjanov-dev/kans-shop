@@ -67,7 +67,7 @@ test("operator reports and orders work on mobile and desktop without buyer auth"
   expect(requests.every(({ path }) => path.length > 0)).toBe(true);
 });
 
-test("opening broadcasts stays inert while Task 10 owns its contract", async ({ page }) => {
+test("opening the broadcast composer makes no delivery request", async ({ page }) => {
   const requests: Array<{ method: string; path: string }> = [];
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -82,6 +82,7 @@ test("opening broadcasts stays inert while Task 10 owns its contract", async ({ 
   });
 
   await page.goto("/admin/broadcasts");
-  await expect(page.getByRole("status")).toContainText(/Task 10.*broadcast API/i);
+  await expect(page.getByLabel(/auditoriya/i)).toBeVisible();
+  await expect(page.getByLabel(/xabar matni/i)).toBeVisible();
   expect(requests.some(({ method, path }) => method !== "GET" && path.includes("broadcasts"))).toBe(false);
 });

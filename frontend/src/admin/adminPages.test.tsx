@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AxiosHeaders, type AxiosAdapter, type AxiosResponse } from "axios";
 import { afterEach, describe, expect, it } from "vitest";
@@ -100,10 +100,10 @@ describe("admin domain pages", () => {
     expect(screen.getByText(/birinchi tashrif manbasi/i)).toBeInTheDocument();
   });
 
-  it("keeps broadcasts in progress and makes no broadcast mutation when the page opens", async () => {
+  it("renders the broadcast composer without a broadcast mutation on page load", async () => {
     const { requests } = renderAdmin({ admin_id: 1, full_name: "Manager", role: "manager", csrf_token: "csrf" }, "/admin/broadcasts");
-    expect(await screen.findByText(/task 10.*api/i)).toBeInTheDocument();
-    await waitFor(() => expect(requests.some((request) => /POST .*broadcasts/i.test(request))).toBe(false));
+    expect(await screen.findByLabelText(/xabar matni/i)).toBeInTheDocument();
+    expect(requests.some((request) => /POST .*broadcasts/i.test(request))).toBe(false);
   });
 
   it("sends the selected UI language to the XLSX export contract", async () => {
