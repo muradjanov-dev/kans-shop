@@ -38,7 +38,7 @@ from app.db.models.enums import AdminRole, OrderType, PaymentMethod, ProductUnit
 from app.db.models.product import Product
 from app.db.models.product_image import ProductImage
 from app.db.models.user import User
-from app.db.repositories import product_repository
+from app.db.repositories import product_repository, setting_repository
 from app.services import admin_catalog_service, order_service, purchase_service
 from tests.api_helpers import ApiCase, make_api_case
 
@@ -256,6 +256,8 @@ async def test_checkout_stock_write_bumps_product_version(
         )
     )
     await db_session.flush()
+    for key, value in {"is_shop_open": True, "min_order_amount": 0}.items():
+        await setting_repository.set_value(db_session, key, value)
 
     checkout = await purchase_service.submit_checkout(
         db_session,
