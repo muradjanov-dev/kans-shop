@@ -48,6 +48,6 @@ describe("public support links", () => {
 
     expect(screen.getByRole("link", { name: "Telegram yordami" })).toHaveAttribute("href", "https://t.me/kans_shop");
     expect(screen.getByRole("link", { name: "+998901234567" })).toHaveAttribute("href", "tel:+998901234567");
-    expect(screen.queryByText("09:00-18:00")).not.toBeInTheDocument();
+    expect(screen.getByText("09:00-18:00")).toBeInTheDocument();
   });
 });

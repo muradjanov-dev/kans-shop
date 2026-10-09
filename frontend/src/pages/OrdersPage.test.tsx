@@ -58,25 +58,39 @@ describe("orders access recovery", () => {
   it("keeps order history text and cards readable in dark mode", async () => {
     useAuthStore.getState().setTokens({ access_token: jwt(42), refresh_token: "refresh-42", is_admin: false });
     originalAdapter = api.defaults.adapter;
-    api.defaults.adapter = async (config) => response(config, [order]);
+    api.defaults.adapter = async (config) => response(config, {
+      items: [{
+        id: order.id,
+        order_number: order.order_number,
+        created_at: order.created_at,
+        status: order.status,
+        payment_status: order.payment_status,
+        order_type: order.order_type,
+        total: order.total,
+      }],
+      total: 1,
+      page: 1,
+      limit: 24,
+      total_pages: 1,
+    });
 
     renderWithProviders(<OrdersPage />, "/orders", true);
 
     const heading = await screen.findByRole("heading", { name: "Mening buyurtmalarim" });
-    const orderLink = screen.getByRole("link", { name: /Buyurtma KS-42/ });
+    const orderLink = screen.getByRole("link", { name: /KS-42/ });
     expect(heading).toHaveClass("dark:text-white");
     expect(orderLink).toHaveClass("dark:border-white/10", "dark:bg-slate-900");
     expect(screen.getByText("Buyurtma KS-42")).toHaveClass("dark:text-white");
-    expect(screen.getByText(/1 250/)).toHaveClass("dark:text-gray-300");
+    expect(screen.getByText(/1 250/)).toHaveClass("dark:text-white");
   });
 
   it("offers account sign-in recovery before fetching private orders", async () => {
     originalAdapter = api.defaults.adapter;
-    let orderRequests = 0;
+    let historyRequests = 0;
     api.defaults.adapter = async (config) => {
-      if (config.url === "/orders") {
-        orderRequests += 1;
-        return response(config, []);
+      if (config.url === "/orders/history") {
+        historyRequests += 1;
+        return response(config, { items: [], total: 0, page: 1, limit: 24, total_pages: 1 });
       }
       throw new Error(`Unexpected request: ${config.method} ${config.url}`);
     };
@@ -86,6 +100,6 @@ describe("orders access recovery", () => {
     await user.click(screen.getByRole("button", { name: "Kirish" }));
 
     expect(await screen.findByRole("dialog", { name: "Kans Shop hisobingizga kiring" })).toBeInTheDocument();
-    expect(orderRequests).toBe(0);
+    expect(historyRequests).toBe(0);
   });
 });

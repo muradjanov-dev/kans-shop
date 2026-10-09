@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { StorefrontHeader } from "@/components/storefront/StorefrontHeader";
 import { MobileNavigation } from "@/components/storefront/MobileNavigation";
+import { SupportLinks } from "@/components/storefront/SupportLinks";
 import { useCart } from "@/hooks/queries";
 import { useAuthStore } from "@/store/auth";
 
@@ -19,6 +20,9 @@ export function Layout() {
       <main className="mx-auto w-full max-w-7xl flex-1 px-0 pb-24 sm:px-4 lg:px-8 lg:pb-8">
         <Outlet />
       </main>
+      <footer className="mx-auto w-full max-w-7xl px-3 sm:px-4 lg:px-8">
+        <SupportLinks showWelcome={pathname !== "/"} />
+      </footer>
       {!hideMobileNavigation && <MobileNavigation cartCount={itemsCount} />}
     </div>
   );

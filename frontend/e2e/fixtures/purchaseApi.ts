@@ -222,7 +222,7 @@ export class PurchaseApiFixture {
 
   private readonly origin: string;
   private telegramSession: TelegramSession | null = null;
-  private extension: ApiExtensionHandler | null = null;
+  private extension: ApiExtensionHandler;
   private readonly carts = new Map<number, FixtureCart>();
   private readonly ordersByUser = new Map<number, FixtureOrder[]>();
   private readonly ordersById = new Map<number, FixtureOrder>();
@@ -233,6 +233,7 @@ export class PurchaseApiFixture {
 
   constructor(private readonly page: Page, baseURL: string) {
     this.origin = new URL(baseURL).origin;
+    this.extension = (request) => this.customerOrderExtension(request);
   }
 
   setTelegramSession(user: TelegramSession | null): void {
@@ -240,7 +241,12 @@ export class PurchaseApiFixture {
   }
 
   setApiExtension(handler: ApiExtensionHandler | null): void {
-    this.extension = handler;
+    if (!handler) {
+      this.extension = (request) => this.customerOrderExtension(request);
+      return;
+    }
+    const fallback = this.extension;
+    this.extension = async (request) => (await handler(request)) ?? (await fallback(request));
   }
 
   seedCart(userId: number, item: { quantity: number } | null): void {
@@ -274,7 +280,7 @@ export class PurchaseApiFixture {
 
   requestsFor(method: string, path: string): CapturedApiRequest[] {
     return this.requests.filter(
-      (request) => request.method === method.toUpperCase() && request.path === path,
+      (request) => request.method === method.toUpperCase() && request.path.split("?", 1)[0] === path,
     );
   }
 
@@ -334,7 +340,7 @@ export class PurchaseApiFixture {
     };
     this.requests.push(captured);
 
-    const extensionReply = await this.extension?.(captured);
+    const extensionReply = await this.extension(captured);
     if (extensionReply) {
       await this.fulfill(route, extensionReply);
       return;
@@ -578,6 +584,52 @@ export class PurchaseApiFixture {
 
     this.unhandledApiRequests.push(`${method} ${captured.path}`);
     await this.fulfill(route, errorReply("UNHANDLED_FIXTURE_ROUTE", "No synthetic response is configured.", 501));
+  }
+
+  private customerOrderExtension(request: CapturedApiRequest): FixtureReply | undefined {
+    const url = new URL(request.path, this.origin);
+    const userId = this.userIdFromRequest(request.headers.authorization);
+    if (request.method === "GET" && url.pathname === "/orders/history") {
+      if (userId === null) return errorReply("UNAUTHORIZED", "Login required", 401);
+      const pageValue = Number(url.searchParams.get("page") ?? "1");
+      const limitValue = Number(url.searchParams.get("limit") ?? "24");
+      const page = Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1;
+      const limit = Number.isSafeInteger(limitValue) && limitValue > 0 ? limitValue : 24;
+      const orders = [...(this.ordersByUser.get(userId) ?? [])].sort((left, right) =>
+        Date.parse(right.created_at) - Date.parse(left.created_at) || right.id - left.id,
+      );
+      const total = orders.length;
+      const items = orders.slice((page - 1) * limit, page * limit).map((order) => ({
+        id: order.id,
+        order_number: order.order_number,
+        created_at: order.created_at,
+        status: order.status,
+        payment_status: order.payment_status,
+        order_type: order.order_type,
+        total: order.total,
+      }));
+      return {
+        json: {
+          items,
+          total,
+          page,
+          limit,
+          total_pages: Math.max(1, Math.ceil(total / limit)),
+        },
+      };
+    }
+
+    const timeline = /^\/orders\/(\d+)\/timeline$/.exec(url.pathname);
+    if (request.method === "GET" && timeline) {
+      const orderId = Number(timeline[1]);
+      if (userId === null || this.orderOwnerId(orderId) !== userId) {
+        return errorReply("NOT_FOUND", "Order not found", 404);
+      }
+      // The purchase fixture does not invent status history; detail falls back to its server status.
+      return { json: [] };
+    }
+
+    return undefined;
   }
 
   private productPage(query: string | null, categoryId: string | null, url: URL): CatalogPage<FixtureProduct> {

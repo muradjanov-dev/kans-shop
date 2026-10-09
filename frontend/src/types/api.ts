@@ -32,6 +32,21 @@ export type PaymentMethod =
 export type PaymentProvider = "click" | "payme" | "paynet";
 export type PaymentStatus = "pending" | "receipt_uploaded" | "paid" | "failed";
 
+export interface OrderHistoryItem {
+  id: number;
+  order_number: string;
+  created_at: string;
+  status: OrderStatus;
+  payment_status: PaymentStatus;
+  order_type: OrderType;
+  total: string;
+}
+
+export interface OrderTimelineEvent {
+  status: OrderStatus;
+  occurred_at: string;
+}
+
 export interface Page<T> {
   items: T[];
   total: number;
@@ -198,14 +213,14 @@ export interface PublicSettings {
   delivery_fee: number | null;
   free_delivery_from: number | null;
   min_order_amount: number | null;
-  work_hours: string | null;
+  work_hours?: string | null;
   card_number: string | null;
   card_holder: string | null;
-  support_username: string | null;
-  shop_phone: string | null;
+  support_username?: string | null;
+  shop_phone?: string | null;
   is_shop_open: boolean | null;
-  welcome_text_uz: string | null;
-  welcome_text_ru: string | null;
+  welcome_text_uz?: string | null;
+  welcome_text_ru?: string | null;
   enabled_payment_providers: PaymentProvider[];
 }
 

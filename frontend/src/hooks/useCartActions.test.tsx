@@ -11,6 +11,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { ProductPage } from "@/pages/ProductPage";
 import { App } from "@/App";
 import { Layout } from "@/components/Layout";
+import { useCart } from "@/hooks/queries";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useLanguageStore } from "@/store/language";
@@ -59,6 +60,19 @@ function ProductToCartRoutes() {
       </Routes>
       <output data-testid="route-location">{location.pathname}</output>
     </>
+  );
+}
+
+function ProductToCartWithCartRead() {
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const userId = useAuthStore((state) => state.userId);
+  const isAuthenticated = Boolean(accessToken && userId);
+  useCart(isAuthenticated);
+  return (
+    <Routes>
+      <Route path="/product/:id" element={<ProductCard product={product} />} />
+      <Route path="/cart" element={<CartPage />} />
+    </Routes>
   );
 }
 
@@ -337,6 +351,77 @@ describe("cart action recovery", () => {
     } finally {
       releaseAdd();
       api.defaults.adapter = originalAdapter;
+    }
+  });
+
+  it("does not let a late empty cart read overwrite a successful guest add", async () => {
+    useAuthStore.getState().clear();
+    localStorage.removeItem("kans-shop-pending-add");
+    useLanguageStore.getState().setLanguage("uz");
+    const emptyCart: Cart = { items: [], subtotal: "0", items_count: 0 };
+    const addedCart: Cart = {
+      items: [{ id: 7, product_id: 12, quantity: 1, price_snapshot: "1000", product }],
+      subtotal: "1000",
+      items_count: 1,
+    };
+    const originalApiAdapter = api.defaults.adapter;
+    const originalAxiosAdapter = axios.defaults.adapter;
+    let releaseCartRead!: () => void;
+    let signalCartRead!: () => void;
+    const cartReadGate = new Promise<void>((resolve) => { releaseCartRead = resolve; });
+    const cartReadStarted = new Promise<void>((resolve) => { signalCartRead = resolve; });
+    let cartReadCount = 0;
+    api.defaults.adapter = async (config) => {
+      if (config.url === "/cart" && config.method === "get") {
+        cartReadCount += 1;
+        if (cartReadCount === 1) {
+          signalCartRead();
+          await cartReadGate;
+          return response(config, emptyCart, 200);
+        }
+        return response(config, addedCart, 200);
+      }
+      if (config.url === "/cart/items" && config.method === "post") {
+        await cartReadStarted;
+        return response(config, addedCart);
+      }
+      throw new Error(`Unexpected request ${config.method} ${config.url}`);
+    };
+    axios.defaults.adapter = async (config) => {
+      if (config.url?.endsWith("/auth/customer/code")) {
+        return response(config, {
+          access_token: jwt(42),
+          refresh_token: "refresh-42",
+          token_type: "bearer",
+          is_admin: false,
+        }, 200);
+      }
+      throw new Error(`Unexpected request ${config.method} ${config.url}`);
+    };
+    const user = userEvent.setup();
+
+    try {
+      const rendered = renderWithProviders(<ProductToCartWithCartRead />, "/product/12", true);
+      await user.click(screen.getByRole("button", { name: /savatga qo'shish/i }));
+      await user.type(await screen.findByLabelText("Kirish kodi"), "12345678");
+      await user.click(screen.getByRole("button", { name: "Kirish" }));
+      await cartReadStarted;
+      expect(await screen.findByText("Daftar", { exact: true })).toBeInTheDocument();
+      expect(rendered.queryClient.getQueryData(["cart", "42"])).toEqual(addedCart);
+
+      releaseCartRead();
+      await waitFor(() => {
+        expect(rendered.queryClient.getQueryState(["cart", "42"])?.fetchStatus).toBe("idle");
+      });
+
+      expect(rendered.queryClient.getQueryData(["cart", "42"])).toEqual(addedCart);
+      expect(screen.getByText("Daftar", { exact: true })).toBeInTheDocument();
+      expect(screen.queryByText("Savatingiz bo'sh")).not.toBeInTheDocument();
+    } finally {
+      releaseCartRead();
+      api.defaults.adapter = originalApiAdapter;
+      axios.defaults.adapter = originalAxiosAdapter;
+      useAuthStore.getState().clear();
     }
   });
 

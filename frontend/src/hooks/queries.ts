@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { setCustomerCartFromServer } from "@/lib/cartCache";
 import { useAuthStore } from "@/store/auth";
 import type {
   Cart,
@@ -7,6 +8,8 @@ import type {
   CheckoutPayload,
   LotLinksResponse,
   Order,
+  OrderHistoryItem,
+  OrderTimelineEvent,
   Page,
   PayResponse,
   PaymentProvider,
@@ -17,6 +20,10 @@ import type {
 export const customerQueryKeys = {
   profile: (userId: string | null) => ["profile", userId] as const,
   addresses: (userId: string | null) => ["addresses", userId] as const,
+  orderHistoryRoot: (userId: string | null) => ["order-history", userId] as const,
+  orderHistory: (userId: string | null, page: number) => ["order-history", userId, page] as const,
+  orderTimelineRoot: (userId: string | null) => ["order-timeline", userId] as const,
+  orderTimeline: (userId: string | null, orderId: number) => ["order-timeline", userId, orderId] as const,
   favoritesRoot: (userId: string | null) => ["favorites", userId] as const,
   favorites: (userId: string | null, page: number) => ["favorites", userId, page] as const,
   favoriteState: (userId: string | null, productId: number) => ["favorite-state", userId, productId] as const,
@@ -123,11 +130,9 @@ export function useAddCartItem() {
       return data;
     },
     retry: false,
-    onSuccess: (data) => {
-      const current = useAuthStore.getState();
-      if (current.authEpoch === authEpoch && current.userId === userId && userId) {
-        queryClient.setQueryData(["cart", userId], data);
-      }
+    onSuccess: async (data) => {
+      if (!userId) return;
+      await setCustomerCartFromServer(queryClient, userId, authEpoch, data);
     },
   });
 }
@@ -142,11 +147,9 @@ export function useUpdateCartItem() {
       return data;
     },
     retry: false,
-    onSuccess: (data) => {
-      const current = useAuthStore.getState();
-      if (current.authEpoch === authEpoch && current.userId === userId && userId) {
-        queryClient.setQueryData(["cart", userId], data);
-      }
+    onSuccess: async (data) => {
+      if (!userId) return;
+      await setCustomerCartFromServer(queryClient, userId, authEpoch, data);
     },
   });
 }
@@ -161,11 +164,9 @@ export function useRemoveCartItem() {
       return data;
     },
     retry: false,
-    onSuccess: (data) => {
-      const current = useAuthStore.getState();
-      if (current.authEpoch === authEpoch && current.userId === userId && userId) {
-        queryClient.setQueryData(["cart", userId], data);
-      }
+    onSuccess: async (data) => {
+      if (!userId) return;
+      await setCustomerCartFromServer(queryClient, userId, authEpoch, data);
     },
   });
 }
@@ -186,6 +187,7 @@ export function useCheckout() {
       if (current.authEpoch !== authEpoch || current.userId !== userId || !userId) return;
       void queryClient.invalidateQueries({ queryKey: ["cart", userId] });
       void queryClient.invalidateQueries({ queryKey: ["orders", userId] });
+      void queryClient.invalidateQueries({ queryKey: customerQueryKeys.orderHistoryRoot(userId) });
     },
     retry: false,
   });
@@ -228,6 +230,47 @@ export function useOrders(enabled: boolean) {
       return data;
     },
     enabled: enabled && Boolean(userId),
+  });
+}
+
+export function useOrderHistory(page: number) {
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const userId = useAuthStore((state) => state.userId);
+  return useQuery({
+    queryKey: customerQueryKeys.orderHistory(userId, page),
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<Page<OrderHistoryItem>>("/orders/history", {
+        params: { page, limit: 24 },
+        signal,
+      });
+      return data;
+    },
+    enabled: Boolean(accessToken && userId) && Number.isSafeInteger(page) && page > 0,
+  });
+}
+
+export function useOrderTimeline(orderId: number | undefined) {
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const userId = useAuthStore((state) => state.userId);
+  return useQuery({
+    queryKey: userId && orderId !== undefined
+      ? customerQueryKeys.orderTimeline(userId, orderId)
+      : customerQueryKeys.orderTimelineRoot(userId),
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<unknown>(`/orders/${orderId}/timeline`, { signal });
+      if (!Array.isArray(data)) return [];
+      return data.map((event) => {
+        const record = event && typeof event === "object"
+          ? event as Record<string, unknown>
+          : {};
+        return {
+          status: record.status,
+          occurred_at: record.occurred_at,
+        } as unknown as OrderTimelineEvent;
+      });
+    },
+    enabled: Boolean(accessToken && userId) &&
+      orderId !== undefined && Number.isSafeInteger(orderId) && orderId > 0,
   });
 }
 

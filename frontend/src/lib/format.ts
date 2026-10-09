@@ -12,6 +12,15 @@ export function formatExactPrice(value: string): string {
   return `${sign}${whole}${fraction ? `.${fraction}` : ""}`;
 }
 
+export function formatDateTime(value: string, language: "uz" | "ru"): string | null {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Intl.DateTimeFormat(language === "ru" ? "ru-RU" : "uz-UZ", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
+}
+
 export function localizedField<T extends string>(
   language: "uz" | "ru",
   obj: Record<`${T}_uz` | `${T}_ru`, string | null>,

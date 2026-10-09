@@ -223,9 +223,9 @@ for (const language of languages) {
     await expect(page.getByRole("heading", { name: text.ordersTitle })).toBeVisible();
     await expect(page.getByText(text.ordersEmpty)).toBeVisible();
     await expect(page.getByText("KANS-OLD-USER-42", { exact: false })).toHaveCount(0);
-    expect(purchaseApi.requestsFor("GET", "/orders").map((request) => purchaseApi.userIdForRequest(request)))
+    expect(purchaseApi.requestsFor("GET", "/orders/history").map((request) => purchaseApi.userIdForRequest(request)))
       .toContain(42);
-    expect(purchaseApi.requestsFor("GET", "/orders").map((request) => purchaseApi.userIdForRequest(request)))
+    expect(purchaseApi.requestsFor("GET", "/orders/history").map((request) => purchaseApi.userIdForRequest(request)))
       .toContain(99);
     await expectNoBrowserNetworkEscapes(page, purchaseApi);
   });

@@ -60,19 +60,19 @@ export function ReceiptUpload({ order }: { order: Order }) {
   return (
     <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4">
       {displayOrder.payment_status === "receipt_uploaded" && (
-        <p className="text-sm text-amber-700" role="status">{t("checkout.receipt_pending")}</p>
+        <p className="text-sm text-amber-700 dark:text-amber-200" role="status">{t("checkout.receipt_pending")}</p>
       )}
       {displayOrder.payment_status === "paid" && (
-        <p className="text-sm font-medium text-green-700" role="status">{t("checkout.payment_status.paid")}</p>
+        <p className="text-sm font-medium text-green-700 dark:text-green-300" role="status">{t("checkout.payment_status.paid")}</p>
       )}
 
       {displayOrder.has_receipt && receipt.isLoading && (
-        <p className="text-xs text-gray-500">{t("checkout.receipt_loading")}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">{t("checkout.receipt_loading")}</p>
       )}
       {displayOrder.has_receipt && receipt.isError && (
-        <div className="flex items-center justify-between gap-2 text-xs text-red-600" role="alert">
+        <div className="flex items-center justify-between gap-2 text-xs text-red-600 dark:text-red-300" role="alert">
           <span>{t("checkout.receipt_load_error")}</span>
-          <button type="button" onClick={() => void receipt.refetch()} className="font-semibold underline">
+          <button type="button" onClick={() => void receipt.refetch()} className="inline-flex min-h-11 items-center px-2 font-semibold underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
             {t("common.retry")}
           </button>
         </div>
@@ -81,14 +81,14 @@ export function ReceiptUpload({ order }: { order: Order }) {
         <img src={receiptUrl} alt={t("checkout.receipt_preview")} className="max-h-72 rounded-lg object-contain" />
       )}
       {receiptUrl && !receipt.isFetching && receipt.data?.type === "application/pdf" && (
-        <a href={receiptUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-brand">
+        <a href={receiptUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm font-medium text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
           {t("checkout.open_receipt_pdf")}
         </a>
       )}
 
       {eligible && (
         <>
-          <label className="flex flex-col gap-1 text-xs text-gray-600">
+          <label className="flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
             <span>{t("checkout.receipt_upload_hint")}</span>
             <input
               type="file"
@@ -96,17 +96,17 @@ export function ReceiptUpload({ order }: { order: Order }) {
               aria-label={t("checkout.receipt_file_label")}
               onChange={(event) => selectFile(event.currentTarget.files?.[0])}
               disabled={upload.isPending}
-              className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:font-semibold file:text-brand"
+              className="min-h-11 text-sm text-gray-800 dark:text-gray-200 file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:font-semibold file:text-brand dark:file:bg-brand/20 dark:file:text-violet-200"
             />
           </label>
-          {selectedFile && <p className="text-xs text-gray-500">{selectedFile.name}</p>}
-          {fileError && <p role="alert" className="text-xs text-red-600">{fileError}</p>}
-          {upload.isError && <p role="alert" className="text-xs text-red-600">{t("checkout.receipt_upload_error")}</p>}
+          {selectedFile && <p className="text-xs text-gray-500 dark:text-gray-400">{selectedFile.name}</p>}
+          {fileError && <p role="alert" className="text-xs text-red-600 dark:text-red-300">{fileError}</p>}
+          {upload.isError && <p role="alert" className="text-xs text-red-600 dark:text-red-300">{t("checkout.receipt_upload_error")}</p>}
           <button
             type="button"
             onClick={submitFile}
             disabled={!selectedFile || upload.isPending}
-            className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="min-h-11 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
           >
             {upload.isPending
               ? t("checkout.receipt_uploading")

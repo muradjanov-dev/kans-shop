@@ -4,7 +4,6 @@ import { useTranslate } from "@/lib/i18n";
 import { isTelegramWebApp } from "@/lib/telegram";
 import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 import { LanguageSwitcher } from "@/components/storefront/LanguageSwitcher";
-import { SupportLinks } from "@/components/storefront/SupportLinks";
 import { ThemeToggle } from "@/components/storefront/ThemeToggle";
 
 interface TelegramBackButton {
@@ -144,7 +143,6 @@ export function StorefrontHeader({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
-          <SupportLinks />
           <LanguageSwitcher />
           <ThemeToggle />
           {isAuthenticated ? (

@@ -10,6 +10,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, cancelAuthenticatedRequests, getApiErrorCode } from "@/lib/api";
+import { setCustomerCartFromServer } from "@/lib/cartCache";
 import { customerQueryKeys } from "@/hooks/queries";
 import { useTranslate } from "@/lib/i18n";
 import {
@@ -40,6 +41,7 @@ const CustomerAuthContext = createContext<CustomerAuthContextValue | null>(null)
 function isPrivateQuery(queryKey: readonly unknown[]): boolean {
   const root = queryKey[0];
   return root === "cart" || root === "orders" || root === "order" || root === "lot-links" ||
+    root === "order-history" || root === "order-timeline" ||
     root === "profile" || root === "addresses" || root === "favorites" || root === "favorite-state";
 }
 
@@ -139,11 +141,19 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       const current = useAuthStore.getState();
       if (current.authEpoch !== expectedEpoch || current.userId !== expectedUserId) return;
       if (intent.kind === "cart_add" && cart) {
-        queryClient.setQueryData(["cart", expectedUserId], cart);
+        const written = await setCustomerCartFromServer(
+          queryClient,
+          expectedUserId,
+          expectedEpoch,
+          cart,
+        );
+        if (!written) return;
       } else if (intent.kind === "favorite_add") {
         void queryClient.invalidateQueries({ queryKey: customerQueryKeys.favoriteState(expectedUserId, intent.productId) });
         void queryClient.invalidateQueries({ queryKey: customerQueryKeys.favoritesRoot(expectedUserId) });
       }
+      const afterCartUpdate = useAuthStore.getState();
+      if (afterCartUpdate.authEpoch !== expectedEpoch || afterCartUpdate.userId !== expectedUserId) return;
       if (pendingIntentRef.current?.mutationKey === intent.mutationKey) {
         setIntent(null);
         if (intent.kind === "cart_add" && intent.origin.startsWith("/product/")) navigate("/cart");

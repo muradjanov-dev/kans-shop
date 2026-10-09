@@ -5,13 +5,24 @@ import { ErrorState } from "@/components/ErrorState";
 import { ReceiptUpload } from "@/features/checkout/ReceiptUpload";
 import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 import { useOrder, usePayOrder } from "@/hooks/queries";
+import { OrderTimeline } from "@/pages/OrderTimeline";
 import { useTranslate, type TranslationKey } from "@/lib/i18n";
 import { formatExactPrice } from "@/lib/format";
 import { useAuthStore } from "@/store/auth";
 import { WebApp } from "@/lib/telegram";
-import type { PaymentProvider } from "@/types/api";
+import type { OrderStatus, OrderType, PaymentProvider } from "@/types/api";
 
 const ONLINE_PROVIDERS: PaymentProvider[] = ["click", "payme", "paynet"];
+const ORDER_STATUSES: readonly OrderStatus[] = ["new", "confirmed", "preparing", "delivering", "completed", "cancelled"];
+const ORDER_TYPES: readonly OrderType[] = ["delivery", "pickup", "preorder"];
+
+function isOrderStatus(value: unknown): value is OrderStatus {
+  return typeof value === "string" && ORDER_STATUSES.includes(value as OrderStatus);
+}
+
+function isOrderType(value: unknown): value is OrderType {
+  return typeof value === "string" && ORDER_TYPES.includes(value as OrderType);
+}
 
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,7 +30,9 @@ export function OrderDetailPage() {
   const accessToken = useAuthStore((state) => state.accessToken);
   const userId = useAuthStore((state) => state.userId);
   const { openLogin } = useCustomerAuth();
-  const { data: order, isLoading, isError, refetch } = useOrder(id ? Number(id) : undefined);
+  const parsedOrderId = id ? Number(id) : NaN;
+  const orderId = Number.isSafeInteger(parsedOrderId) && parsedOrderId > 0 ? parsedOrderId : undefined;
+  const { data: order, isLoading, isError, refetch } = useOrder(orderId);
 
   if (!accessToken || !userId) {
     return (
@@ -49,7 +62,7 @@ export function OrderDetailPage() {
           {t("orders.number")} {order.order_number}
         </h1>
         <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-white/10 dark:text-gray-200">
-          {t(`orders.status.${order.status}` as TranslationKey)}
+          {isOrderStatus(order.status) ? t(`orders.status.${order.status}` as TranslationKey) : t("orders.status.unknown")}
         </span>
       </div>
 
@@ -61,7 +74,32 @@ export function OrderDetailPage() {
         <p className="text-sm font-medium text-gray-900 dark:text-white">{t("checkout.payment_method")}</p>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{t(`checkout.payment.${order.payment_method}` as TranslationKey)}</p>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t(`checkout.payment_status.${order.payment_status}` as TranslationKey)}</p>
+        {isOrderType(order.order_type) && (
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {t("orders.order_type_label")}: {t(`orders.order_type.${order.order_type}` as TranslationKey)}
+          </p>
+        )}
       </div>
+
+      <section className="mb-4 rounded-xl border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-slate-900">
+        <h2 className="text-sm font-medium text-gray-900 dark:text-white">{t("orders.customer_snapshot")}</h2>
+        <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+          <span className="font-medium">{t("orders.customer_name")}:</span> {order.customer_name}
+        </p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+          <span className="font-medium">{t("orders.customer_phone")}:</span> {order.customer_phone}
+        </p>
+        {typeof order.address === "string" && order.address.trim() && (
+          <div className="mt-2">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t("orders.address_snapshot")}</p>
+            <address className="mt-1 whitespace-pre-wrap text-sm not-italic text-gray-700 dark:text-gray-200">
+              {order.address}
+            </address>
+          </div>
+        )}
+      </section>
+
+      <OrderTimeline orderId={order.id} currentStatus={order.status} orderType={order.order_type} />
 
       {ONLINE_PROVIDERS.includes(order.payment_method as PaymentProvider) && order.payment_status !== "paid" && order.status !== "cancelled" && (
         <OrderPaymentRecovery orderId={order.id} provider={order.payment_method as PaymentProvider} />
@@ -129,7 +167,7 @@ function OrderPaymentRecovery({ orderId, provider }: { orderId: number; provider
         <button
           type="button"
           onClick={() => WebApp.openLink(paymentUrl)}
-          className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white"
+          className="min-h-11 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white"
         >
           {t("checkout.pay_button")}
         </button>
@@ -138,7 +176,7 @@ function OrderPaymentRecovery({ orderId, provider }: { orderId: number; provider
           type="button"
           onClick={requestLink}
           disabled={payOrder.isPending}
-          className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          className="min-h-11 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         >
           {payOrder.isPending ? t("checkout.submitting") : t("checkout.retry_payment_link")}
         </button>
