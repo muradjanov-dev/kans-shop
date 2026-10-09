@@ -74,6 +74,7 @@ async def get_order(
 @router.patch("/{order_id}/status", response_model=OrderOut)
 async def update_order_status(
     order_id: int,
+    response: Response,
     payload: AdminOrderStatusUpdateIn,
     session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
@@ -119,6 +120,7 @@ async def update_order_status(
         reason=reason,
     )
 
+    response.headers["Cache-Control"] = "private, no-store"
     return OrderOut.model_validate(order)
 
 

@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.api.deps import get_current_admin
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.db.models.admin import Admin
@@ -113,6 +114,13 @@ def _admin_headers(raw_cookie: str, csrf_token: str | None = None) -> dict[str, 
     return headers
 
 
+def _current_admin_override(actor: Admin):
+    async def override() -> Admin:
+        return actor
+
+    return override
+
+
 @asynccontextmanager
 async def _api_fixture(
     case: ApiCase, *, order_ids: list[int], admin_ids: list[int]
@@ -199,24 +207,34 @@ async def test_order_permissions_and_detail_history(test_engine: AsyncEngine) ->
                 assert detail.json()["payment_history"][0]["state"] == "pending"
                 assert "must_not_be_returned" not in detail.text
 
-                with patch("app.api.v1.admin.orders.register_order_status_notifications"):
-                    transitioned = await case.client.patch(
-                        f"/api/v1/admin/orders/{order.id}/status",
-                        headers=headers,
-                        json={"status": "confirmed", "comment": "Synthetic confirmation"},
-                    )
-                assert transitioned.status_code == 200, transitioned.text
-                assert transitioned.json()["status"] == "confirmed"
+                case.app.dependency_overrides[get_current_admin] = _current_admin_override(
+                    actor
+                )
+                try:
+                    with patch("app.api.v1.admin.orders.register_order_status_notifications"):
+                        transitioned = await case.client.patch(
+                            f"/api/v1/admin/orders/{order.id}/status",
+                            headers=headers,
+                            json={"status": "confirmed", "comment": "Synthetic confirmation"},
+                        )
+                    assert transitioned.status_code == 200, transitioned.text
+                    assert transitioned.json()["status"] == "confirmed"
+                    assert transitioned.headers["cache-control"] == "private, no-store"
 
-                with patch("app.api.v1.admin.payments.register_order_status_notifications"):
-                    accepted = await case.client.post(
-                        f"/api/v1/admin/orders/{payment_order.id}/payment/accept",
-                        headers=headers,
-                        json={"expected_receipt_version": 1},
-                    )
-                assert accepted.status_code == 200, accepted.text
-                assert accepted.json()["payment_status"] == "paid"
-                assert accepted.json()["status"] == "new"
+                    with patch(
+                        "app.api.v1.admin.payments.register_order_status_notifications"
+                    ):
+                        accepted = await case.client.post(
+                            f"/api/v1/admin/orders/{payment_order.id}/payment/accept",
+                            headers=headers,
+                            json={"expected_receipt_version": 1},
+                        )
+                    assert accepted.status_code == 200, accepted.text
+                    assert accepted.json()["payment_status"] == "paid"
+                    assert accepted.json()["status"] == "new"
+                    assert accepted.headers["cache-control"] == "private, no-store"
+                finally:
+                    case.app.dependency_overrides.pop(get_current_admin, None)
 
                 changed_detail = await case.client.get(
                     f"/api/v1/admin/orders/{payment_order.id}",
@@ -355,9 +373,16 @@ async def test_order_message_is_deduped_and_uses_order_owner(test_engine: AsyncE
             endpoint = f"/api/v1/admin/orders/{order_id}/message"
             first = await case.client.post(endpoint, headers=headers, json=payload)
             replay = await case.client.post(endpoint, headers=headers, json=payload)
+            conflicting_replay = await case.client.post(
+                endpoint,
+                headers=headers,
+                json={"text": "Changed synthetic order update", "idempotency_key": key},
+            )
 
             assert first.status_code == 202, first.text
             assert replay.status_code == 202, replay.text
+            assert conflicting_replay.status_code == 409, conflicting_replay.text
+            assert conflicting_replay.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
             first_body = first.json()
             replay_body = replay.json()
             assert first_body["state"] == replay_body["state"] == "queued"
@@ -391,6 +416,17 @@ async def test_order_message_is_deduped_and_uses_order_owner(test_engine: AsyncE
                 assert event.recipient_admin_id is None
                 assert event.payload_id == str(message.id)
                 assert event.dedupe_key == f"admin-order-message:{message.id}"
+                assert (
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(NotificationOutbox)
+                        .where(
+                            NotificationOutbox.event_type == "admin.order_message.queued",
+                            NotificationOutbox.aggregate_id == str(order_id),
+                        )
+                    )
+                    == 1
+                )
 
                 audit = await session.scalar(
                     select(AdminAuditEvent).where(

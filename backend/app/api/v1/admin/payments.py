@@ -1,5 +1,5 @@
 from aiogram import Bot
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_admin, get_db
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/admin/orders", tags=["admin-order-payments"])
 async def accept_manual_payment(
     order_id: int,
     payload: AdminAcceptPaymentIn,
+    response: Response,
     session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(get_current_admin),
     bot: Bot = Depends(get_bot),
@@ -35,4 +36,5 @@ async def accept_manual_payment(
             action_key="admin.payment_accepted_by",
             admin_name=admin.full_name,
         )
+    response.headers["Cache-Control"] = "private, no-store"
     return OrderOut.model_validate(order)
