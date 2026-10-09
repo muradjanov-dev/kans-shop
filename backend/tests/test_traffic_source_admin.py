@@ -1,12 +1,14 @@
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from importlib import import_module
 from importlib.util import find_spec
+from io import BytesIO
 
-from sqlalchemy import delete, select
+from openpyxl import load_workbook
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import settings
@@ -14,6 +16,7 @@ from app.db.models.admin import Admin
 from app.db.models.admin_audit_event import AdminAuditEvent
 from app.db.models.admin_session import AdminSession
 from app.db.models.enums import AdminRole, OrderStatus, OrderType, PaymentMethod, PaymentStatus
+from app.db.models.notification_outbox import NotificationOutbox
 from app.db.models.order import Order
 from app.db.models.traffic_source import TrafficSource
 from app.db.models.user import User
@@ -65,20 +68,182 @@ async def test_stats_operator_read_only(test_engine: AsyncEngine) -> None:
         make_api_case(test_engine, base_url="https://testserver") as case,
         _admin_session(case, AdminRole.OPERATOR) as (_, csrf_token),
     ):
-        overview = await case.client.get("/api/v1/admin/stats/overview?period=today")
-        export = await case.client.get("/api/v1/admin/stats/export.xlsx?period=today")
-        write = await case.client.post(
-            "/api/v1/admin/sources",
-            headers={"Origin": WEBAPP_ORIGIN, "X-CSRF-Token": csrf_token},
-            json={"name": "Operator campaign", "code": "operator"},
-        )
+        order_id: int | None = None
+        async with case.session_maker() as session:
+            order = Order(
+                order_number=f"HTTP-{secrets.token_hex(5)}",
+                user_id=case.user_id,
+                order_type=OrderType.DELIVERY,
+                status=OrderStatus.NEW,
+                customer_name="Synthetic Reports Buyer",
+                customer_phone="+998901234567",
+                subtotal=Decimal("12345"),
+                total=Decimal("12345"),
+                payment_method=PaymentMethod.CASH,
+                payment_status=PaymentStatus.PAID,
+                created_at=datetime.now(UTC) - timedelta(minutes=1),
+            )
+            session.add(order)
+            await session.flush()
+            order_id = order.id
+            await session.commit()
 
-        assert overview.status_code == 200
-        assert overview.headers["cache-control"] == "private, no-store"
-        assert export.status_code == 200
-        assert export.headers["cache-control"] == "private, no-store"
-        assert write.status_code == 403
-        assert write.json()["error"]["code"] == "ADMIN_ROLE_REQUIRED"
+        try:
+            overview = await case.client.get("/api/v1/admin/stats/overview?period=week")
+            export = await case.client.get("/api/v1/admin/stats/export.xlsx?period=week")
+            write = await case.client.post(
+                "/api/v1/admin/sources",
+                headers={"Origin": WEBAPP_ORIGIN, "X-CSRF-Token": csrf_token},
+                json={"name": "Operator campaign", "code": "operator"},
+            )
+
+            assert overview.status_code == 200
+            assert overview.headers["cache-control"] == "private, no-store"
+            overview_data = overview.json()
+            assert Decimal(str(overview_data["revenue"])) == Decimal("12345")
+            assert Decimal(str(overview_data["order_value"])) == Decimal("12345")
+            assert Decimal(str(overview_data["paid_amount"])) == Decimal("12345")
+            assert export.status_code == 200
+            assert export.headers["cache-control"] == "private, no-store"
+            assert write.status_code == 403
+            assert write.json()["error"]["code"] == "ADMIN_ROLE_REQUIRED"
+
+            russian_export = await case.client.get(
+                "/api/v1/admin/stats/export.xlsx?period=week",
+                headers={"Accept-Language": "ru"},
+            )
+            assert russian_export.status_code == 200
+            russian_sheet = load_workbook(
+                BytesIO(russian_export.content), data_only=True
+            ).active
+            russian_labels = {
+                row[0]: row[1]
+                for row in russian_sheet.iter_rows(values_only=True)
+                if row and row[0] is not None
+            }
+            assert "Сумма оплаченных заказов без отмен (сум)" in russian_labels
+            assert russian_labels["Период"] == "Неделя"
+        finally:
+            if order_id is not None:
+                async with case.session_maker() as session:
+                    await session.execute(delete(Order).where(Order.id == order_id))
+                    await session.commit()
+
+
+async def test_source_outbox_is_id_only_recipient_scoped_and_transactional(
+    db_session, admin: Admin
+) -> None:
+    from app.services.traffic_source_service import create_source, update_source
+
+    recipient = Admin(
+        telegram_id=9_200_000_000_000_001,
+        full_name="Source Reports Recipient",
+        role=AdminRole.MANAGER,
+        notifications_enabled=True,
+    )
+    muted_recipient = Admin(
+        telegram_id=9_200_000_000_000_002,
+        full_name="Muted Source Reports Recipient",
+        role=AdminRole.MANAGER,
+        notifications_enabled=False,
+    )
+    inactive_recipient = Admin(
+        telegram_id=9_200_000_000_000_003,
+        full_name="Inactive Source Reports Recipient",
+        role=AdminRole.MANAGER,
+        is_active=False,
+        notifications_enabled=True,
+    )
+    db_session.add_all([recipient, muted_recipient, inactive_recipient])
+    await db_session.flush()
+
+    transaction = await db_session.begin_nested()
+    source = await create_source(
+        db_session, admin_id=admin.id, name="Outbox Test", code="outbox-test"
+    )
+    source_id = source.id
+    created_audit = await db_session.scalar(
+        select(AdminAuditEvent).where(
+            AdminAuditEvent.resource_type == "traffic_source",
+            AdminAuditEvent.resource_id == str(source_id),
+            AdminAuditEvent.action == "traffic_source.create",
+        )
+    )
+    assert created_audit is not None
+    created_event = await db_session.scalar(
+        select(NotificationOutbox).where(
+            NotificationOutbox.payload_id == str(created_audit.id)
+        )
+    )
+    assert created_event is not None
+    assert created_event.event_type == "traffic_source.created"
+    assert created_event.aggregate_id == str(source_id)
+    assert created_event.recipient_admin_id == recipient.id
+    assert created_event.recipient_user_id is None
+    assert created_event.dedupe_key == (
+        f"traffic-source:{created_audit.id}:admin:{recipient.id}"
+    )
+
+    await update_source(
+        db_session,
+        admin_id=admin.id,
+        source_id=source_id,
+        name=None,
+        active=False,
+    )
+    updated_audit = await db_session.scalar(
+        select(AdminAuditEvent).where(
+            AdminAuditEvent.resource_type == "traffic_source",
+            AdminAuditEvent.resource_id == str(source_id),
+            AdminAuditEvent.action == "traffic_source.update",
+        )
+    )
+    assert updated_audit is not None
+    updated_event = await db_session.scalar(
+        select(NotificationOutbox).where(
+            NotificationOutbox.payload_id == str(updated_audit.id)
+        )
+    )
+    assert updated_event is not None
+    assert updated_event.event_type == "traffic_source.updated"
+    assert updated_event.aggregate_id == str(source_id)
+    assert updated_event.recipient_admin_id == recipient.id
+    assert updated_event.recipient_user_id is None
+    source_outbox_count = await db_session.scalar(
+        select(func.count())
+        .select_from(NotificationOutbox)
+        .where(NotificationOutbox.aggregate_id == str(source_id))
+    )
+    assert source_outbox_count == 2
+
+    await transaction.rollback()
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(TrafficSource)
+            .where(TrafficSource.id == source_id)
+        )
+        == 0
+    )
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(AdminAuditEvent)
+            .where(
+                AdminAuditEvent.resource_type == "traffic_source",
+                AdminAuditEvent.resource_id == str(source_id),
+            )
+        )
+        == 0
+    )
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(NotificationOutbox)
+            .where(NotificationOutbox.aggregate_id == str(source_id))
+        )
+        == 0
+    )
 
 
 async def test_traffic_source_routes_publish_stats_and_audit_mutations(
@@ -163,6 +328,17 @@ async def test_traffic_source_routes_publish_stats_and_audit_mutations(
             assert any(
                 event.after_json is not None and event.after_json.get("source_code") == code
                 for event in events
+            )
+            audit_ids = [event.id for event in events]
+            await session.execute(
+                delete(NotificationOutbox).where(
+                    NotificationOutbox.payload_id.in_(
+                        [str(event_id) for event_id in audit_ids]
+                    )
+                )
+            )
+            await session.execute(
+                delete(AdminAuditEvent).where(AdminAuditEvent.id.in_(audit_ids))
             )
             await session.execute(
                 delete(TrafficSource).where(TrafficSource.id == source["id"])

@@ -102,6 +102,7 @@ async def on_stats_export(
         admin_id=admin.id,
         period=callback_data.period,
         now=datetime.now(UTC),
+        translator=_,
     )
     filename = f"stats_{callback_data.period}.xlsx"
     await bot.send_document(

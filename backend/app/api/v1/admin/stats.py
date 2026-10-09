@@ -1,11 +1,13 @@
 from datetime import UTC, datetime
+from functools import partial
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_admin_roles
 from app.api.schemas.admin import StatsOverviewOut, TopProductOut
+from app.bot.utils.i18n import SUPPORTED_LANGUAGES, translate
 from app.db.models.admin import Admin
 from app.db.models.enums import AdminRole
 from app.services import stats_service
@@ -15,6 +17,12 @@ _require_stats_admin = require_admin_roles(
     AdminRole.SUPERADMIN, AdminRole.MANAGER, AdminRole.OPERATOR
 )
 _XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _export_language(request: Request) -> str:
+    language = request.headers.get("accept-language", "").split(",", 1)[0]
+    language = language.split("-", 1)[0].strip().lower()
+    return language if language in SUPPORTED_LANGUAGES else "uz"
 
 
 @router.get("/overview", response_model=StatsOverviewOut)
@@ -44,12 +52,17 @@ async def get_stats_overview(
 
 @router.get("/export.xlsx", include_in_schema=True)
 async def export_stats_xlsx(
+    request: Request,
     period: Literal["today", "week", "month"] = Query(default="today"),
     session: AsyncSession = Depends(get_db, scope="function"),
     admin: Admin = Depends(_require_stats_admin),
 ) -> Response:
     data = await stats_service.export_admin_stats_xlsx(
-        session, admin_id=admin.id, period=period, now=datetime.now(UTC)
+        session,
+        admin_id=admin.id,
+        period=period,
+        now=datetime.now(UTC),
+        translator=partial(translate, _export_language(request)),
     )
     return Response(
         content=data,

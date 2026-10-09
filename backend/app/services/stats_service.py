@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -162,11 +163,12 @@ async def export_admin_stats_xlsx(
     admin_id: int,
     period: str,
     now: datetime,
+    translator: Callable[..., str] | None = None,
 ) -> bytes:
     stats = await get_admin_stats(session, admin_id=admin_id, period=period, now=now)
     from app.bot.utils.stats_export import build_stats_workbook
 
-    return build_stats_workbook(stats).getvalue()
+    return build_stats_workbook(stats, translator=translator).getvalue()
 
 
 def period_start(period: str) -> datetime:

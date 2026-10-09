@@ -99,6 +99,10 @@ async def test_tashkent_period_and_amount_labels(
         label = _translator(language)("admin.stats_order_value_label").casefold()
         assert "bekor qilinmagan" in label if language == "uz" else "без отмен" in label
         assert "tushum" not in label if language == "uz" else "выручка" not in label
+        paid_label = _translator(language)("admin.stats_paid_amount_label").casefold()
+        assert (
+            "bekor qilinmagan" in paid_label if language == "uz" else "без отмен" in paid_label
+        )
 
 
 async def test_cancelled_orders_count_but_not_order_value(
@@ -179,4 +183,4 @@ async def test_xlsx_uses_same_period_and_labels(
     labels = {row[0]: row[1] for row in rows if row and row[0] is not None}
     assert labels["Boshlanish (UTC)"] == "2026-10-08 19:00"
     assert labels["Bekor qilinmagan buyurtmalar summasi (so'm)"] == 5000
-    assert labels["To'langan summa (so'm)"] == 5000
+    assert labels["Bekor qilinmagan va to'langan buyurtmalar summasi (so'm)"] == 5000

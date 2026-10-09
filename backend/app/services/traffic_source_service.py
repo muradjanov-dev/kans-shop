@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -7,6 +8,7 @@ from app.core.exceptions import (
     TrafficSourceValidationError,
 )
 from app.db.models.admin import Admin
+from app.db.models.admin_audit_event import AdminAuditEvent
 from app.db.models.enums import AdminRole
 from app.db.models.traffic_source import TrafficSource
 from app.db.repositories import traffic_source_repository
@@ -14,8 +16,11 @@ from app.db.repositories.traffic_source_repository import SourceStats
 from app.services.admin_actor_service import load_live_admin
 from app.services.admin_audit_service import write_audit_event
 from app.services.common import Page
+from app.services.notification_outbox_service import enqueue_outbox_event
 
 MANAGEMENT_ROLES = frozenset({AdminRole.SUPERADMIN, AdminRole.MANAGER})
+SOURCE_CREATED_EVENT = "traffic_source.created"
+SOURCE_UPDATED_EVENT = "traffic_source.updated"
 
 
 async def _load_manager(session: AsyncSession, *, admin_id: int, lock: bool = False) -> Admin:
@@ -46,8 +51,8 @@ async def _write_source_audit(
     action: str,
     source: TrafficSource,
     before: dict[str, object] | None,
-) -> None:
-    await write_audit_event(
+) -> AdminAuditEvent:
+    return await write_audit_event(
         session,
         admin_id=admin_id,
         action=action,
@@ -57,6 +62,34 @@ async def _write_source_audit(
         before=before,
         after=_source_snapshot(source),
     )
+
+
+async def _notify_source_change(
+    session: AsyncSession,
+    *,
+    actor_admin_id: int,
+    source: TrafficSource,
+    audit_event: AdminAuditEvent,
+    event_type: str,
+) -> None:
+    recipients = await session.scalars(
+        select(Admin.id)
+        .where(
+            Admin.id != actor_admin_id,
+            Admin.is_active.is_(True),
+            Admin.notifications_enabled.is_(True),
+        )
+        .order_by(Admin.id)
+    )
+    for recipient_admin_id in recipients:
+        await enqueue_outbox_event(
+            session,
+            event_type=event_type,
+            aggregate_id=source.id,
+            payload_id=audit_event.id,
+            recipient_admin_id=recipient_admin_id,
+            dedupe_key=f"traffic-source:{audit_event.id}:admin:{recipient_admin_id}",
+        )
 
 
 async def list_sources(
@@ -89,12 +122,19 @@ async def create_source(
     source = await traffic_source_repository.create_unique(
         session, code=normalized_code, name=normalized_name
     )
-    await _write_source_audit(
+    audit_event = await _write_source_audit(
         session,
         admin_id=admin_id,
         action="traffic_source.create",
         source=source,
         before=None,
+    )
+    await _notify_source_change(
+        session,
+        actor_admin_id=admin_id,
+        source=source,
+        audit_event=audit_event,
+        event_type=SOURCE_CREATED_EVENT,
     )
     return source
 
@@ -138,11 +178,18 @@ async def update_source(
     if active is not None:
         source.is_active = active
     await session.flush()
-    await _write_source_audit(
+    audit_event = await _write_source_audit(
         session,
         admin_id=admin_id,
         action="traffic_source.update",
         source=source,
         before=before,
+    )
+    await _notify_source_change(
+        session,
+        actor_admin_id=admin_id,
+        source=source,
+        audit_event=audit_event,
+        event_type=SOURCE_UPDATED_EVENT,
     )
     return source
