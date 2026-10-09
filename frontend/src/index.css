@@ -10,42 +10,51 @@
 html,
 body,
 #root {
-  min-height: 100vh;
+  min-height: 100%;
   margin: 0;
   padding: 0;
 }
 
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
 body {
-  /* Premium bright mode aesthetic */
-  background: 
-    radial-gradient(circle at 15% 50%, rgba(79, 70, 229, 0.15), transparent 45%),
-    radial-gradient(circle at 85% 10%, rgba(236, 72, 153, 0.15), transparent 50%),
-    #f8fafc;
-  background-attachment: fixed;
+  background: #f8fafc;
   color: #1e293b;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 html.dark body {
-  /* Vibrant & Premium dark mode aesthetic with glowing neon vibes */
-  background: 
-    radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.3), transparent 40%),
-    radial-gradient(circle at 100% 100%, rgba(236, 72, 153, 0.25), transparent 40%),
-    radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.15), transparent 60%),
-    #0b0f19;
-  color-scheme: dark;
+  background: #0f172a;
   color: #f8fafc;
 }
 
-/* Base custom utility classes for smooth animations and aesthetics */
-.glass-panel {
-  @apply bg-white/60 backdrop-blur-xl border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.08)];
+:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
 }
 
-.dark .glass-panel {
-  @apply bg-[#131b2c]/60 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)];
+.storefront-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .admin-shell {

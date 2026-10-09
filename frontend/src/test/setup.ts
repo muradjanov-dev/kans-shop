@@ -7,7 +7,7 @@ import { useLanguageStore } from "@/store/language";
 beforeEach(() => {
   window.localStorage.clear();
   useAuthStore.getState().clear();
-  useLanguageStore.getState().setLanguage("uz");
+  useLanguageStore.setState({ language: "uz", hasUserPreference: false });
   if (!window.matchMedia) {
     window.matchMedia = (query: string) => ({
       matches: false,

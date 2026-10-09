@@ -39,7 +39,7 @@ export function ProductCard({ product }: { product: Product }) {
                 `${location.pathname}${location.search}`,
               );
             }}
-            className="absolute bottom-2 right-2 flex size-9 items-center justify-center rounded-full bg-brand text-lg font-bold text-white shadow-md transition-transform active:scale-90 disabled:opacity-50"
+            className="absolute bottom-2 right-2 flex min-h-11 min-w-11 items-center justify-center rounded-full bg-brand text-lg font-bold text-white shadow-md transition-transform active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
           >
             {pending ? "…" : "+"}
           </button>

@@ -52,7 +52,7 @@ export function CustomerCodeDialog({
           {t("auth.login_instructions")}
         </p>
         <a
-          className="mt-3 inline-flex rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white"
+          className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-brand px-4 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           href="https://t.me/kansshopbot?start=web_login"
           rel="noreferrer"
           target="_blank"
@@ -72,7 +72,7 @@ export function CustomerCodeDialog({
                 onCodeChange();
               }}
               value={code}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 outline-none focus:border-brand dark:border-white/15 dark:bg-white/5 dark:text-white"
+              className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 outline-none focus:border-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/15 dark:bg-white/5 dark:text-white"
             />
           </label>
           {errorMessage && (
@@ -82,14 +82,14 @@ export function CustomerCodeDialog({
           )}
           <div className="flex gap-2">
             <button
-              className="flex-1 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              className="min-h-11 flex-1 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
               disabled={pending || !code.trim()}
               type="submit"
             >
               {pending ? t("auth.signing_in") : t("auth.submit_code")}
             </button>
             <button
-              className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:border-white/15 dark:text-gray-200"
+              className="min-h-11 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/15 dark:text-gray-200"
               disabled={pending}
               onClick={onCancel}
               type="button"

@@ -55,6 +55,28 @@ function unauthorized(config: Parameters<AxiosAdapter>[0]): Promise<never> {
 }
 
 describe("cart page", () => {
+  it("keeps exact decimal values in line totals and the cart subtotal", async () => {
+    useAuthStore.getState().setTokens({
+      access_token: jwt(42),
+      refresh_token: "refresh-42",
+      is_admin: false,
+    });
+    const decimalCart: Cart = {
+      ...cart,
+      items: [{ ...cart.items[0]!, quantity: 2, product: { ...product, price: "300.25" } }],
+      subtotal: "600.50",
+    };
+    const originalAdapter = api.defaults.adapter;
+    api.defaults.adapter = async (config) => response(config, decimalCart);
+
+    try {
+      renderWithProviders(<CartPage />, "/cart", true);
+      expect(await screen.findAllByText(/600\.5\s+so'm/)).toHaveLength(2);
+    } finally {
+      api.defaults.adapter = originalAdapter;
+    }
+  });
+
   it("uses the current product price and caps quantity at available stock", async () => {
     useAuthStore.getState().setTokens({
       access_token: jwt(42),

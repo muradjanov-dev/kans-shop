@@ -17,13 +17,13 @@ export function useTelegramAuth(): AuthStatus {
   const [status, setStatus] = useState<AuthStatus>("pending");
   const setTokens = useAuthStore((state) => state.setTokens);
   const accessToken = useAuthStore((state) => state.accessToken);
-  const setLanguage = useLanguageStore((state) => state.setLanguage);
+  const setTelegramLanguage = useLanguageStore((state) => state.setTelegramLanguage);
 
   useEffect(() => {
     let cancelled = false;
 
     function authenticate() {
-      setLanguage(telegramLanguageCode());
+      setTelegramLanguage(telegramLanguageCode());
 
       if (accessToken) {
         setStatus("ready");

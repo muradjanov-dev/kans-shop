@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useCategories, useCategoryProducts, useProductSearch } from "@/hooks/queries";
 import { ProductCard } from "@/components/ProductCard";
@@ -14,8 +14,14 @@ export function CatalogPage() {
   const language = useLanguageStore((state) => state.language);
   const [searchParams, setSearchParams] = useSearchParams();
   const categoryParam = searchParams.get("category");
-  const [search, setSearch] = useState("");
+  const queryParam = searchParams.get("q") ?? "";
+  const [search, setSearch] = useState(queryParam);
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setSearch(queryParam);
+    setPage(1);
+  }, [queryParam]);
 
   const categoriesQuery = useCategories();
   const categories = categoriesQuery.data ?? [];
@@ -37,13 +43,14 @@ export function CatalogPage() {
           {t("catalog.title")}
         </h1>
         <input
+          aria-label={t("storefront.search")}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
             setPage(1);
           }}
           placeholder={t("common.search")}
-          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-brand focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500"
+          className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-brand focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500"
         />
       </div>
 
@@ -63,7 +70,7 @@ export function CatalogPage() {
                     key={category.id}
                     type="button"
                     onClick={() => selectCategory(category)}
-                    className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                    className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
                       isActive
                         ? "bg-brand text-white shadow-md shadow-brand/30"
                         : "bg-white text-gray-600 shadow-sm dark:bg-white/5 dark:text-gray-300"
@@ -127,7 +134,7 @@ function ProductGrid({
     );
   }
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       {products.map((product) => (
         <ProductCard key={product.id} product={product} />
       ))}

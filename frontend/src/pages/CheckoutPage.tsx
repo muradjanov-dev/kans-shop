@@ -20,7 +20,7 @@ export function CheckoutPage() {
         <button
           type="button"
           onClick={openLogin}
-          className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white"
+          className="min-h-11 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           {t("auth.sign_in")}
         </button>

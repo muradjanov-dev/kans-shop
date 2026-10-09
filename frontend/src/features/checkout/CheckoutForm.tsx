@@ -14,7 +14,7 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
 
   return (
     <div className="p-4 pb-44">
-      <h1 className="mb-4 text-lg font-semibold text-gray-900">{t("checkout.title")}</h1>
+      <h1 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{t("checkout.title")}</h1>
 
       <Field label={t("checkout.order_type")}>
         <div className="grid grid-cols-3 gap-2">
@@ -25,10 +25,10 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
               disabled={flow.locked}
               onClick={() => flow.setOrderType(type)}
               aria-pressed={flow.orderType === type}
-              className={`rounded-lg border px-2 py-2 text-xs font-medium disabled:opacity-50 ${
+              className={`min-h-11 rounded-lg border px-2 py-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50 ${
                 flow.orderType === type
                   ? "border-brand bg-brand/10 text-brand"
-                  : "border-gray-200 text-gray-600"
+                  : "border-gray-200 text-gray-600 dark:border-white/15 dark:text-gray-200"
               }`}
             >
               {t(`checkout.order_type.${type}`)}
@@ -101,12 +101,12 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
             ))}
           </div>
           {!flow.quoteLoading && !flow.quoteError && quote?.payment_methods.length === 0 && (
-            <p className="mt-2 text-xs text-gray-500">{t("checkout.no_payment_methods")}</p>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{t("checkout.no_payment_methods")}</p>
           )}
         </Field>
       )}
       {isPreorder && quote?.ready && !flow.quoteMethodAvailable && (
-        <p role="alert" className="mb-3 text-xs text-red-600">{t("checkout.no_payment_methods")}</p>
+        <p role="alert" className="mb-3 text-xs text-red-600 dark:text-red-300">{t("checkout.no_payment_methods")}</p>
       )}
 
       <Field label={t("checkout.comment")}>
@@ -119,12 +119,12 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
         />
       </Field>
 
-      <div className="fixed bottom-0 mx-auto flex w-full max-w-lg flex-col gap-2 border-t border-gray-200 bg-white p-4">
-        {flow.quoteLoading && <p className="text-xs text-gray-500">{t("checkout.quote_loading")}</p>}
+      <div className="fixed bottom-0 mx-auto flex w-full max-w-lg flex-col gap-2 border-t border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+        {flow.quoteLoading && <p className="text-xs text-gray-500 dark:text-gray-400">{t("checkout.quote_loading")}</p>}
         {flow.quoteError && (
-          <div className="flex items-center justify-between gap-3 text-xs text-red-600" role="alert">
+          <div className="flex items-center justify-between gap-3 text-xs text-red-600 dark:text-red-300" role="alert">
             <span>{t("checkout.quote_error")}</span>
-            <button className="font-semibold underline" onClick={flow.refreshQuote} type="button">
+            <button className="min-h-11 px-2 font-semibold underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand" onClick={flow.refreshQuote} type="button">
               {t("common.retry")}
             </button>
           </div>
@@ -133,29 +133,29 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
           <p
             key={`${index}-${reason}`}
             role={quote.ready ? "note" : "alert"}
-            className={`text-xs ${quote.ready ? "text-amber-700" : "font-medium text-red-500"}`}
+            className={`text-xs ${quote.ready ? "text-amber-700 dark:text-amber-300" : "font-medium text-red-500 dark:text-red-300"}`}
           >
             {reason}
           </p>
         ))}
 
-        <div className="flex justify-between text-sm text-gray-500">
+        <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
           <span>{t("cart.subtotal")}</span>
           <span>{price(quote?.subtotal)} {t("common.som")}</span>
         </div>
         {flow.orderType === "delivery" && (
-          <div className="flex justify-between text-sm text-gray-500">
+          <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
             <span>{t("checkout.delivery_fee")}</span>
             <span>{price(quote?.delivery_fee)} {t("common.som")}</span>
           </div>
         )}
-        <div className="flex justify-between text-base font-semibold text-gray-900">
+        <div className="flex justify-between text-base font-semibold text-gray-900 dark:text-white">
           <span>{t("checkout.total")}</span>
           <span>{price(quote?.total)} {t("common.som")}</span>
         </div>
 
         {flow.submitError && (
-          <p role="alert" className="text-xs font-medium text-red-600">
+          <p role="alert" className="text-xs font-medium text-red-600 dark:text-red-300">
             {translateFlowError(flow.submitError, t)}
           </p>
         )}
@@ -164,7 +164,7 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
           <button
             type="button"
             onClick={flow.confirmUpdatedQuote}
-            className="rounded-lg border border-amber-400 bg-amber-50 py-2 text-sm font-semibold text-amber-900"
+            className="min-h-11 rounded-lg border border-amber-400 bg-amber-50 py-2 text-sm font-semibold text-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:bg-amber-950/30 dark:text-amber-100"
           >
             {t("checkout.confirm_updated_quote")}
           </button>
@@ -175,7 +175,7 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
             type="button"
             onClick={flow.retryUnknown}
             disabled={flow.isSubmitting}
-            className="rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="min-h-11 rounded-lg bg-brand py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
           >
             {flow.isSubmitting ? t("checkout.submitting") : t("common.retry")}
           </button>
@@ -186,7 +186,7 @@ export function CheckoutForm({ flow }: { flow: CheckoutFlow }) {
             type="button"
             disabled={!flow.canSubmit || flow.isSubmitting}
             onClick={() => void flow.submit()}
-            className="rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="min-h-11 rounded-lg bg-brand py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
           >
             {flow.isSubmitting ? t("checkout.submitting") : t("checkout.submit")}
           </button>
@@ -215,8 +215,8 @@ function PaymentOption({
       disabled={disabled}
       aria-pressed={selected}
       onClick={() => onSelect(method)}
-      className={`rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-50 ${
-        selected ? "border-brand bg-brand/10 text-brand" : "border-gray-200 text-gray-600"
+      className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50 ${
+        selected ? "border-brand bg-brand/10 text-brand" : "border-gray-200 text-gray-600 dark:border-white/15 dark:text-gray-200"
       }`}
     >
       {t(`checkout.payment.${method}`)}
@@ -235,7 +235,7 @@ function Field({
 }) {
   return (
     <label className="mb-3 block">
-      <span className="mb-1 block text-xs font-medium text-gray-500">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
       {children}
       {error && <span className="mt-1 block text-xs text-red-600" role="alert">{error}</span>}
     </label>
@@ -243,8 +243,8 @@ function Field({
 }
 
 function inputClass(hasError: boolean): string {
-  return `w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none disabled:bg-gray-50 disabled:opacity-60 ${
-    hasError ? "border-red-400" : "border-gray-200 focus:border-brand"
+  return `min-h-11 w-full rounded-lg border bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-brand focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:bg-gray-50 disabled:opacity-60 dark:border-white/15 dark:bg-slate-900 dark:text-white dark:disabled:bg-slate-800 ${
+    hasError ? "border-red-400" : "border-gray-200"
   }`;
 }
 

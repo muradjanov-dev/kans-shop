@@ -13,6 +13,7 @@ import { App } from "@/App";
 import { Layout } from "@/components/Layout";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useLanguageStore } from "@/store/language";
 import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 
 const product: Product = {
@@ -82,6 +83,50 @@ function TestSwitchAccountButton() {
 }
 
 describe("cart action recovery", () => {
+  it("keeps a saved language when Telegram advertises a different locale", async () => {
+    const originalApiAdapter = api.defaults.adapter;
+    const originalAxiosAdapter = axios.defaults.adapter;
+    useLanguageStore.getState().setLanguage("ru");
+    Object.defineProperty(window, "Telegram", {
+      configurable: true,
+      value: {
+        WebApp: {
+          initData: "signed-init-data",
+          initDataUnsafe: { user: { id: 999, language_code: "uz" } },
+        },
+      },
+    });
+    axios.defaults.adapter = async (config) => ({
+      data: {
+        access_token: jwt(42),
+        refresh_token: "refresh-42",
+        token_type: "bearer",
+        is_admin: false,
+      },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      config,
+    });
+    api.defaults.adapter = async (config) => response(
+      config,
+      config.url?.endsWith("/catalog/categories")
+        ? []
+        : { items: [], subtotal: "0", items_count: 0 },
+      200,
+    );
+
+    try {
+      renderWithProviders(<App />);
+      expect(await screen.findByRole("heading", { name: "Категории" })).toBeInTheDocument();
+      expect(useLanguageStore.getState().language).toBe("ru");
+    } finally {
+      api.defaults.adapter = originalApiAdapter;
+      axios.defaults.adapter = originalAxiosAdapter;
+      delete (window as Window & { Telegram?: unknown }).Telegram;
+    }
+  });
+
   it("offers a browser login action instead of requiring Telegram", () => {
     renderWithProviders(<CartPage />, "/cart", true);
 
@@ -281,7 +326,7 @@ describe("cart action recovery", () => {
 
     try {
       renderWithProviders(<StorefrontRoute />, "/", true);
-      const nav = screen.getByRole("navigation");
+      const nav = screen.getByRole("navigation", { name: "Mobil menyu" });
       await user.click(screen.getByRole("button", { name: /savatga qo'shish/i }));
       await addStarted;
       expect(within(nav).queryByText("1")).not.toBeInTheDocument();
