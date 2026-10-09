@@ -194,7 +194,9 @@ async def _has_other_paid_transaction(
 
 
 async def click_prepare(session: AsyncSession, params: dict) -> dict:
-    if _click_signature(params, action=0) != params.get("sign_string"):
+    if not is_provider_configured(PaymentProvider.CLICK) or _click_signature(
+        params, action=0
+    ) != params.get("sign_string"):
         return _click_response(
             params, error=CLICK_ERROR_SIGN_FAILED, error_note="SIGN CHECK FAILED!"
         )
@@ -259,7 +261,9 @@ async def click_prepare(session: AsyncSession, params: dict) -> dict:
 
 
 async def click_complete(session: AsyncSession, params: dict) -> dict:
-    if _click_signature(params, action=1) != params.get("sign_string"):
+    if not is_provider_configured(PaymentProvider.CLICK) or _click_signature(
+        params, action=1
+    ) != params.get("sign_string"):
         return _click_response(
             params, error=CLICK_ERROR_SIGN_FAILED, error_note="SIGN CHECK FAILED!"
         )
@@ -391,7 +395,11 @@ class PaymeRpcError(Exception):
 
 
 def verify_payme_auth(authorization_header: str | None) -> bool:
-    if not authorization_header or not authorization_header.startswith("Basic "):
+    if (
+        not is_provider_configured(PaymentProvider.PAYME)
+        or not authorization_header
+        or not authorization_header.startswith("Basic ")
+    ):
         return False
     import base64
     import binascii
@@ -430,7 +438,7 @@ async def _payme_get_order(
 
 
 def _require_payme_auth(authorization_header: str | None) -> None:
-    if authorization_header is not None and not verify_payme_auth(authorization_header):
+    if not verify_payme_auth(authorization_header):
         raise PaymeRpcError(-32504, "Insufficient privileges")
 
 
@@ -633,6 +641,17 @@ async def _payme_cancel_transaction(
     tx, _order = await _payme_lock_associated_transaction(
         session, params, authorization_header
     )
+
+    existing_state = tx.raw_payload.get("_payme_state")
+    if tx.state == PaymentTxState.CANCELLED and existing_state in (
+        PAYME_STATE_CANCELLED,
+        PAYME_STATE_CANCELLED_AFTER_COMPLETE,
+    ):
+        return {
+            "transaction": str(tx.id),
+            "cancel_time": tx.raw_payload.get("_payme_cancel_time", _now_ms()),
+            "state": existing_state,
+        }
 
     was_completed = tx.raw_payload.get("_payme_state") == PAYME_STATE_COMPLETED
     cancel_time = tx.raw_payload.get("_payme_cancel_time", _now_ms())

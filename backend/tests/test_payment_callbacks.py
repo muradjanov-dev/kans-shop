@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -5,8 +6,8 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import (
     OrderAlreadyProcessedError,
@@ -24,7 +25,23 @@ from app.db.models.enums import (
 from app.db.models.order import Order
 from app.db.models.order_status_history import OrderStatusHistory
 from app.db.models.payment_transaction import PaymentTransaction
+from app.db.models.user import User
+from app.db.repositories import order_repository
 from app.services import payment_service
+
+
+@pytest.fixture(autouse=True)
+def configured_synthetic_gateway_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Callback fixtures model a configured merchant account unless a test clears it."""
+    for key, value in {
+        "click_service_id": "synthetic-service",
+        "click_merchant_id": "synthetic-merchant",
+        "click_merchant_user_id": "synthetic-user",
+        "click_secret_key": "synthetic-click-key",
+        "payme_merchant_id": "synthetic-payme",
+        "payme_secret_key": "synthetic-payme-key",
+    }.items():
+        monkeypatch.setattr(payment_service.settings, key, value)
 
 
 async def _make_order(
@@ -108,6 +125,81 @@ async def test_gateway_exact_duplicate(db_session: AsyncSession, user) -> None:
     assert first["merchant_confirm_id"] == second["merchant_confirm_id"] == prepare_id
     assert order.payment_status == PaymentStatus.PAID
     assert await _payment_history_count(db_session, order.id) == 1
+
+
+async def test_concurrent_click_duplicate_refreshes_locked_transaction(
+    test_engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A retry that loaded PENDING before waiting on the order lock sees the committed winner."""
+    session_maker = async_sessionmaker(test_engine, expire_on_commit=False)
+    telegram_id = 8_300_000_000_000_000 + int(uuid4().hex[:12], 16)
+    async with session_maker() as setup_session:
+        user = User(telegram_id=telegram_id, first_name="Concurrent callback test")
+        setup_session.add(user)
+        await setup_session.flush()
+        order = await _make_order(setup_session, user.id)
+        prepare_id = await _prepare_click(setup_session, order, "click-concurrent-duplicate")
+        params = _click_params(
+            order,
+            "click-concurrent-duplicate",
+            action=1,
+            prepare_id=prepare_id,
+        )
+        order_id = order.id
+        user_id = user.id
+        await setup_session.commit()
+
+    retry_reached_order_lock = asyncio.Event()
+    release_retry = asyncio.Event()
+    retry_session: AsyncSession | None = None
+    original_get_by_id_for_update = order_repository.get_by_id_for_update
+
+    async def pause_retry_before_order_lock(session: AsyncSession, locked_order_id: int):
+        if session is retry_session:
+            # click_complete has already read and cached the PENDING transaction by this point.
+            retry_reached_order_lock.set()
+            await release_retry.wait()
+        return await original_get_by_id_for_update(session, locked_order_id)
+
+    monkeypatch.setattr(
+        order_repository, "get_by_id_for_update", pause_retry_before_order_lock
+    )
+
+    async def retry_callback() -> dict:
+        nonlocal retry_session
+        async with session_maker() as session:
+            retry_session = session
+            response = await payment_service.click_complete(session, params)
+            await session.commit()
+            return response
+
+    retry_task: asyncio.Task[dict] | None = None
+    try:
+        retry_task = asyncio.create_task(retry_callback())
+        await asyncio.wait_for(retry_reached_order_lock.wait(), timeout=5)
+
+        async with session_maker() as winner_session:
+            winner = await payment_service.click_complete(winner_session, params)
+            await winner_session.commit()
+
+        release_retry.set()
+        retry = await asyncio.wait_for(retry_task, timeout=5)
+
+        assert winner["error"] == payment_service.CLICK_ERROR_OK
+        assert retry["error"] == payment_service.CLICK_ERROR_OK
+        assert winner["merchant_confirm_id"] == retry["merchant_confirm_id"] == prepare_id
+        async with session_maker() as verify_session:
+            order = await verify_session.get(Order, order_id)
+            assert order is not None and order.payment_status == PaymentStatus.PAID
+            assert await _payment_history_count(verify_session, order_id) == 1
+    finally:
+        release_retry.set()
+        if retry_task is not None and not retry_task.done():
+            await asyncio.gather(retry_task, return_exceptions=True)
+        async with session_maker() as cleanup_session:
+            await cleanup_session.execute(delete(Order).where(Order.id == order_id))
+            await cleanup_session.execute(delete(User).where(User.id == user_id))
+            await cleanup_session.commit()
 
 
 async def test_gateway_second_transaction_rejected(db_session: AsyncSession, user) -> None:
@@ -296,6 +388,84 @@ async def test_payme_second_transaction_wrong_provider_amount_and_terminal_rejec
         authorization_header="Basic invalid",
     )
     assert bad_auth["error"]["code"] == -32504
+
+
+async def test_payme_cancel_retry_preserves_cancelled_after_complete_state(
+    db_session: AsyncSession, user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(payment_service.settings, "payme_secret_key", "synthetic-payme-key")
+    authorization = "Basic " + base64.b64encode(b"Paycom:synthetic-payme-key").decode()
+    order = await _make_order(db_session, user.id, payment_method=PaymentMethod.PAYME)
+
+    async def call(method: str, request_id: int, params: dict) -> dict:
+        return await payment_service.payme_handle_rpc(
+            db_session,
+            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params},
+            authorization_header=authorization,
+        )
+
+    created = await call(
+        "CreateTransaction",
+        20,
+        {
+            "id": "payme-cancel-after-complete",
+            "time": 1_791_536_000_000,
+            "amount": 500000,
+            "account": {"order_id": order.id},
+        },
+    )
+    assert "result" in created
+    performed = await call("PerformTransaction", 21, {"id": "payme-cancel-after-complete"})
+    assert "result" in performed
+
+    cancel_params = {"id": "payme-cancel-after-complete", "reason": 5}
+    first = await call("CancelTransaction", 22, cancel_params)
+    retry = await call("CancelTransaction", 23, cancel_params)
+
+    assert "result" in first and "result" in retry
+    assert first["result"] == retry["result"]
+    assert retry["result"]["state"] == payment_service.PAYME_STATE_CANCELLED_AFTER_COMPLETE
+    assert order.payment_status == PaymentStatus.PAID
+
+
+async def test_callback_authentication_rejects_empty_provider_secrets(
+    db_session: AsyncSession, user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    click_order = await _make_order(db_session, user.id)
+    prepare_id = await _prepare_click(db_session, click_order, "click-empty-secret-complete")
+    monkeypatch.setattr(payment_service.settings, "click_secret_key", "")
+    unsigned_click = await payment_service.click_prepare(
+        db_session, _click_params(click_order, "click-empty-secret", action=0)
+    )
+    assert unsigned_click["error"] == payment_service.CLICK_ERROR_SIGN_FAILED
+    unsigned_complete = await payment_service.click_complete(
+        db_session,
+        _click_params(
+            click_order,
+            "click-empty-secret-complete",
+            action=1,
+            prepare_id=prepare_id,
+        ),
+    )
+    assert unsigned_complete["error"] == payment_service.CLICK_ERROR_SIGN_FAILED
+
+    payme_order = await _make_order(db_session, user.id, payment_method=PaymentMethod.PAYME)
+    monkeypatch.setattr(payment_service.settings, "payme_secret_key", "")
+    empty_secret_auth = "Basic " + base64.b64encode(b"Paycom:").decode()
+    unauthenticated_payme = await payment_service.payme_handle_rpc(
+        db_session,
+        {
+            "jsonrpc": "2.0",
+            "id": 24,
+            "method": "CheckPerformTransaction",
+            "params": {"amount": 500000, "account": {"order_id": payme_order.id}},
+        },
+        authorization_header=empty_secret_auth,
+    )
+    assert unauthenticated_payme["error"]["code"] == -32504
+    assert await db_session.scalar(select(func.count()).select_from(PaymentTransaction)) == 1
+    click_transaction = await db_session.scalar(select(PaymentTransaction))
+    assert click_transaction is not None and click_transaction.state == PaymentTxState.PENDING
 
 
 async def test_paynet_placeholder_rejects_supported_looking_callback(

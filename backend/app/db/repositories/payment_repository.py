@@ -42,7 +42,10 @@ async def get_by_provider_tx_id(
         PaymentTransaction.provider_transaction_id == provider_transaction_id,
     )
     if for_update:
-        stmt = stmt.with_for_update()
+        # A callback may have loaded this transaction before waiting for its order lock.
+        # Refresh the identity-map instance after acquiring the row lock so it sees the
+        # winner's committed terminal state.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     return await session.scalar(stmt)
 
 
