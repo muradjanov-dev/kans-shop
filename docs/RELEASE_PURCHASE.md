@@ -1,16 +1,16 @@
 # Purchase release and private-receipt cutover
 
-This is the prepared release procedure for the Kans Shop Netcup stack. The release is not ready to
-apply until the final phase-two notification/broadcast work is integrated and verified, the exact
-release SHA has passing CI/deploy evidence, and the owner has reviewed the concrete diff and
-settings. This checkout's Task 12 changes prepare the Kans-only configuration and migration; they
-do not apply anything to Netcup.
+This is the prepared release procedure for the Kans Shop Netcup stack. All three implementation
+phases are integrated: the bot and responsive storefront share customer/cart/order services, the
+web admin uses cookie/CSRF sessions and live roles, and transactional outbox/broadcast workers
+persist recipient checkpoints. Local final verification passed 377 backend tests, 129 frontend
+unit tests and 68 synthetic browser cases, plus lint, typecheck, build and isolated proxy/cutover
+checks. Hosted CI for the final commit must still pass before release.
 
-Kans Shop remains one store. The bot, `/admin` console, and browser/Telegram storefront share the
-same database and services. Admin and storefront behavior must be checked against the exact final
-SHA. The durable notification dispatcher and broadcast launch/recovery behavior are pending final
-phase-two integration in this checkout and must not be described as verified until their workers,
-tests, and migration are present in that SHA.
+No production configuration, database migration, backup, broadcast or deployment was applied by
+this work. Release requires owner review of the concrete diff/settings/schema and verified backups.
+The current production images remain `16718babb4dba0b83d925f8b9bb09005e332f53f`.
+Browser fixtures and the fabricated Telegram bridge do not prove native-device acceptance.
 
 ## Owner-reviewed release sequence
 

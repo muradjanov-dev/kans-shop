@@ -73,10 +73,12 @@ only then commits the order. This prevents overselling under concurrent checkout
 
 ## Admin notification and audit records
 
-Admin changes record audit and notification-outbox events in the business transaction. The durable
-notification dispatcher and broadcast worker must be present and verified in the release SHA
-before queue delivery is treated as an operational guarantee. Earlier direct order-card fan-out
-described in the historical notes is not evidence of restart-safe delivery.
+Admin changes record audit and recipient-scoped notification-outbox events in the business
+transaction. FastAPI lifespan starts the durable outbox and broadcast workers. Both use token-fenced
+leases, fresh recipient/actor checks and one Redis pacing gate capped at 20 calls/sec per bot.
+Broadcast delivery requires explicit preview and launch with immutable recipient checkpoints.
+Delivery is at-least-once: a crash after Telegram accepts a send but before database acknowledgement
+can cause a duplicate. Historical direct fan-out is superseded by these workers.
 
 ## Frontend (`frontend/src`)
 

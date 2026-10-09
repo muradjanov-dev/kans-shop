@@ -164,11 +164,11 @@ ambiguous or silent, the decision made and its rationale are logged here.
   `product_id`, not `cart_item.id` — matches `cart_service`'s existing interface (which already
   keys on `user_id` + `product_id`) and matches what a Mini App cart screen actually has on hand
   (the product being displayed), no extra lookup needed.
-- **Admin-panel login without HTTPS/Telegram WebApp context**: the web admin panel (Phase 9)
+- **Historical admin-panel login (superseded by cookie/CSRF sessions)**: the web admin panel (Phase 9)
   can't use `initData` validation (it's not opened from inside Telegram). Added a fallback:
   `/admin_login` in the bot issues a 6-digit code (Redis, 5 min TTL, `app/bot/handlers/admin/
   auth.py`), exchanged via `POST /auth/telegram/code` for the same JWT pair the Mini App gets.
-- **Broadcast send is a `BackgroundTasks` fire-and-forget**, not synchronous-in-request or a
+- **Historical broadcast send (superseded by durable explicit launch)** was a `BackgroundTasks` fire-and-forget, not synchronous-in-request or a
   separate worker/queue: `POST /admin/broadcasts` creates the `Broadcast` row and returns `202`
   immediately; the actual paced send (still 20 msg/sec, same algorithm as the bot's composer
   flow) runs after the response via FastAPI's `BackgroundTasks`, in its own DB session (the
@@ -209,9 +209,10 @@ React app now contains both `/admin` and customer-facing routes, and the bot rem
 surface too. The `/api/v1/admin/*` routes are consumed by the web admin; admin sessions are
 separate from customer JWTs and require CSRF checks, live role checks, and audit records.
 
-The notification outbox schema and producers are present. Treat durable dispatch and broadcast
-restart/retry behavior as a release guarantee only after the phase-two workers and their checks are
-integrated into the exact release SHA.
+The notification outbox and broadcast workers are now integrated and covered by final local tests.
+They use durable per-recipient checkpoints, token-fenced leases and shared Redis pacing; delivery
+remains at-least-once, with a possible post-send/pre-ack duplicate. Hosted CI and owner-reviewed
+production cutover remain separate release requirements.
 - **Deploy notification**: per the user's request, `app/main.py`'s lifespan calls
   `notify_admins_deploy()` after webhook registration. It messages active admins and runs only in
   webhook mode; local polling does not trigger it. Current production deploys through the Netcup
