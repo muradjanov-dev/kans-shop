@@ -196,9 +196,11 @@ def test_phase2_upgrade_preserves_orders_receipts_and_media_refs(
             connection.execute(
                 text(
                     "INSERT INTO admin_audit_events ("
-                    "actor_admin_id, action, resource_type, resource_id, request_id"
+                    "actor_admin_id, actor_name_snapshot, action, resource_type, resource_id, "
+                    "request_id"
                     ") VALUES ("
-                    ":actor_admin_id, :action, 'product', '42', :request_id"
+                    ":actor_admin_id, 'Migration Admin', :action, 'product', '42', "
+                    ":request_id"
                     ")"
                 ),
                 [
@@ -288,6 +290,22 @@ def test_phase2_upgrade_preserves_orders_receipts_and_media_refs(
                 .all()
             )
             assert admin_role_values == ["superadmin", "manager", "operator"]
+
+            connection.execute(
+                text("DELETE FROM admins WHERE id = :admin_id"), {"admin_id": admin_id}
+            )
+            snapshots_after_delete = connection.execute(
+                text(
+                    "SELECT actor_admin_id, actor_name_snapshot FROM admin_audit_events "
+                    "WHERE request_id = :request_id ORDER BY id"
+                ),
+                {"request_id": request_id},
+            ).all()
+            assert snapshots_after_delete == [
+                (None, "Migration Admin"),
+                (None, "Migration Admin"),
+            ]
+
             broadcast_status_values = (
                 connection.execute(
                     text(

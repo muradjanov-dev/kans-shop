@@ -20,6 +20,7 @@ from app.db.models.enums import AdminRole
 from app.db.models.user import User
 from app.db.repositories import user_repository
 from app.db.session import async_session_maker
+from app.services.admin_actor_service import load_live_admin
 from app.services.admin_session_service import (
     AdminSessionPrincipal,
     resolve_admin_session,
@@ -92,10 +93,7 @@ async def get_current_admin(
     principal: AdminSessionPrincipal = Depends(get_admin_session_principal),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> Admin:
-    admin = await session.get(Admin, principal.admin_id)
-    if admin is None or not admin.is_active:
-        raise AdminSessionRequiredError("Admin session required")
-    return admin
+    return await load_live_admin(session, admin_id=principal.admin_id)
 
 
 def require_admin_roles(*roles: AdminRole) -> Callable[..., Awaitable[Admin]]:

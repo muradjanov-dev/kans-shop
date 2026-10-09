@@ -12,6 +12,7 @@ class AdminAuditEvent(IDMixin, TimestampMixin, Base):
     actor_admin_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("admins.id", ondelete="SET NULL"), index=True
     )
+    actor_name_snapshot: Mapped[str | None] = mapped_column(String(128))
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
     resource_id: Mapped[str | None] = mapped_column(String(128))

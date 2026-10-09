@@ -90,6 +90,7 @@ def test_new_columns_are_covered_by_a_migration() -> None:
         ("admin_sessions", "absolute_expires_at"),
         ("admin_sessions", "revoked_at"),
         ("admin_audit_events", "actor_admin_id"),
+        ("admin_audit_events", "actor_name_snapshot"),
         ("admin_audit_events", "action"),
         ("admin_audit_events", "resource_type"),
         ("admin_audit_events", "resource_id"),

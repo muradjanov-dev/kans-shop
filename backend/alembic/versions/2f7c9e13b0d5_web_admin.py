@@ -98,6 +98,7 @@ def upgrade() -> None:
     op.create_table(
         "admin_audit_events",
         sa.Column("actor_admin_id", sa.BigInteger(), nullable=True),
+        sa.Column("actor_name_snapshot", sa.String(length=128), nullable=True),
         sa.Column("action", sa.String(length=64), nullable=False),
         sa.Column("resource_type", sa.String(length=64), nullable=False),
         sa.Column("resource_id", sa.String(length=128)),

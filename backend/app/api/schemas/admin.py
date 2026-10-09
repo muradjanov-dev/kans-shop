@@ -117,3 +117,18 @@ class StatsOverviewOut(BaseModel):
     avg_check: Decimal
     new_users: int
     top_products: list[TopProductOut]
+
+
+class AdminAuditEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    actor_admin_id: int | None
+    actor_name_snapshot: str | None
+    action: str
+    resource_type: str
+    resource_id: str | None
+    request_id: str
+    before_json: dict[str, object] | None
+    after_json: dict[str, object] | None
