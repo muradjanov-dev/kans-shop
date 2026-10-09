@@ -40,7 +40,7 @@ client.interceptors.request.use((config) => {
     config.headers.set("X-CSRF-Token", csrfToken);
   }
   return config;
-});
+}, undefined, { synchronous: true });
 
 client.interceptors.response.use(
   (response) => {

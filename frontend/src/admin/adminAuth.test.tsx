@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { StrictMode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axios, {
@@ -70,11 +71,12 @@ function AdminAuthHarness() {
   );
 }
 
-function renderAuthHarness() {
+function renderAuthHarness(strict = false) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const harness = <AdminAuthProvider><AdminAuthHarness /></AdminAuthProvider>;
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <AdminAuthProvider><AdminAuthHarness /></AdminAuthProvider>
+      {strict ? <StrictMode>{harness}</StrictMode> : harness}
     </QueryClientProvider>,
   );
   return { ...view, queryClient };
@@ -253,7 +255,7 @@ describe("admin session authentication", () => {
       return response(config, { ok: true });
     };
     const user = userEvent.setup();
-    renderAuthHarness();
+    renderAuthHarness(true);
     await sessionRequestStarted.promise;
 
     await user.click(screen.getByRole("button", { name: "Complete admin login" }));
