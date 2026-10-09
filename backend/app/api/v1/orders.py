@@ -1,11 +1,13 @@
 from uuid import UUID
 
 from aiogram import Bot
-from fastapi import APIRouter, Depends, Header, Response, UploadFile
+from fastapi import APIRouter, Depends, Header, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_db
 from app.api.schemas.checkout import CheckoutQuoteIn, CheckoutQuoteOut
+from app.api.schemas.common import PageOut
+from app.api.schemas.customer_orders import OrderHistoryItemOut, OrderTimelineEventOut
 from app.api.schemas.order import (
     CheckoutIn,
     LotLinkOut,
@@ -26,7 +28,12 @@ from app.core.uploads import MAX_RECEIPT_SIZE_BYTES
 from app.db.models.enums import PaymentMethod
 from app.db.models.user import User
 from app.db.repositories import order_repository
-from app.services import order_service, payment_service, purchase_service
+from app.services import (
+    customer_order_service,
+    order_service,
+    payment_service,
+    purchase_service,
+)
 from app.services.checkout_quote import quote_checkout
 from app.services.receipt_service import attach_card_transfer_receipt
 from app.services.receipt_storage import PrivateReceiptStorage
@@ -111,6 +118,30 @@ async def list_my_orders(
 ) -> list[OrderOut]:
     orders, _total = await order_repository.list_by_user(session, user.id, page=1, limit=50)
     return [OrderOut.model_validate(o) for o in orders]
+
+
+@router.get("/history", response_model=PageOut[OrderHistoryItemOut])
+async def customer_order_history(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=24, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db, scope="function"),
+) -> PageOut[OrderHistoryItemOut]:
+    result = await customer_order_service.list_customer_orders(
+        session, user_id=user.id, page=page, limit=limit
+    )
+    return PageOut[OrderHistoryItemOut].from_page(result)
+
+
+@router.get("/{order_id}/timeline", response_model=list[OrderTimelineEventOut])
+async def customer_order_timeline(
+    order_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db, scope="function"),
+) -> list[OrderTimelineEventOut]:
+    return await customer_order_service.customer_timeline(
+        session, user_id=user.id, order_id=order_id
+    )
 
 
 @router.get("/{order_id}", response_model=OrderOut)

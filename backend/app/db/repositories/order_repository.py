@@ -134,6 +134,38 @@ async def list_by_user(
     return items, total or 0
 
 
+async def list_for_customer_history(
+    session: AsyncSession, user_id: int, *, page: int = 1, limit: int = 24
+) -> tuple[Sequence[Order], int]:
+    base = select(Order).where(Order.user_id == user_id)
+    total = await session.scalar(select(func.count()).select_from(base.subquery()))
+    stmt = (
+        base.order_by(Order.created_at.desc(), Order.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    items = (await session.scalars(stmt)).all()
+    return items, total or 0
+
+
+async def list_customer_timeline_rows(
+    session: AsyncSession, *, user_id: int, order_id: int
+) -> list[tuple[OrderStatus, OrderStatus | None, datetime | None, int | None]]:
+    stmt = (
+        select(
+            Order.status,
+            OrderStatusHistory.to_status,
+            OrderStatusHistory.created_at,
+            OrderStatusHistory.id,
+        )
+        .outerjoin(OrderStatusHistory, OrderStatusHistory.order_id == Order.id)
+        .where(Order.id == order_id, Order.user_id == user_id)
+        .order_by(OrderStatusHistory.created_at, OrderStatusHistory.id)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [(row[0], row[1], row[2], row[3]) for row in rows]
+
+
 async def list_for_admin(
     session: AsyncSession,
     *,
