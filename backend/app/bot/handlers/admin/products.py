@@ -4,6 +4,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas.admin import ProductUpdateIn
 from app.bot.keyboards.callback_data import (
     AdminProductActionCallback,
     AdminProductDetailCallback,
@@ -20,6 +21,7 @@ from app.bot.utils.messages import require_message
 from app.db.models.admin import Admin
 from app.db.models.product import Product
 from app.db.repositories import category_repository, product_repository
+from app.services import admin_catalog_service
 from app.services.common import DEFAULT_CATALOG_PAGE_SIZE
 from app.services.common import Page as PageType
 
@@ -163,8 +165,16 @@ async def on_product_toggle_active(
     product = await _get_product_or_alert(callback, session, callback_data.product_id, _)
     if product is None:
         return
-    product.is_active = not product.is_active
-    await session.flush()
+    assert admin is not None
+    product = await admin_catalog_service.update_product(
+        session,
+        admin_id=admin.id,
+        product_id=product.id,
+        expected_edit_version=product.edit_version,
+        changes=ProductUpdateIn(
+            expected_edit_version=product.edit_version, is_active=not product.is_active
+        ),
+    )
     await render_product_detail(message.edit_text, session, product, _)
     await callback.answer()
 
@@ -209,8 +219,10 @@ async def on_product_delete_confirm(
     if product is None:
         return
     category_id = product.category_id
-    await session.delete(product)
-    await session.flush()
+    assert admin is not None
+    await admin_catalog_service.delete_product(
+        session, admin_id=admin.id, product_id=product.id
+    )
 
     await message.edit_text(_("admin.product_deleted"))
     await render_product_list(message.answer, session, category_id, 1, _)

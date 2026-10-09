@@ -1,11 +1,13 @@
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
+from io import BytesIO
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas.admin import ProductCreateIn
 from app.bot.handlers.admin.products import render_product_detail
 from app.bot.keyboards.callback_data import (
     AdminFormSaveCallback,
@@ -24,12 +26,10 @@ from app.bot.keyboards.inline.checkout import comment_step_keyboard
 from app.bot.states.admin_catalog import ProductFormStates
 from app.bot.utils.admin_guard import MANAGEMENT_ROLES, require_admin
 from app.bot.utils.messages import require_message
-from app.core.config import settings
 from app.db.models.admin import Admin
-from app.db.models.enums import ProductUnit
 from app.db.models.product import Product
-from app.db.models.product_image import ProductImage
 from app.db.repositories import category_repository, product_repository
+from app.services import admin_catalog_service
 
 router = Router(name="admin_products_form")
 
@@ -231,7 +231,8 @@ async def on_save_product(
     data = await state.get_data()
     await state.clear()
 
-    product = Product(
+    assert admin is not None
+    values = ProductCreateIn(
         category_id=data["category_id"],
         name_uz=data["name_uz"],
         name_ru=data["name_ru"],
@@ -240,25 +241,34 @@ async def on_save_product(
         sku=data["sku"],
         price=Decimal(data["price"]),
         stock_qty=data["stock_qty"],
-        unit=ProductUnit(data["unit"]),
+        unit=data["unit"],
     )
-    session.add(product)
-    await session.flush()
-
-    await persist_product_images(bot, session, product, data.get("images", []))
-
-    category = await category_repository.get_by_id(session, product.category_id)
-    if category is not None:
-        category.products_count = category.products_count + 1
-        await session.flush()
-
-    # product.images was never loaded on this freshly-created instance (only
-    # get_by_id() eager-loads it) - refetch so the detail keyboard's sync access
-    # to .images doesn't trigger a lazy-load outside the awaited context.
-    reloaded = await product_repository.get_by_id(session, product.id)
-    assert reloaded is not None  # just flushed in this same transaction
-    await render_product_detail(message.edit_text, session, reloaded, _)
+    product = await create_product_from_form(
+        session,
+        admin_id=admin.id,
+        bot=bot,
+        values=values,
+        file_ids=data.get("images", []),
+    )
+    await render_product_detail(message.edit_text, session, product, _)
     await callback.answer(_("admin.product_created"))
+
+
+async def create_product_from_form(
+    session: AsyncSession,
+    *,
+    admin_id: int,
+    bot: Bot,
+    values: ProductCreateIn,
+    file_ids: list[str],
+) -> Product:
+    product = await admin_catalog_service.create_product(
+        session, admin_id=admin_id, values=values
+    )
+    await persist_product_images(bot, session, product, file_ids, admin_id=admin_id)
+    reloaded = await product_repository.get_by_id(session, product.id)
+    assert reloaded is not None
+    return reloaded
 
 
 async def persist_product_images(
@@ -267,27 +277,20 @@ async def persist_product_images(
     product: Product,
     file_ids: list[str],
     *,
-    start_index: int = 0,
+    admin_id: int,
 ) -> None:
-    """Downloads Telegram photo file_ids to MEDIA_ROOT/products/{id}/ and creates ProductImage
-    rows. `start_index` lets callers append to a product that already has images (the first-ever
-    image, index 0, is the only one auto-marked `is_main`)."""
+    """Download Telegram images and pass their bytes through the shared catalog service."""
     if not file_ids:
         return
-    product_dir = settings.media_root_path / "products" / str(product.id)
-    product_dir.mkdir(parents=True, exist_ok=True)
-    for offset, file_id in enumerate(file_ids):
-        index = start_index + offset
-        destination = product_dir / f"{index}.jpg"
-        await bot.download(file_id, destination=destination)
-        url = f"{settings.media_base_url}/products/{product.id}/{destination.name}"
-        session.add(
-            ProductImage(
-                product_id=product.id,
-                url=url,
-                telegram_file_id=file_id,
-                is_main=(index == 0),
-                sort_order=index,
-            )
+    for file_id in file_ids:
+        content_buffer = BytesIO()
+        await bot.download(file_id, destination=content_buffer)
+        image = await admin_catalog_service.add_product_image(
+            session,
+            admin_id=admin_id,
+            product_id=product.id,
+            content=content_buffer.getvalue(),
+            content_type="image/jpeg",
         )
+        image.telegram_file_id = file_id
     await session.flush()

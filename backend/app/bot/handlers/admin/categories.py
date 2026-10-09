@@ -1,5 +1,3 @@
-import re
-import unicodedata
 from collections.abc import Awaitable, Callable
 
 from aiogram import F, Router
@@ -7,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas.admin import CategoryCreateIn, CategoryUpdateIn
 from app.bot.keyboards.callback_data import (
     ROOT_CATEGORY_ID,
     AdminCategoryActionCallback,
@@ -21,28 +20,15 @@ from app.bot.keyboards.inline.admin_categories import (
 from app.bot.states.admin_catalog import CategoryFormStates
 from app.bot.utils.admin_guard import MANAGEMENT_ROLES, require_admin
 from app.bot.utils.messages import require_message
+from app.core.exceptions import CatalogEditConflictError, CategoryInUseError
 from app.db.models.admin import Admin
 from app.db.models.category import Category
 from app.db.repositories import category_repository, product_repository
+from app.services import admin_catalog_service
 
 router = Router(name="admin_categories")
 
 Sender = Callable[..., Awaitable[object]]
-
-
-def _slugify(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower()
-    return slug or "category"
-
-
-async def _unique_slug(session: AsyncSession, base: str) -> str:
-    slug = base
-    suffix = 2
-    while await category_repository.get_by_slug(session, slug) is not None:
-        slug = f"{base}-{suffix}"
-        suffix += 1
-    return slug
 
 
 async def render_categories_list(
@@ -160,8 +146,14 @@ async def on_category_add_start(
 
 @router.message(CategoryFormStates.entering_name_uz, F.text)
 async def on_category_name_uz(
-    message: Message, session: AsyncSession, state: FSMContext, _: Callable
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+    admin: Admin | None,
+    _: Callable,
 ) -> None:
+    if not await require_admin(message, admin, _, roles=MANAGEMENT_ROLES, session=session):
+        return
     name_uz = (message.text or "").strip()
     if not name_uz:
         return
@@ -171,10 +163,12 @@ async def on_category_name_uz(
     parent_id = data.get("parent_id") or None
     if parent_id == ROOT_CATEGORY_ID:
         parent_id = None
-    slug = await _unique_slug(session, _slugify(name_uz))
-    category = Category(name_uz=name_uz, name_ru=name_uz, slug=slug, parent_id=parent_id)
-    session.add(category)
-    await session.flush()
+    assert admin is not None
+    await admin_catalog_service.create_category(
+        session,
+        admin_id=admin.id,
+        values=CategoryCreateIn(name_uz=name_uz, name_ru=name_uz, parent_id=parent_id),
+    )
 
     await message.answer(_("admin.category_created"))
     await render_categories_list(
@@ -198,8 +192,21 @@ async def on_category_toggle_active(
     category = await _get_category_or_alert(callback, session, callback_data.category_id, _)
     if category is None:
         return
-    category.is_active = not category.is_active
-    await session.flush()
+    assert admin is not None
+    try:
+        category = await admin_catalog_service.update_category(
+            session,
+            admin_id=admin.id,
+            category_id=category.id,
+            expected_edit_version=category.edit_version,
+            changes=CategoryUpdateIn(
+                expected_edit_version=category.edit_version,
+                is_active=not category.is_active,
+            ),
+        )
+    except CatalogEditConflictError:
+        await callback.answer(_("admin.catalog_edit_conflict"), show_alert=True)
+        return
     await _render_category_detail(message, session, category, _)
     await callback.answer()
 
@@ -244,17 +251,15 @@ async def on_category_delete_confirm(
     if category is None:
         return
 
-    _items, product_count = await product_repository.list_by_category(
-        session, category.id, page=1, limit=1, active_only=False
-    )
-    children = await category_repository.list_children(session, category.id, active_only=False)
-    if product_count or children:
+    parent_id = category.parent_id or ROOT_CATEGORY_ID
+    assert admin is not None
+    try:
+        await admin_catalog_service.delete_category(
+            session, admin_id=admin.id, category_id=category.id
+        )
+    except CategoryInUseError:
         await callback.answer(_("admin.category_delete_has_products"), show_alert=True)
         return
-
-    parent_id = category.parent_id or ROOT_CATEGORY_ID
-    await session.delete(category)
-    await session.flush()
 
     await message.edit_text(_("admin.category_deleted"))
     await render_categories_list(message.answer, session, parent_id, translator=_)

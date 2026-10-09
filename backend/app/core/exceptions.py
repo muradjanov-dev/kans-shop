@@ -118,6 +118,11 @@ class CategoryInUseError(KansShopError):
     http_status = 409
 
 
+class CatalogEditConflictError(KansShopError):
+    code = "ENTITY_CONFLICT"
+    http_status = 409
+
+
 class SkuAlreadyExistsError(KansShopError):
     code = "SKU_ALREADY_EXISTS"
     http_status = 409

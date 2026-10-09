@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.models.enums import (
     BroadcastStatus,
@@ -13,48 +15,126 @@ from app.db.models.enums import (
 
 
 class CategoryCreateIn(BaseModel):
-    name_uz: str
-    name_ru: str
-    parent_id: int | None = None
+    name_uz: str = Field(min_length=1, max_length=128)
+    name_ru: str = Field(min_length=1, max_length=128)
+    parent_id: int | None = Field(default=None, ge=1)
+    description_uz: str | None = None
+    description_ru: str | None = None
+    sort_order: int = 0
 
 
 class CategoryUpdateIn(BaseModel):
-    name_uz: str | None = None
-    name_ru: str | None = None
+    expected_edit_version: int = Field(ge=0)
+    parent_id: int | None = Field(default=None, ge=1)
+    name_uz: str | None = Field(default=None, min_length=1, max_length=128)
+    name_ru: str | None = Field(default=None, min_length=1, max_length=128)
     description_uz: str | None = None
     description_ru: str | None = None
     is_active: bool | None = None
     sort_order: int | None = None
 
+    @model_validator(mode="after")
+    def reject_null_category_values(self) -> CategoryUpdateIn:
+        for field_name in ("name_uz", "name_ru", "is_active", "sort_order"):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null")
+        return self
+
 
 class ProductCreateIn(BaseModel):
-    category_id: int
-    name_uz: str
-    name_ru: str
+    category_id: int = Field(ge=1)
+    name_uz: str = Field(min_length=1, max_length=255)
+    name_ru: str = Field(min_length=1, max_length=255)
     description_uz: str | None = None
     description_ru: str | None = None
-    sku: str
-    price: Decimal
-    old_price: Decimal | None = None
-    stock_qty: int = 0
+    sku: str = Field(min_length=1, max_length=64)
+    barcode: str | None = Field(default=None, max_length=64)
+    price: Decimal = Field(gt=0)
+    old_price: Decimal | None = Field(default=None, gt=0)
+    stock_qty: int = Field(default=0, ge=0)
     unit: ProductUnit
-    min_order_qty: int = 1
+    min_order_qty: int = Field(default=1, ge=1)
     is_featured: bool = False
+    sort_order: int = 0
+    lot_url: str | None = Field(default=None, max_length=512)
+
+    @field_validator("lot_url")
+    @classmethod
+    def validate_lot_url(cls, value: str | None) -> str | None:
+        return _https_lot_url(value)
+
+    @field_validator("sku")
+    @classmethod
+    def normalize_sku(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("sku must not be empty")
+        return normalized
 
 
 class ProductUpdateIn(BaseModel):
-    category_id: int | None = None
-    name_uz: str | None = None
-    name_ru: str | None = None
+    expected_edit_version: int = Field(ge=0)
+    category_id: int | None = Field(default=None, ge=1)
+    name_uz: str | None = Field(default=None, min_length=1, max_length=255)
+    name_ru: str | None = Field(default=None, min_length=1, max_length=255)
     description_uz: str | None = None
     description_ru: str | None = None
-    sku: str | None = None
-    price: Decimal | None = None
-    old_price: Decimal | None = None
-    stock_qty: int | None = None
+    sku: str | None = Field(default=None, min_length=1, max_length=64)
+    barcode: str | None = Field(default=None, max_length=64)
+    price: Decimal | None = Field(default=None, gt=0)
+    old_price: Decimal | None = Field(default=None, gt=0)
+    stock_qty: int | None = Field(default=None, ge=0)
+    min_order_qty: int | None = Field(default=None, ge=1)
     unit: ProductUnit | None = None
     is_active: bool | None = None
     is_featured: bool | None = None
+    sort_order: int | None = None
+    lot_url: str | None = Field(default=None, max_length=512)
+
+    @field_validator("lot_url")
+    @classmethod
+    def validate_lot_url(cls, value: str | None) -> str | None:
+        return _https_lot_url(value)
+
+    @field_validator("sku")
+    @classmethod
+    def normalize_sku(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("sku must not be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def reject_null_product_values(self) -> ProductUpdateIn:
+        for field_name in (
+            "category_id",
+            "name_uz",
+            "name_ru",
+            "sku",
+            "price",
+            "stock_qty",
+            "min_order_qty",
+            "unit",
+            "is_active",
+            "is_featured",
+            "sort_order",
+        ):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null")
+        return self
+
+
+def _https_lot_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("lot_url must be an HTTPS URL")
+    return value
 
 
 class AdminOrderStatusUpdateIn(BaseModel):

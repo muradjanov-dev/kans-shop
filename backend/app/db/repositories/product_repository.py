@@ -163,8 +163,10 @@ async def increment_views(session: AsyncSession, product: Product) -> None:
 
 
 async def adjust_stock(session: AsyncSession, product: Product, delta: int) -> None:
-    product.stock_qty += delta
-    await session.flush()
+    if delta:
+        product.stock_qty += delta
+        product.edit_version += 1
+        await session.flush()
 
 
 async def increment_sold(session: AsyncSession, product: Product, quantity: int) -> None:
