@@ -25,6 +25,7 @@ const copy = {
     checkout: "Buyurtma berish",
     submit: "Buyurtmani tasdiqlash",
     success: "Buyurtmangiz qabul qilindi!",
+    total: "Jami to'lov",
     receiptLabel: "Rasm yoki PDF chekni tanlang",
     receiptPending: "Chek yuborildi — to'lov tekshirilmoqda.",
     retry: "Qayta urinish",
@@ -56,6 +57,7 @@ const copy = {
     checkout: "Оформить заказ",
     submit: "Подтвердить заказ",
     success: "Ваш заказ принят!",
+    total: "Итого к оплате",
     receiptLabel: "Выберите изображение чека или PDF",
     receiptPending: "Чек отправлен — ожидается проверка оплаты.",
     retry: "Повторить",
@@ -184,14 +186,18 @@ for (const language of languages) {
     await openCheckout(page, text);
     await page.getByRole("button", { name: text.pickup, exact: true }).click();
     await fillCheckout(page, text);
+    const displayedTotal = page.getByText(text.total, { exact: true }).locator("..").locator("span").nth(1);
+    await expect(displayedTotal).toHaveText(/5\s?000/);
     purchaseApi.changeQuoteOnNextCheckout = true;
     await page.getByRole("button", { name: text.submit, exact: true }).click();
 
     await expect(page.getByRole("alert").filter({ hasText: text.quoteChanged })).toBeVisible();
     await expect(page.getByRole("button", { name: text.confirmQuote, exact: true })).toBeVisible();
+    await expect(displayedTotal).toHaveText(/6\s?500/);
     expect(purchaseApi.capturedCheckoutRequests).toHaveLength(1);
     const first = purchaseApi.capturedCheckoutRequests[0];
     expect(first?.body).toMatchObject({ purchase_contract_version: 1 });
+    expect((first?.body as { expected_total: string }).expected_total).toBe("5000.00");
 
     await page.getByRole("button", { name: text.confirmQuote, exact: true }).click();
     await expect(page.getByText(text.success)).toBeVisible();
@@ -199,6 +205,7 @@ for (const language of languages) {
     expect(purchaseApi.capturedCheckoutRequests).toHaveLength(2);
     expect((first?.body as { expected_quote: string }).expected_quote)
       .not.toBe((retried?.body as { expected_quote: string }).expected_quote);
+    expect((retried?.body as { expected_total: string }).expected_total).toBe("6500.00");
     expect(first?.headers["idempotency-key"]).not.toBe(retried?.headers["idempotency-key"]);
     await expectNoBrowserNetworkEscapes(page, purchaseApi);
   });

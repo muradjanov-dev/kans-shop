@@ -218,6 +218,7 @@ export class PurchaseApiFixture {
   failNextAddAfterCommit = false;
   failNextCheckoutAfterCommit = false;
   changeQuoteOnNextCheckout = false;
+  quotePriceOnChange = "6500.00";
   requireClientUpdateOnNextCheckout = false;
 
   private readonly origin: string;
@@ -250,13 +251,14 @@ export class PurchaseApiFixture {
   }
 
   seedCart(userId: number, item: { quantity: number } | null): void {
+    const seededProduct = this.productById(product.id) ?? product;
     this.carts.set(userId, item
       ? cartOf([{
           id: 20 + userId,
-          product_id: product.id,
+          product_id: seededProduct.id,
           quantity: item.quantity,
-          price_snapshot: product.price,
-          product: structuredClone(product),
+          price_snapshot: seededProduct.price,
+          product: structuredClone(seededProduct),
         }])
       : emptyCart());
   }
@@ -490,6 +492,7 @@ export class PurchaseApiFixture {
       if (this.changeQuoteOnNextCheckout) {
         this.changeQuoteOnNextCheckout = false;
         this.quoteRevision += 1;
+        this.applySyntheticPriceChange(this.quotePriceOnChange);
         await this.fulfill(route, errorReply("QUOTE_CHANGED", "The cart quote changed.", 409));
         return;
       }
@@ -747,6 +750,22 @@ export class PurchaseApiFixture {
 
   private productById(id: number): FixtureProduct | undefined {
     return this.products.find((candidate) => candidate.id === id);
+  }
+
+  private applySyntheticPriceChange(price: string): void {
+    const target = this.productById(product.id);
+    if (!target) return;
+    target.price = price;
+    for (const [userId, cart] of this.carts) {
+      const updatedItems = cart.items.map((item) => item.product_id === target.id
+        ? {
+            ...item,
+            price_snapshot: price,
+            product: { ...item.product, price },
+          }
+        : item);
+      this.carts.set(userId, cartOf(updatedItems));
+    }
   }
 
   private orderOwnerId(orderId: number): number | null {

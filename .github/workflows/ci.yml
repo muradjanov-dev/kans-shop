@@ -103,3 +103,10 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Browser purchase journeys
         run: npm run test:e2e
+      - name: Upload storefront visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storefront-visual-review-${{ github.sha }}
+          path: frontend/test-results/**/storefront-artifacts/*.png
+          if-no-files-found: warn
