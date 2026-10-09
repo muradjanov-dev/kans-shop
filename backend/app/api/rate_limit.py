@@ -7,7 +7,9 @@ from starlette.responses import JSONResponse, Response
 from app.core.config import settings
 from app.core.redis import get_redis
 
-GENERAL_LIMIT = 20
+# Catalog trees, cart invalidations and admin polling share this per-IP budget.
+# Keep enough room for normal browsing (including clients behind the same NAT).
+GENERAL_LIMIT = 300
 GENERAL_WINDOW_SECONDS = 60
 CHECKOUT_LIMIT = 3
 CHECKOUT_WINDOW_SECONDS = 60
@@ -91,8 +93,8 @@ def trusted_client_ip(request: Request) -> str:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """20 req/min per IP across the API, plus a tighter 3/min gate on checkout, per
-    docs/ASSUMPTIONS.md section 10. Applies only under /api/v1 — webhook/media are exempt."""
+    """300 req/min per IP across the API, with separate strict checkout/code gates.
+    Applies only under /api/v1 — webhook/media are exempt."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if not request.url.path.startswith("/api/v1"):

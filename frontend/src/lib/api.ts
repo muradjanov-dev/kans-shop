@@ -182,6 +182,10 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+export function isRateLimitedError(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 429;
+}
+
 export function getApiErrorCode(error: unknown): string | null {
   if (!axios.isAxiosError(error)) return null;
   const body = error.response?.data as ApiErrorBody | undefined;

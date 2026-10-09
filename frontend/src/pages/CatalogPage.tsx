@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import { useSearchParams, useLocation } from "react-router-dom";
 import { ProductCard } from "@/components/ProductCard";
 import { CatalogFilters } from "@/components/storefront/CatalogFilters";
@@ -9,6 +8,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { Spinner } from "@/components/Spinner";
 import { useCatalog, useCategoryTree } from "@/hooks/useCatalog";
 import { useFeaturedProducts, usePublicSettings } from "@/hooks/queries";
+import { isRateLimitedError } from "@/lib/api";
 import { useTranslate } from "@/lib/i18n";
 import { useLanguageStore } from "@/store/language";
 import type { CatalogQuery, CatalogSort } from "@/types/api";
@@ -30,10 +30,6 @@ function readCatalogQuery(params: URLSearchParams): CatalogQuery {
     sort: sortValue && SORT_VALUES.has(sortValue) ? sortValue : "default",
     page: Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1,
   };
-}
-
-function responseIsRateLimited(error: unknown): boolean {
-  return axios.isAxiosError(error) && error.response?.status === 429;
 }
 
 export function CatalogPage() {
@@ -171,7 +167,12 @@ export function CatalogPage() {
       </div>
 
       {categoryTree.isError ? (
-        <div className="px-4"><ErrorState onRetry={() => void categoryTree.refetch()} /></div>
+        <div className="px-4">
+          <ErrorState
+            message={isRateLimitedError(categoryTree.error) ? t("catalog.rate_limited") : undefined}
+            onRetry={() => void categoryTree.refetch()}
+          />
+        </div>
       ) : childCategories.length > 0 ? (
         <section aria-label={t("catalog.categories")} className="mb-5 px-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -210,7 +211,7 @@ export function CatalogPage() {
         ) : catalog.isError && catalog.products.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-10 text-center" role="alert">
             <p className="text-sm text-slate-600 dark:text-slate-300">
-              {responseIsRateLimited(catalog.error) ? t("catalog.rate_limited") : t("common.error")}
+              {isRateLimitedError(catalog.error) ? t("catalog.rate_limited") : t("common.error")}
             </p>
             <button
               className="min-h-11 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
@@ -240,7 +241,7 @@ export function CatalogPage() {
             {catalog.isError && (
               <div className="mb-4 flex flex-col items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-center dark:border-red-300/20 dark:bg-red-950/30" role="alert">
                 <p className="text-sm text-red-800 dark:text-red-200">
-                  {responseIsRateLimited(catalog.error) ? t("catalog.rate_limited") : t("common.error")}
+                  {isRateLimitedError(catalog.error) ? t("catalog.rate_limited") : t("common.error")}
                 </p>
                 <button
                   className="min-h-11 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"

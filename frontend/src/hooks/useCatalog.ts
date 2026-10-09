@@ -152,6 +152,7 @@ export function useCategoryTree() {
   const [parentIds, setParentIds] = useState<Array<number | null>>([null]);
   const combine = useCallback((results: Array<{
     data: Category[] | undefined;
+    error: Error | null;
     isLoading: boolean;
     isError: boolean;
     refetch: () => Promise<unknown>;
@@ -167,6 +168,7 @@ export function useCategoryTree() {
       isLoading: results.some((result) => result.isLoading) ||
         [...categoriesById.keys()].some((id) => !parentIds.includes(id)),
       isError: results.some((result) => result.isError),
+      error: results.find((result) => result.isError)?.error,
       refetch: () => Promise.all(results.map((result) => result.refetch())),
     };
   }, [parentIds]);
