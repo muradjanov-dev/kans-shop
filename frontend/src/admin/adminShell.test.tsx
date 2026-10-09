@@ -16,6 +16,9 @@ function response<T>(config: Parameters<AxiosAdapter>[0], data: T): AxiosRespons
 function renderAdmin(session: AdminSession, path = "/admin") {
   adminApi.defaults.adapter = async (config) => {
     if (config.url?.endsWith("/auth/admin/session")) return response(config, session);
+    if (config.url === "/admin/stats/overview") return response(config, { period: "today", orders_count: 0, order_value: "0", paid_amount: "0", revenue: "0", avg_check: "0", new_users: 0, top_products: [] });
+    if (config.url === "/admin/orders") return response(config, { items: [], total: 0, page: 1, limit: 20, total_pages: 1 });
+    if (config.url === "/admin/sources") return response(config, { items: [], total: 0, page: 1, limit: 100, total_pages: 1 });
     return response(config, { ok: true });
   };
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -62,11 +65,12 @@ describe("admin responsive shell", () => {
     expect(screen.getByTestId("admin-content-scroll")).toHaveStyle({ overflowX: "auto", maxWidth: "100%" });
   });
 
-  it("registers all admin paths while keeping task 12 modules as explicit placeholders", async () => {
-    renderAdmin({ admin_id: 1, full_name: "Root Admin", role: "superadmin", csrf_token: "csrf" }, "/admin/sources");
+  it("registers the source route through the domain page registry", async () => {
+    const { container } = renderAdmin({ admin_id: 1, full_name: "Root Admin", role: "superadmin", csrf_token: "csrf" }, "/admin/sources");
 
     expect(await screen.findByRole("heading", { name: "Manbalar" })).toBeInTheDocument();
-    expect(screen.getByText(/modul keyingi bosqichda ulanadi/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /manba qo'shish/i })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/modul keyingi bosqichda ulanadi/i);
   });
 });
 
