@@ -2,21 +2,34 @@ import asyncio
 from decimal import Decimal
 from secrets import randbelow, token_hex
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.db.models.category import Category
 from app.db.models.enums import OrderType, ProductUnit
 from app.db.models.order import Order
 from app.db.models.product import Product
+from app.db.models.setting import Setting
 from app.db.models.user import User
+from app.db.repositories import setting_repository
 from app.services import cart_service, order_service
 
 
 async def test_cart_mutations_serialize_with_checkout(test_engine: AsyncEngine) -> None:
     session_maker = async_sessionmaker(test_engine, expire_on_commit=False)
     suffix = token_hex(6)
+    checkout_setting_keys = (
+        "is_shop_open",
+        "min_order_amount",
+        "delivery_fee",
+        "free_delivery_from",
+    )
     async with session_maker() as setup_session:
+        existing_settings = await setting_repository.get_all(setup_session)
+        previous_settings = {
+            key: (key in existing_settings, existing_settings.get(key))
+            for key in checkout_setting_keys
+        }
         category = Category(
             name_uz="Checkout lock", name_ru="Checkout lock", slug=f"checkout-lock-{suffix}"
         )
@@ -37,6 +50,13 @@ async def test_cart_mutations_serialize_with_checkout(test_engine: AsyncEngine) 
         )
         setup_session.add(product)
         await setup_session.flush()
+        for key, value in {
+            "is_shop_open": True,
+            "min_order_amount": 0,
+            "delivery_fee": 0,
+            "free_delivery_from": 0,
+        }.items():
+            await setting_repository.set_value(setup_session, key, value)
         await cart_service.add_item(setup_session, user.id, product.id, quantity=1)
         await setup_session.commit()
         user_id, product_id, category_id = user.id, product.id, category.id
@@ -97,4 +117,9 @@ async def test_cart_mutations_serialize_with_checkout(test_engine: AsyncEngine) 
             category = await cleanup_session.get(Category, category_id)
             if category is not None:
                 await cleanup_session.delete(category)
+            for key, (existed, value) in previous_settings.items():
+                if existed:
+                    await setting_repository.set_value(cleanup_session, key, value)
+                else:
+                    await cleanup_session.execute(delete(Setting).where(Setting.key == key))
             await cleanup_session.commit()

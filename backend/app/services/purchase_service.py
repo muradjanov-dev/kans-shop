@@ -64,11 +64,20 @@ def normalize_checkout_command(command: CheckoutCommand) -> CheckoutCommand:
     comment = command.comment.strip() if command.comment else None
     comment = comment or None
 
+    has_latitude = command.latitude is not None
+    has_longitude = command.longitude is not None
+    if has_latitude != has_longitude:
+        raise CheckoutValidationError("Provide both delivery coordinates.")
+    if has_latitude and has_longitude:
+        assert command.latitude is not None and command.longitude is not None
+        if not command.latitude.is_finite() or not command.longitude.is_finite():
+            raise CheckoutValidationError("Delivery coordinates must be finite numbers.")
+        if not Decimal("-90") <= command.latitude <= Decimal("90"):
+            raise CheckoutValidationError("Latitude must be between -90 and 90.")
+        if not Decimal("-180") <= command.longitude <= Decimal("180"):
+            raise CheckoutValidationError("Longitude must be between -180 and 180.")
+
     if command.order_type == OrderType.DELIVERY:
-        has_latitude = command.latitude is not None
-        has_longitude = command.longitude is not None
-        if has_latitude != has_longitude:
-            raise CheckoutValidationError("Provide both delivery coordinates.")
         if address is None and not (has_latitude and has_longitude):
             raise CheckoutValidationError("A delivery address is required.")
         latitude = command.latitude
@@ -147,21 +156,6 @@ async def _lock_and_validate_products(
     return locked
 
 
-async def _legacy_delivery_fee(
-    session: AsyncSession, order_type: OrderType, subtotal: Decimal
-) -> Decimal:
-    if order_type != OrderType.DELIVERY:
-        return Decimal("0")
-    from app.db.repositories import setting_repository
-
-    free_from = Decimal(
-        str(await setting_repository.get_value(session, "free_delivery_from", 0))
-    )
-    if free_from and subtotal >= free_from:
-        return Decimal("0")
-    return Decimal(str(await setting_repository.get_value(session, "delivery_fee", 0)))
-
-
 async def submit_checkout(
     session: AsyncSession,
     *,
@@ -174,6 +168,12 @@ async def submit_checkout(
     lang: str,
 ) -> CheckoutResult:
     normalized = normalize_checkout_command(command)
+    if (
+        source == "webapp"
+        and normalized.order_type == OrderType.DELIVERY
+        and normalized.address is None
+    ):
+        raise CheckoutValidationError("A delivery address is required for online checkout.")
     quote_bound = expected_quote is not None or expected_total is not None
     if quote_bound and (not expected_quote or expected_total is None):
         raise CheckoutValidationError("A checkout quote and total must be supplied together.")
@@ -209,58 +209,48 @@ async def submit_checkout(
         raise CartEmptyError("Cart is empty")
 
     locked_products = await _lock_and_validate_products(session, cart)
-    subtotal = sum(
-        (product.price * quantity for product, quantity in locked_products), Decimal("0")
+    quote = await quote_checkout(
+        session,
+        user_id=user_id,
+        order_type=normalized.order_type,
+        payment_method=normalized.payment_method,
     )
-    quote = None
-
-    if quote_bound:
-        quote = await quote_checkout(
-            session,
-            user_id=user_id,
-            order_type=normalized.order_type,
-            payment_method=normalized.payment_method,
+    if quote_bound and (
+        quote.quote_fingerprint != expected_quote or quote.total != expected_total
+    ):
+        raise QuoteChangedError(
+            "The cart or checkout settings changed. Review the latest quote before ordering."
         )
-        if quote.quote_fingerprint != expected_quote or quote.total != expected_total:
-            raise QuoteChangedError(
-                "The cart or checkout settings changed. Review the latest quote before ordering."
-            )
-        if not quote.ready or quote.total is None:
-            raise CheckoutUnavailableError(
-                "This checkout is not currently available.",
-                details={"reasons": quote.reasons},
-            )
-        subtotal = quote.subtotal
-        delivery_fee = quote.delivery_fee or Decimal("0")
-        total = quote.total
-    else:
-        from app.db.repositories import setting_repository
-
+    if not quote.ready or quote.total is None:
         if normalized.order_type != OrderType.PREORDER:
-            minimum = Decimal(
-                str(await setting_repository.get_value(session, "min_order_amount", 0))
-            )
-            if subtotal < minimum:
+            settings = await load_checkout_settings(session)
+            minimum = settings.min_order_amount
+            if (
+                settings.field_states.get("min_order_amount") == "valid"
+                and minimum is not None
+                and quote.subtotal < minimum
+            ):
                 raise MinOrderAmountError(
-                    f"Subtotal {subtotal} below minimum {minimum}",
-                    details={"subtotal": str(subtotal), "min_amount": str(minimum)},
+                    f"Subtotal {quote.subtotal} below minimum {minimum}",
+                    details={
+                        "subtotal": str(quote.subtotal),
+                        "min_amount": str(minimum),
+                    },
                 )
-        delivery_fee = await _legacy_delivery_fee(session, normalized.order_type, subtotal)
-        total = subtotal + delivery_fee
+        raise CheckoutUnavailableError(
+            "This checkout is not currently available.",
+            details={"reasons": quote.reasons},
+        )
+
+    subtotal = quote.subtotal
+    delivery_fee = quote.delivery_fee or Decimal("0")
+    total = quote.total
 
     order_number = await order_repository.next_order_number(session)
     discount = Decimal("0")
     payment_instructions = None
     if normalized.payment_method == PaymentMethod.CARD_TRANSFER:
-        if quote is not None:
-            payment_instructions = quote.payment_instructions
-        else:
-            settings = await load_checkout_settings(session)
-            if settings.card_number is not None and settings.card_holder is not None:
-                payment_instructions = {
-                    "card_number": settings.card_number,
-                    "card_holder": settings.card_holder,
-                }
+        payment_instructions = quote.payment_instructions
     order = await order_repository.create(
         session,
         order_number=order_number,

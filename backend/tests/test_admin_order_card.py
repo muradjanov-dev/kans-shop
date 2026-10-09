@@ -18,7 +18,16 @@ translator = partial(translate, "uz")
 async def _make_order(
     session: AsyncSession, user: User, product: Product, **overrides
 ) -> Order:
-    await setting_repository.set_value(session, "min_order_amount", 0)
+    for key, value in {
+        "is_shop_open": True,
+        "min_order_amount": 0,
+        "delivery_fee": 0,
+        "free_delivery_from": 0,
+    }.items():
+        await setting_repository.set_value(session, key, value)
+    if overrides.get("payment_method") == PaymentMethod.CARD_TRANSFER:
+        await setting_repository.set_value(session, "card_number", "8600 1234")
+        await setting_repository.set_value(session, "card_holder", "Synthetic Shop")
     await cart_service.add_item(session, user.id, product.id, quantity=2)
     kwargs = dict(
         user_id=user.id,

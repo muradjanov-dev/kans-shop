@@ -12,7 +12,13 @@ from app.services.stats_service import get_stats
 
 
 async def _checkout(session: AsyncSession, user: User, product: Product, qty: int = 1):
-    await setting_repository.set_value(session, "min_order_amount", 0)
+    for key, value in {
+        "is_shop_open": True,
+        "min_order_amount": 0,
+        "delivery_fee": 0,
+        "free_delivery_from": 0,
+    }.items():
+        await setting_repository.set_value(session, key, value)
     await cart_service.add_item(session, user.id, product.id, quantity=qty)
     return await order_service.checkout(
         session,

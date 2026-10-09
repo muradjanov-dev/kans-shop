@@ -1013,6 +1013,291 @@ async def test_checkout_rejects_invalid_customer_fields(
 
 
 @pytest.mark.asyncio
+async def test_checkout_api_requires_delivery_text_with_coordinates(
+    test_engine: AsyncEngine,
+) -> None:
+    from tests.api_helpers import make_api_case
+
+    async with make_api_case(test_engine) as case:
+        try:
+            await _prepare_api_cart(case, quantity=1)
+            response = await case.client.post(
+                "/api/v1/orders",
+                headers={"Authorization": f"Bearer {case.token}"},
+                json={
+                    "order_type": OrderType.DELIVERY.value,
+                    "customer_name": "Test Buyer",
+                    "customer_phone": "+998901234567",
+                    "payment_method": PaymentMethod.CASH.value,
+                    "latitude": "41.311081",
+                    "longitude": "69.240562",
+                },
+            )
+            assert response.status_code == 422
+            async with case.session_maker() as session:
+                stock = await session.scalar(
+                    select(Product.stock_qty).where(Product.id == case.product_id)
+                )
+                cart_item = await session.scalar(
+                    select(CartItem).join(Cart).where(Cart.user_id == case.user_id)
+                )
+                order_count = await session.scalar(
+                    select(func.count())
+                    .select_from(Order)
+                    .where(Order.user_id == case.user_id)
+                )
+            assert stock == 10
+            assert cart_item is not None and cart_item.quantity == 1
+            assert order_count == 0
+        finally:
+            await _delete_case_orders(case)
+
+
+@pytest.mark.parametrize(
+    ("latitude", "longitude"),
+    (
+        ("NaN", "69.240562"),
+        ("90.000001", "69.240562"),
+        ("41.311081", "180.000001"),
+    ),
+)
+@pytest.mark.asyncio
+async def test_checkout_api_rejects_invalid_coordinates(
+    test_engine: AsyncEngine, latitude: str, longitude: str
+) -> None:
+    from tests.api_helpers import make_api_case
+
+    async with make_api_case(test_engine) as case:
+        try:
+            await _prepare_api_cart(case, quantity=1)
+            response = await case.client.post(
+                "/api/v1/orders",
+                headers={"Authorization": f"Bearer {case.token}"},
+                json={
+                    "order_type": OrderType.DELIVERY.value,
+                    "customer_name": "Test Buyer",
+                    "customer_phone": "+998901234567",
+                    "payment_method": PaymentMethod.CASH.value,
+                    "address": "Chilonzor 9",
+                    "latitude": latitude,
+                    "longitude": longitude,
+                },
+            )
+            assert response.status_code == 422
+            async with case.session_maker() as session:
+                stock = await session.scalar(
+                    select(Product.stock_qty).where(Product.id == case.product_id)
+                )
+                cart_item = await session.scalar(
+                    select(CartItem).join(Cart).where(Cart.user_id == case.user_id)
+                )
+                order_count = await session.scalar(
+                    select(func.count())
+                    .select_from(Order)
+                    .where(Order.user_id == case.user_id)
+                )
+            assert stock == 10
+            assert cart_item is not None and cart_item.quantity == 1
+            assert order_count == 0
+        finally:
+            await _delete_case_orders(case)
+
+
+@pytest.mark.parametrize(
+    ("case_name", "payment_method"),
+    (
+        ("missing-minimum", PaymentMethod.CASH.value),
+        ("null-minimum", PaymentMethod.CASH.value),
+        ("shop-closed", PaymentMethod.CASH.value),
+        ("unsupported-provider", "paynet"),
+    ),
+)
+@pytest.mark.asyncio
+async def test_legacy_checkout_requires_typed_readiness(
+    test_engine: AsyncEngine, case_name: str, payment_method: str
+) -> None:
+    from tests.api_helpers import make_api_case
+
+    async with make_api_case(test_engine) as case:
+        try:
+            await _prepare_api_cart(case, quantity=1)
+            async with case.session_maker() as session:
+                if case_name == "missing-minimum":
+                    await session.execute(
+                        delete(Setting).where(Setting.key == "min_order_amount")
+                    )
+                elif case_name == "null-minimum":
+                    await setting_repository.set_value(session, "min_order_amount", None)
+                elif case_name == "shop-closed":
+                    await setting_repository.set_value(session, "is_shop_open", False)
+                await session.commit()
+
+            response = await case.client.post(
+                "/api/v1/orders",
+                headers={"Authorization": f"Bearer {case.token}"},
+                json={
+                    "order_type": OrderType.PICKUP.value,
+                    "customer_name": "Test Buyer",
+                    "customer_phone": "+998901234567",
+                    "payment_method": payment_method,
+                },
+            )
+
+            assert response.status_code == 409
+            assert response.json()["error"]["code"] == "CHECKOUT_UNAVAILABLE"
+            async with case.session_maker() as session:
+                stock = await session.scalar(
+                    select(Product.stock_qty).where(Product.id == case.product_id)
+                )
+                cart_item = await session.scalar(
+                    select(CartItem).join(Cart).where(Cart.user_id == case.user_id)
+                )
+                order_count = await session.scalar(
+                    select(func.count())
+                    .select_from(Order)
+                    .where(Order.user_id == case.user_id)
+                )
+            assert stock == 10
+            assert cart_item is not None and cart_item.quantity == 1
+            assert order_count == 0
+        finally:
+            await _delete_case_orders(case)
+
+
+@pytest.mark.asyncio
+async def test_legacy_tender_checkout_uses_ready_quote(test_engine: AsyncEngine) -> None:
+    from tests.api_helpers import make_api_case
+
+    async with make_api_case(test_engine) as case:
+        try:
+            await _prepare_api_cart(case, quantity=1)
+            async with case.session_maker() as session:
+                product = await session.get(Product, case.product_id)
+                assert product is not None
+                product.lot_url = "https://lot.example.test/payment"
+                await session.commit()
+
+            response = await case.client.post(
+                "/api/v1/orders",
+                headers={"Authorization": f"Bearer {case.token}"},
+                json={
+                    "order_type": OrderType.PICKUP.value,
+                    "customer_name": "Test Buyer",
+                    "customer_phone": "+998901234567",
+                    "payment_method": PaymentMethod.TENDER.value,
+                },
+            )
+
+            assert response.status_code == 201
+            assert response.json()["payment_method"] == PaymentMethod.TENDER.value
+            assert response.json()["total"] == "5000.00"
+            async with case.session_maker() as session:
+                product = await session.get(Product, case.product_id)
+            assert product is not None and product.stock_qty == 9
+        finally:
+            await _delete_case_orders(case)
+
+
+@pytest.mark.asyncio
+async def test_checkout_rejects_invalid_coordinates(db_session: AsyncSession, user) -> None:
+    from app.core.exceptions import CheckoutValidationError
+    from app.services.purchase_service import (
+        CheckoutCommand,
+        normalize_checkout_command,
+        submit_checkout,
+    )
+
+    for latitude, longitude in (
+        (Decimal("NaN"), Decimal("69.240562")),
+        (Decimal("90.000001"), Decimal("69.240562")),
+        (Decimal("41.311081"), Decimal("180.000001")),
+    ):
+        with pytest.raises(CheckoutValidationError):
+            await submit_checkout(
+                db_session,
+                user_id=user.id,
+                command=CheckoutCommand(
+                    order_type=OrderType.DELIVERY,
+                    customer_name="Test Buyer",
+                    customer_phone="+998901234567",
+                    address="Chilonzor 9",
+                    latitude=latitude,
+                    longitude=longitude,
+                ),
+                checkout_key=None,
+                expected_quote=None,
+                expected_total=None,
+                source="bot",
+                lang="uz",
+            )
+    boundary = normalize_checkout_command(
+        CheckoutCommand(
+            order_type=OrderType.DELIVERY,
+            customer_name="Test Buyer",
+            customer_phone="+998901234567",
+            latitude=Decimal("-90"),
+            longitude=Decimal("180"),
+        )
+    )
+    assert boundary.latitude == Decimal("-90")
+    assert boundary.longitude == Decimal("180")
+    assert (
+        await db_session.scalar(
+            select(func.count()).select_from(Order).where(Order.user_id == user.id)
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_bot_location_delivery_remains_valid(
+    db_session: AsyncSession, user, product: Product
+) -> None:
+    from uuid import uuid4
+
+    from app.services.checkout_quote import quote_checkout
+    from app.services.purchase_service import CheckoutCommand, submit_checkout
+
+    for key, value in {
+        "is_shop_open": True,
+        "min_order_amount": 0,
+        "delivery_fee": 0,
+        "free_delivery_from": 0,
+    }.items():
+        await setting_repository.set_value(db_session, key, value)
+    await cart_service.add_item(db_session, user.id, product.id, quantity=1)
+    quote = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.DELIVERY,
+        payment_method=PaymentMethod.CASH,
+    )
+    assert quote.ready and quote.total is not None and quote.quote_fingerprint is not None
+
+    result = await submit_checkout(
+        db_session,
+        user_id=user.id,
+        command=CheckoutCommand(
+            order_type=OrderType.DELIVERY,
+            customer_name="Test Buyer",
+            customer_phone="+998901234567",
+            latitude=Decimal("41.311081"),
+            longitude=Decimal("69.240562"),
+        ),
+        checkout_key=uuid4(),
+        expected_quote=quote.quote_fingerprint,
+        expected_total=quote.total,
+        source="bot",
+        lang="uz",
+    )
+
+    assert result.created
+    assert result.order.address is None
+    assert result.order.latitude == Decimal("41.311081")
+    assert result.order.longitude == Decimal("69.240562")
+
+
+@pytest.mark.asyncio
 async def test_legacy_card_requires_reload(test_engine: AsyncEngine) -> None:
     """A legacy client cannot create a card-transfer order from a stale quote."""
     from tests.api_helpers import make_api_case
