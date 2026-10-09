@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { CatalogPage } from "@/pages/CatalogPage";
 import { ProductPage } from "@/pages/ProductPage";
@@ -9,8 +9,17 @@ import { OrderDetailPage } from "@/pages/OrderDetailPage";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { Spinner } from "@/components/Spinner";
 import { CustomerAuthProvider } from "@/features/customer-auth/CustomerAuthProvider";
+import { AdminApplication } from "@/admin/adminRoutes";
 
 export function App() {
+  const location = useLocation();
+  if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
+    return <AdminApplication />;
+  }
+  return <CustomerApplication />;
+}
+
+function CustomerApplication() {
   const authStatus = useTelegramAuth();
 
   if (authStatus === "pending") {
