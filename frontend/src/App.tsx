@@ -8,6 +8,7 @@ import { OrdersPage } from "@/pages/OrdersPage";
 import { OrderDetailPage } from "@/pages/OrderDetailPage";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { Spinner } from "@/components/Spinner";
+import { CustomerAuthProvider } from "@/features/customer-auth/CustomerAuthProvider";
 
 export function App() {
   const authStatus = useTelegramAuth();
@@ -21,15 +22,17 @@ export function App() {
   }
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<CatalogPage />} />
-        <Route path="/product/:id" element={<ProductPage />} />
-        <Route path="/cart" element={<CartPage />} />
-        <Route path="/checkout" element={<CheckoutPage />} />
-        <Route path="/orders" element={<OrdersPage />} />
-        <Route path="/orders/:id" element={<OrderDetailPage />} />
-      </Route>
-    </Routes>
+    <CustomerAuthProvider>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<CatalogPage />} />
+          <Route path="/product/:id" element={<ProductPage />} />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/orders/:id" element={<OrderDetailPage />} />
+        </Route>
+      </Routes>
+    </CustomerAuthProvider>
   );
 }

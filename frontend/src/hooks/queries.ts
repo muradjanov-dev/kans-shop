@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
 import type {
   Cart,
   Category,
@@ -75,63 +76,94 @@ export function usePublicSettings() {
 }
 
 export function useCart(enabled: boolean) {
+  const userId = useAuthStore((state) => state.userId);
   return useQuery({
-    queryKey: ["cart"],
-    queryFn: async () => {
-      const { data } = await api.get<Cart>("/cart");
+    queryKey: ["cart", userId],
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<Cart>("/cart", { signal });
       return data;
     },
-    enabled,
+    enabled: enabled && Boolean(userId),
   });
 }
 
 export function useAddCartItem() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((state) => state.userId);
+  const authEpoch = useAuthStore((state) => state.authEpoch);
   return useMutation({
-    mutationFn: async ({ productId, quantity }: { productId: number; quantity: number }) => {
-      const { data } = await api.post<Cart>("/cart/items", {
-        product_id: productId,
-        quantity,
-      });
+    mutationFn: async ({ productId, quantity, mutationKey }: { productId: number; quantity: number; mutationKey: string }) => {
+      const { data } = await api.post<Cart>(
+        "/cart/items",
+        { product_id: productId, quantity },
+        { headers: { "Idempotency-Key": mutationKey } },
+      );
       return data;
     },
-    onSuccess: (data) => queryClient.setQueryData(["cart"], data),
+    retry: false,
+    onSuccess: (data) => {
+      const current = useAuthStore.getState();
+      if (current.authEpoch === authEpoch && current.userId === userId && userId) {
+        queryClient.setQueryData(["cart", userId], data);
+      }
+    },
   });
 }
 
 export function useUpdateCartItem() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((state) => state.userId);
+  const authEpoch = useAuthStore((state) => state.authEpoch);
   return useMutation({
     mutationFn: async ({ productId, quantity }: { productId: number; quantity: number }) => {
       const { data } = await api.patch<Cart>(`/cart/items/${productId}`, { quantity });
       return data;
     },
-    onSuccess: (data) => queryClient.setQueryData(["cart"], data),
+    retry: false,
+    onSuccess: (data) => {
+      const current = useAuthStore.getState();
+      if (current.authEpoch === authEpoch && current.userId === userId && userId) {
+        queryClient.setQueryData(["cart", userId], data);
+      }
+    },
   });
 }
 
 export function useRemoveCartItem() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((state) => state.userId);
+  const authEpoch = useAuthStore((state) => state.authEpoch);
   return useMutation({
     mutationFn: async (productId: number) => {
       const { data } = await api.delete<Cart>(`/cart/items/${productId}`);
       return data;
     },
-    onSuccess: (data) => queryClient.setQueryData(["cart"], data),
+    retry: false,
+    onSuccess: (data) => {
+      const current = useAuthStore.getState();
+      if (current.authEpoch === authEpoch && current.userId === userId && userId) {
+        queryClient.setQueryData(["cart", userId], data);
+      }
+    },
   });
 }
 
 export function useCheckout() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((state) => state.userId);
+  const authEpoch = useAuthStore((state) => state.authEpoch);
   return useMutation({
     mutationFn: async (payload: CheckoutPayload) => {
       const { data } = await api.post<Order>("/orders", payload);
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      const current = useAuthStore.getState();
+      if (current.authEpoch !== authEpoch || current.userId !== userId || !userId) return;
+      void queryClient.invalidateQueries({ queryKey: ["cart", userId] });
+      void queryClient.invalidateQueries({ queryKey: ["orders", userId] });
     },
+    retry: false,
   });
 }
 
@@ -147,38 +179,42 @@ export function usePayOrder() {
       const { data } = await api.post<PayResponse>(`/orders/${orderId}/pay`, { provider });
       return data;
     },
+    retry: false,
   });
 }
 
 export function useLotLinks(orderId: number | null) {
+  const userId = useAuthStore((state) => state.userId);
   return useQuery({
-    queryKey: ["lot-links", orderId],
-    enabled: orderId !== null,
-    queryFn: async () => {
-      const { data } = await api.get<LotLinksResponse>(`/orders/${orderId}/lot-links`);
+    queryKey: ["lot-links", userId, orderId],
+    enabled: orderId !== null && Boolean(userId),
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<LotLinksResponse>(`/orders/${orderId}/lot-links`, { signal });
       return data;
     },
   });
 }
 
 export function useOrders(enabled: boolean) {
+  const userId = useAuthStore((state) => state.userId);
   return useQuery({
-    queryKey: ["orders"],
-    queryFn: async () => {
-      const { data } = await api.get<Order[]>("/orders");
+    queryKey: ["orders", userId],
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<Order[]>("/orders", { signal });
       return data;
     },
-    enabled,
+    enabled: enabled && Boolean(userId),
   });
 }
 
 export function useOrder(orderId: number | undefined) {
+  const userId = useAuthStore((state) => state.userId);
   return useQuery({
-    queryKey: ["order", orderId],
-    queryFn: async () => {
-      const { data } = await api.get<Order>(`/orders/${orderId}`);
+    queryKey: ["order", userId, orderId],
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<Order>(`/orders/${orderId}`, { signal });
       return data;
     },
-    enabled: orderId !== undefined,
+    enabled: orderId !== undefined && Boolean(userId),
   });
 }

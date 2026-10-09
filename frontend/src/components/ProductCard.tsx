@@ -1,21 +1,18 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useLanguageStore } from "@/store/language";
 import { formatPrice, localizedField } from "@/lib/format";
 import { useTranslate } from "@/lib/i18n";
-import { useAddCartItem } from "@/hooks/queries";
-import { useAuthStore } from "@/store/auth";
+import { useCartActions } from "@/hooks/useCartActions";
 import type { Product } from "@/types/api";
 
 export function ProductCard({ product }: { product: Product }) {
   const language = useLanguageStore((state) => state.language);
   const t = useTranslate();
-  const isAuthenticated = Boolean(useAuthStore((state) => state.accessToken));
-  const addCartItem = useAddCartItem();
-  const [justAdded, setJustAdded] = useState(false);
+  const { add, pending } = useCartActions();
+  const location = useLocation();
   const name = localizedField(language, product, "name");
   const image = product.images.find((img) => img.is_main) ?? product.images[0];
-  const outOfStock = product.stock_qty <= 0;
+  const outOfStock = product.stock_qty < Math.max(1, product.min_order_qty);
 
   return (
     <Link
@@ -31,23 +28,20 @@ export function ProductCard({ product }: { product: Product }) {
         {!outOfStock && (
           <button
             type="button"
-            disabled={!isAuthenticated || addCartItem.isPending}
+            aria-label={t("product.add_to_cart")}
+            disabled={pending}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              addCartItem.mutate(
-                { productId: product.id, quantity: product.min_order_qty || 1 },
-                {
-                  onSuccess: () => {
-                    setJustAdded(true);
-                    setTimeout(() => setJustAdded(false), 1200);
-                  },
-                },
+              add(
+                product.id,
+                Math.max(1, product.min_order_qty),
+                `${location.pathname}${location.search}`,
               );
             }}
             className="absolute bottom-2 right-2 flex size-9 items-center justify-center rounded-full bg-brand text-lg font-bold text-white shadow-md transition-transform active:scale-90 disabled:opacity-50"
           >
-            {justAdded ? "✓" : "+"}
+            {pending ? "…" : "+"}
           </button>
         )}
       </div>

@@ -30,10 +30,13 @@ export function useTelegramAuth(): AuthStatus {
         return;
       }
 
+      const expectedEpoch = useAuthStore.getState().authEpoch;
+
       axios
         .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: telegramInitData() })
         .then(({ data }) => {
           if (cancelled) return;
+          if (useAuthStore.getState().authEpoch !== expectedEpoch) return;
           setTokens(data);
           setStatus("ready");
         })
@@ -57,6 +60,10 @@ export function useTelegramAuth(): AuthStatus {
         initTelegramWebApp();
         if (isTelegramWebApp()) {
           authenticate();
+          return;
+        }
+        if (!(window as unknown as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp) {
+          setStatus("unavailable");
           return;
         }
       } catch (error) {

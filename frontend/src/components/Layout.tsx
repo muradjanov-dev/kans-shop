@@ -2,6 +2,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useTranslate } from "@/lib/i18n";
 import { useCart } from "@/hooks/queries";
 import { useAuthStore } from "@/store/auth";
+import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 
 function NavItem({ to, icon, label }: { to: string; icon: string; label: string }) {
   return (
@@ -31,7 +32,10 @@ function NavItem({ to, icon, label }: { to: string; icon: string; label: string 
 
 export function Layout() {
   const t = useTranslate();
-  const isAuthenticated = Boolean(useAuthStore((state) => state.accessToken));
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const userId = useAuthStore((state) => state.userId);
+  const isAuthenticated = Boolean(accessToken && userId);
+  const { openLogin, logout } = useCustomerAuth();
   const { data: cart } = useCart(isAuthenticated);
   const itemsCount = cart?.items_count ?? 0;
   const location = useLocation();
@@ -43,6 +47,34 @@ export function Layout() {
   return (
     <div className="mx-auto flex min-h-screen max-w-lg flex-col">
       <main className="flex-1 pb-24">
+        <div className="flex items-center gap-2 px-4 pt-3">
+          {isAuthenticated ? (
+            <>
+              <button
+                className="rounded-full glass-panel px-3 py-2 text-xs font-semibold text-gray-700 shadow-md dark:text-gray-200"
+                onClick={openLogin}
+                type="button"
+              >
+                {t("auth.switch_account")}
+              </button>
+              <button
+                className="rounded-full glass-panel px-3 py-2 text-xs font-semibold text-gray-700 shadow-md dark:text-gray-200"
+                onClick={logout}
+                type="button"
+              >
+                {t("auth.logout")}
+              </button>
+            </>
+          ) : (
+            <button
+              className="rounded-full glass-panel px-3 py-2 text-xs font-semibold text-brand shadow-md"
+              onClick={openLogin}
+              type="button"
+            >
+              {t("auth.sign_in")}
+            </button>
+          )}
+        </div>
         <Outlet />
       </main>
       
