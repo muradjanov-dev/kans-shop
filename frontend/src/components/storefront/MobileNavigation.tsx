@@ -25,7 +25,7 @@ export function MobileNavigation({ cartCount = 0 }: { cartCount?: number }) {
   return (
     <nav
       aria-label={t("storefront.mobile_navigation")}
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto grid w-full max-w-xl grid-cols-4 border-t border-slate-200 bg-white/95 px-2 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden dark:border-white/10 dark:bg-slate-950/95"
+      className="storefront-mobile-nav fixed inset-x-0 bottom-0 z-40 mx-auto grid w-full max-w-xl grid-cols-4 border-t border-slate-200 bg-white/95 px-2 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden dark:border-white/10 dark:bg-slate-950/95"
     >
       {destinations.map(({ to, label, icon }) => {
         const active = destinationIsActive(to, pathname);

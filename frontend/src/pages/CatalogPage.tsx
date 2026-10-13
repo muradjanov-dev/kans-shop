@@ -6,6 +6,7 @@ import { CategoryBreadcrumbs } from "@/components/storefront/CategoryBreadcrumbs
 import { CategoryTile } from "@/components/storefront/CategoryTile";
 import { ErrorState } from "@/components/ErrorState";
 import { Spinner } from "@/components/Spinner";
+import { StationeryArt } from "@/components/StationeryArt";
 import { useCatalog, useCategoryTree } from "@/hooks/useCatalog";
 import { useFeaturedProducts, usePublicSettings } from "@/hooks/queries";
 import { isRateLimitedError } from "@/lib/api";
@@ -127,28 +128,38 @@ export function CatalogPage() {
   );
 
   return (
-    <div className="pb-8">
-      <div className="p-4 pb-3">
-        <h1 className="mb-3 text-xl font-bold text-slate-900 dark:text-white">
-          {t("catalog.title")}
-        </h1>
+    <div className="catalog-page space-y-7 pb-8">
+      <section className="catalog-hero relative overflow-hidden rounded-[24px] bg-[#E4EDE5] px-6 py-7 sm:px-10 sm:py-10">
+        <div className="relative z-10 max-w-[62%] sm:max-w-[54%]">
+          <p className="mb-4 text-xs font-medium text-[#4D6954] sm:text-sm">{language === "ru" ? "Для учёбы, работы и новых идей" : "O‘qish, ish va yangi g‘oyalar uchun"}</p>
+          <h1 className="text-[30px] font-bold leading-[1.12] tracking-[-.04em] text-[#153F32] sm:text-5xl lg:text-[60px]">{language === "ru" ? "Большие идеи начинаются с малого." : "Katta g‘oyalar kichik narsalardan boshlanadi."}</h1>
+          <p className="mt-4 hidden max-w-sm text-sm leading-6 text-[#4D6954] sm:block">{language === "ru" ? "Любимая ручка, чистая тетрадь и всё, что нужно вашему рабочему столу." : "Sevimli ruchka, yangi daftar va ish stolingiz uchun kerakli barcha buyumlar."}</p>
+          <a href="#catalog" className="primary-button mt-5 inline-flex items-center gap-3 px-4 py-3 text-xs sm:px-6 sm:text-sm">{language === "ru" ? "Выбрать товары" : "Mahsulot tanlash"}<span aria-hidden="true">↓</span></a>
+        </div>
+        <StationeryArt className="absolute -right-14 bottom-3 w-[58%] max-w-[490px] sm:-right-5 sm:bottom-0 lg:right-2" />
+      </section>
+      <div id="catalog" className="catalog-toolbar scroll-mt-24 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div><h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{t("catalog.title")}</h2><p className="mt-1 text-sm text-slate-500">{language === "ru" ? "Найдите то, что нужно каждый день." : "Har kuni kerak bo‘ladigan buyumlarni toping."}</p></div>
+        <div className="relative w-full sm:max-w-80">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="pointer-events-none absolute left-4 top-3.5 size-5 text-slate-500" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg>
         <input
           aria-label={t("storefront.search")}
-          className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-brand focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500"
+          className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 py-3 text-sm focus:border-brand focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500"
           onChange={(event) => updateParams({ q: event.target.value })}
           placeholder={t("common.search")}
           type="search"
           value={query.q}
         />
+        </div>
       </div>
 
       {welcomeText && (
-        <p className="mx-4 mb-5 rounded-2xl bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:bg-violet-400/10 dark:text-violet-100">
+        <p className="catalog-welcome rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100">
           {welcomeText}
         </p>
       )}
 
-      <div className="px-4">
+      <div className="catalog-controls">
         <CategoryBreadcrumbs
           categories={categories}
           categoryId={effectiveCategoryId}
@@ -174,8 +185,8 @@ export function CatalogPage() {
           />
         </div>
       ) : childCategories.length > 0 ? (
-        <section aria-label={t("catalog.categories")} className="mb-5 px-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <section aria-label={t("catalog.categories")} className="catalog-categories mb-5">
+          <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
             {childCategories.map((category) => (
               <CategoryTile
                 category={category}
@@ -189,17 +200,17 @@ export function CatalogPage() {
       ) : null}
 
       {featuredQuery.data && featuredQuery.data.length > 0 && (
-        <section aria-labelledby="featured-products-heading" className="mb-7 px-4">
+        <section aria-labelledby="featured-products-heading" className="catalog-featured mb-7">
           <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-white" id="featured-products-heading">
             {t("catalog.featured")}
           </h2>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 sm:gap-4">
             {featuredQuery.data.map((product) => <ProductCard key={product.id} product={product} />)}
           </div>
         </section>
       )}
 
-      <section aria-labelledby="all-products-heading" className="px-4">
+      <section aria-labelledby="all-products-heading" className="catalog-products">
         <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-white" id="all-products-heading">
           {t("catalog.all_products")}
         </h2>
@@ -252,12 +263,12 @@ export function CatalogPage() {
                 </button>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 sm:gap-4">
               {catalog.products.map((product) => <ProductCard key={product.id} product={product} />)}
             </div>
             {catalog.hasMore && (
               <button
-                className="mt-5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-brand shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60 dark:border-white/10 dark:bg-slate-900"
+                className="catalog-load-more mt-5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-brand shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60 dark:border-white/10 dark:bg-slate-900"
                 disabled={catalog.isFetchingNextPage}
                 onClick={() => void loadMore()}
                 type="button"

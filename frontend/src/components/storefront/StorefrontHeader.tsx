@@ -92,8 +92,8 @@ export function StorefrontHeader({
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-white/10 dark:bg-slate-950/95">
-      <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8">
+    <header className="storefront-header sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-white/10 dark:bg-slate-950/95">
+      <div className="header-inner mx-auto flex min-h-16 max-w-7xl items-center gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8">
         <div className="flex min-w-0 shrink-0 items-center gap-2">
           {showBack && (
             <button
@@ -105,9 +105,9 @@ export function StorefrontHeader({
               <span aria-hidden="true">←</span>
             </button>
           )}
-          <Link className="flex min-h-11 items-center rounded-lg font-semibold tracking-tight text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:text-white" to="/">
-            <span aria-hidden="true" className="mr-2 flex size-9 items-center justify-center rounded-xl bg-violet-100 text-sm font-bold text-violet-700 dark:bg-violet-400/15 dark:text-violet-200">K</span>
-            <span className="truncate">Kans Shop</span>
+          <Link className="brand-link flex min-h-11 items-center rounded-lg font-semibold tracking-tight text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:text-white" to="/">
+            <span aria-hidden="true" className="brand-mark"><svg width="25" height="28" viewBox="0 0 28 32" fill="none"><path d="M7 5v22M21 5 8 17l14 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/><circle cx="22" cy="5" r="3" fill="#EE7938"/></svg></span>
+            <span className="brand-name" aria-label="Kans Shop">kans<span>.</span></span>
           </Link>
         </div>
 

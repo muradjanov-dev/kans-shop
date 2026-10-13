@@ -8,7 +8,10 @@ import { useProduct } from "@/hooks/queries";
 import { useCartActions } from "@/hooks/useCartActions";
 import { formatExactPrice, localizedField } from "@/lib/format";
 import { useTranslate } from "@/lib/i18n";
-import { hasHigherOldPrice, productUnitTranslationKey } from "@/lib/productDisplay";
+import {
+  hasHigherOldPrice,
+  productUnitTranslationKey,
+} from "@/lib/productDisplay";
 import { useLanguageStore } from "@/store/language";
 
 function savedCatalogUrl(value: unknown): string {
@@ -17,7 +20,8 @@ function savedCatalogUrl(value: unknown): string {
     !value.startsWith("/") ||
     value.startsWith("//") ||
     value.startsWith("/product/")
-  ) return "/";
+  )
+    return "/";
   return value;
 }
 
@@ -35,7 +39,12 @@ export function ProductPage() {
     if (product) setQuantity(Math.max(1, product.min_order_qty));
   }, [productId, product?.min_order_qty]);
 
-  if (isLoading) return <div role="status"><SpinnerText /></div>;
+  if (isLoading)
+    return (
+      <div role="status">
+        <SpinnerText />
+      </div>
+    );
   if (isError || !product) return <ErrorState onRetry={() => void refetch()} />;
 
   const locationState = location.state as {
@@ -43,96 +52,120 @@ export function ProductPage() {
     catalogScrollY?: unknown;
   } | null;
   const returnTo = savedCatalogUrl(locationState?.catalogReturnTo);
-  const storedScrollY = Number(sessionStorage.getItem("storefront-catalog-scroll-y"));
-  const hasSavedCatalogLocation = typeof locationState?.catalogReturnTo === "string";
-  const stateScrollY = typeof locationState?.catalogScrollY === "number"
-    ? locationState.catalogScrollY
-    : 0;
+  const storedScrollY = Number(
+    sessionStorage.getItem("storefront-catalog-scroll-y"),
+  );
+  const hasSavedCatalogLocation =
+    typeof locationState?.catalogReturnTo === "string";
+  const stateScrollY =
+    typeof locationState?.catalogScrollY === "number"
+      ? locationState.catalogScrollY
+      : 0;
   const scrollY = hasSavedCatalogLocation
-    ? Number.isFinite(storedScrollY) ? storedScrollY : stateScrollY
+    ? Number.isFinite(storedScrollY)
+      ? storedScrollY
+      : stateScrollY
     : 0;
   const name = localizedField(language, product, "name");
   const description = localizedField(language, product, "description");
   const minimumQuantity = Math.max(1, product.min_order_qty);
   const maximumQuantity = Math.max(0, product.stock_qty);
-  const boundedQuantity = Math.min(maximumQuantity, Math.max(minimumQuantity, quantity));
+  const boundedQuantity = Math.min(
+    maximumQuantity,
+    Math.max(minimumQuantity, quantity),
+  );
   const outOfStock = maximumQuantity < minimumQuantity;
 
   return (
-    <div className="pb-24 md:pb-8">
+    <div className="page-shell page-shell-wide">
       <Link
-        className="mb-3 ml-4 mt-4 inline-flex min-h-11 items-center rounded-full bg-white/90 px-3 text-sm font-medium text-brand shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:bg-slate-900"
+        className="mb-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:text-white"
         state={{ restoreCatalogScrollY: scrollY }}
         to={returnTo}
       >
         ← {t("common.back")}
       </Link>
-      <div className="grid gap-5 md:grid-cols-2 md:items-start md:gap-8">
-        <div className="px-4 md:px-0">
+      <div className="grid gap-7 md:grid-cols-2 md:items-start md:gap-12">
+        <div className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--soft)] p-3 sm:p-5 dark:bg-slate-800 dark:border-white/10">
           <ProductGallery images={product.images} name={name} />
         </div>
-        <div className="flex flex-col gap-3 px-4 md:px-0">
+        <div className="flex flex-col gap-5 md:py-4">
           {product.is_featured && (
-            <span className="w-fit rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-900 dark:bg-violet-400/20 dark:text-violet-100">
+            <span className="w-fit rounded-full bg-[var(--orange)]/15 px-3 py-1.5 text-xs font-semibold text-[#93451E]">
               {t("product.featured")}
             </span>
           )}
           <div className="flex items-start justify-between gap-3">
-            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{name}</h1>
+            <h1 className="page-title dark:text-white">{name}</h1>
             <FavoriteButton productId={product.id} productName={name} />
           </div>
           <div className="flex flex-wrap items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900 dark:text-white">
+            <span className="text-3xl font-bold tracking-tight text-brand dark:text-white">
               {formatExactPrice(product.price)}
             </span>
-            <span className="text-sm text-slate-500 dark:text-slate-400">{t("common.som")}</span>
+            <span className="text-sm text-[var(--muted)] dark:text-gray-400">
+              {t("common.som")}
+            </span>
             {hasHigherOldPrice(product.old_price, product.price) && (
               <span className="text-sm text-slate-400 line-through">
                 {formatExactPrice(product.old_price!)}
               </span>
             )}
           </div>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
+          <p className="text-sm text-[var(--muted)] dark:text-gray-400">
             {t("product.stock", {
               qty: product.stock_qty,
               unit: t(productUnitTranslationKey[product.unit]),
             })}
           </p>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
+          <p className="text-sm text-[var(--muted)] dark:text-gray-400">
             {t("product.sku")}: {product.sku}
           </p>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
+          <p className="text-sm text-[var(--muted)] dark:text-gray-400">
             {t("product.min_order", { qty: product.min_order_qty })}
           </p>
           {description && (
-            <p className="whitespace-pre-line text-sm leading-6 text-slate-600 dark:text-slate-300">
+            <p className="whitespace-pre-line text-sm leading-6 text-[var(--muted)] dark:text-gray-400">
               {description}
             </p>
           )}
           {outOfStock && (
-            <p className="text-sm font-medium text-red-600 dark:text-red-300" role="status">
+            <p className="text-sm font-medium text-red-600" role="status">
               {t("product.out_of_stock")}
             </p>
           )}
           {!outOfStock && (
-            <div className="fixed bottom-0 left-0 right-0 z-40 mx-auto flex w-full max-w-md items-center gap-3 border-t border-slate-200 bg-white p-4 pb-safe dark:border-white/10 dark:bg-slate-950 md:static md:mt-4 md:max-w-none md:border-0 md:bg-transparent md:p-0 md:dark:bg-transparent">
+            <div className="mt-3 flex w-full flex-wrap items-center gap-3 border-t border-[var(--line)] pt-6 dark:border-white/10">
               <QuantityStepper
                 disabled={pending}
                 max={maximumQuantity}
                 min={minimumQuantity}
                 onChange={(nextQuantity) => {
-                  setQuantity(Math.min(maximumQuantity, Math.max(minimumQuantity, nextQuantity)));
+                  setQuantity(
+                    Math.min(
+                      maximumQuantity,
+                      Math.max(minimumQuantity, nextQuantity),
+                    ),
+                  );
                 }}
                 quantity={boundedQuantity}
               />
               <button
                 aria-busy={pending}
-                className="min-h-11 flex-1 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-wait disabled:opacity-60"
+                className="primary-button min-w-40 flex-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-wait disabled:opacity-60"
                 disabled={pending}
-                onClick={() => add(product.id, boundedQuantity, `${location.pathname}${location.search}`)}
+                onClick={() =>
+                  add(
+                    product.id,
+                    boundedQuantity,
+                    `${location.pathname}${location.search}`,
+                  )
+                }
                 type="button"
               >
-                {pending ? t("product.adding_to_cart") : t("product.add_to_cart")}
+                {pending
+                  ? t("product.adding_to_cart")
+                  : t("product.add_to_cart")}
               </button>
             </div>
           )}
@@ -144,5 +177,9 @@ export function ProductPage() {
 
 function SpinnerText() {
   const t = useTranslate();
-  return <p className="py-10 text-center text-sm text-slate-500">{t("common.loading")}</p>;
+  return (
+    <p className="py-10 text-center text-sm text-[var(--muted)] dark:text-gray-400">
+      {t("common.loading")}
+    </p>
+  );
 }
