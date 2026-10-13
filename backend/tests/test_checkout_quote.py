@@ -433,3 +433,54 @@ async def test_quote_api_returns_decimal_strings_and_public_readiness(test_engin
                     else:
                         await session.execute(delete(Setting).where(Setting.key == key))
                 await session.commit()
+
+
+async def test_quote_blocks_minimum_quantity_increase_after_cart_creation(
+    db_session, user, product
+) -> None:
+    quote_checkout = _quote_checkout_function()
+    await _set_checkout_settings(db_session)
+    await _replace_cart(db_session, user.id, [(product, 1)])
+    original = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.PICKUP,
+        payment_method=PaymentMethod.CASH,
+    )
+    assert original.ready
+
+    product.min_order_qty = 10
+    await db_session.flush()
+    updated = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.PICKUP,
+        payment_method=PaymentMethod.CASH,
+    )
+    assert not updated.ready
+    assert any("MIN_ORDER_QUANTITY" in reason for reason in updated.reasons)
+    assert updated.quote_fingerprint != original.quote_fingerprint
+
+
+async def test_quote_fingerprint_tracks_live_minimum_quantity(
+    db_session, user, product
+) -> None:
+    quote_checkout = _quote_checkout_function()
+    await _set_checkout_settings(db_session)
+    await _replace_cart(db_session, user.id, [(product, 10)])
+    original = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.PICKUP,
+        payment_method=PaymentMethod.CASH,
+    )
+    product.min_order_qty = 5
+    await db_session.flush()
+    updated = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.PICKUP,
+        payment_method=PaymentMethod.CASH,
+    )
+    assert original.ready and updated.ready
+    assert updated.quote_fingerprint != original.quote_fingerprint

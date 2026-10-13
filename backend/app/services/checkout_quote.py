@@ -7,7 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import CheckoutUnavailableError
+from app.core.exceptions import CheckoutUnavailableError, MinimumOrderQuantityError
 from app.db.models.cart import CartItem
 from app.db.models.enums import OrderType, PaymentMethod, PaymentProvider
 from app.db.models.product import Product
@@ -62,6 +62,7 @@ def _cart_row(item: CartItem, product: Product | None) -> dict[str, object]:
         "quantity": item.quantity,
         "live_price": _money_string(product.price) if product is not None else None,
         "active": product.is_active if product is not None else False,
+        "min_order_qty": product.min_order_qty if product is not None else None,
     }
 
 
@@ -154,6 +155,13 @@ async def quote_checkout(
             blockers.append(f"CHECKOUT_UNAVAILABLE: Product {item.product_id} is unavailable.")
             continue
         subtotal += product.price * item.quantity
+        if item.quantity < product.min_order_qty:
+            # A minimum can change after this item was added; stale carts must be reviewed.
+            blockers.append(
+                f"{MinimumOrderQuantityError.code}: Minimum order quantity for "
+                f"{product.name_uz} is {product.min_order_qty} "
+                f"(requested {item.quantity})."
+            )
         if not product.is_active:
             stock_ok = False
             blockers.append(f"Product {product.name_uz} is no longer active.")
