@@ -1339,3 +1339,41 @@ async def test_legacy_card_requires_reload(test_engine: AsyncEngine) -> None:
             assert order_count == 0
         finally:
             await _delete_case_orders(case)
+
+
+async def test_checkout_rejects_minimum_quantity_increase_after_cart_creation(
+    db_session, user, product
+) -> None:
+    from app.core.exceptions import MinimumOrderQuantityError
+
+    for key, value in {
+        "is_shop_open": True,
+        "min_order_amount": 0,
+        "delivery_fee": 0,
+        "free_delivery_from": 0,
+    }.items():
+        await setting_repository.set_value(db_session, key, value)
+    await cart_service.add_item(db_session, user.id, product.id, 1)
+    product.min_order_qty = 10
+    await db_session.flush()
+
+    with pytest.raises(MinimumOrderQuantityError):
+        await purchase_service.submit_checkout(
+            db_session,
+            user_id=user.id,
+            command=purchase_service.CheckoutCommand(
+                order_type=OrderType.PICKUP,
+                customer_name="Test Buyer",
+                customer_phone="+998901234567",
+            ),
+            checkout_key=None,
+            expected_quote=None,
+            expected_total=None,
+            source="webapp",
+            lang="uz",
+        )
+    assert await db_session.scalar(select(func.count()).select_from(Order)) == 0
+    await db_session.refresh(product)
+    assert product.stock_qty == 10
+    cart = await cart_repository.get_active_cart(db_session, user.id)
+    assert cart is not None and cart.items[0].quantity == 1

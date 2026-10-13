@@ -16,6 +16,7 @@ from app.core.exceptions import (
     CheckoutValidationError,
     ClientUpdateRequiredError,
     IdempotencyConflictError,
+    MinimumOrderQuantityError,
     MinOrderAmountError,
     OutOfStockError,
     QuoteChangedError,
@@ -171,6 +172,12 @@ async def _lock_and_validate_products(
             raise CheckoutUnavailableError(
                 f"Product {item.product_id} is no longer available for purchase.",
                 details={"product_id": item.product_id},
+            )
+        if item.quantity < product.min_order_qty:
+            # Enforce the live minimum under the same product lock as stock validation.
+            raise MinimumOrderQuantityError(
+                f"Minimum order quantity for {product.sku} is {product.min_order_qty}",
+                details={"product_id": product.id, "minimum": product.min_order_qty},
             )
         locked.append((product, item.quantity))
     return locked
