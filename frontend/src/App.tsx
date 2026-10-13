@@ -9,6 +9,7 @@ import { CartPage } from "@/pages/CartPage";
 import { CheckoutPage } from "@/pages/CheckoutPage";
 import { OrdersPage as CustomerOrdersPage } from "@/pages/OrdersPage";
 import { OrderDetailPage } from "@/pages/OrderDetailPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { Spinner } from "@/components/Spinner";
 import { CustomerAuthProvider } from "@/features/customer-auth/CustomerAuthProvider";
@@ -67,6 +68,7 @@ function CustomerApplication() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/profile/addresses" element={<AddressesPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </CustomerAuthProvider>

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useCart, useRemoveCartItem, useUpdateCartItem } from "@/hooks/queries";
 import { Spinner } from "@/components/Spinner";
 import { ErrorState } from "@/components/ErrorState";
+import { ProductImage } from "@/components/ProductImage";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { useTranslate } from "@/lib/i18n";
 import { useLanguageStore } from "@/store/language";
@@ -19,7 +20,9 @@ export function CartPage() {
   const isAuthenticated = Boolean(accessToken && userId);
   const { openLogin } = useCustomerAuth();
   const navigate = useNavigate();
-  const [mutationError, setMutationError] = useState<"update" | "remove" | null>(null);
+  const [mutationError, setMutationError] = useState<
+    "update" | "remove" | null
+  >(null);
 
   useEffect(() => {
     setMutationError(null);
@@ -31,9 +34,15 @@ export function CartPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex flex-col items-center gap-3 p-6 text-center">
-        <p className="text-sm text-gray-600 dark:text-gray-300">{t("cart.login_hint")}</p>
-        <button className="min-h-11 rounded-lg bg-brand px-4 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand" onClick={openLogin} type="button">
+      <div className="page-shell empty-state flex flex-col items-center gap-4">
+        <p className="text-sm text-[var(--muted)] dark:text-gray-400">
+          {t("cart.login_hint")}
+        </p>
+        <button
+          className="primary-button focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          onClick={openLogin}
+          type="button"
+        >
           {t("auth.sign_in")}
         </button>
       </div>
@@ -45,128 +54,156 @@ export function CartPage() {
   const items = cart?.items ?? [];
 
   return (
-    <div className="p-4">
-      <h1 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{t("cart.title")}</h1>
+    <div className="page-shell page-shell-wide">
+      <h1 className="page-title mb-7 dark:text-white">{t("cart.title")}</h1>
 
       {items.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center">
-          <p className="text-sm font-medium text-gray-700">{t("cart.empty")}</p>
-          <p className="text-xs text-gray-500">{t("cart.empty_hint")}</p>
-          <Link to="/" className="mt-3 flex min-h-11 items-center rounded-lg bg-brand px-4 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+        <div className="surface empty-state flex flex-col items-center gap-3 dark:border-white/10 dark:bg-slate-900">
+          <p className="text-sm font-medium text-[var(--ink)] dark:text-white">
+            {t("cart.empty")}
+          </p>
+          <p className="text-xs text-[var(--muted)] dark:text-gray-400">
+            {t("cart.empty_hint")}
+          </p>
+          <Link
+            to="/"
+            className="primary-button mt-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          >
             {t("nav.catalog")}
           </Link>
         </div>
       ) : (
-        <>
-          <div className="flex flex-col gap-3">
-            {items.map((item) => {
-              const name = localizedField(language, item.product, "name");
-              return (
-                <div key={item.id} className="flex gap-3 rounded-xl border border-gray-100 bg-white p-3 dark:border-white/10 dark:bg-slate-900">
-                  <div className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-gray-50 dark:bg-white/5">
-                    {item.product.images[0]?.url ? (
-                      <img
-                        src={item.product.images[0].url}
-                        alt={name}
-                        className="size-full rounded-lg object-cover"
-                      />
-                    ) : (
-                      <span className="text-2xl">📦</span>
-                    )}
-                  </div>
-                  <div className="flex flex-1 flex-col gap-2">
-                    <p className="line-clamp-2 text-sm font-medium text-gray-900 dark:text-white">{name}</p>
-                    <div className="flex items-center justify-between">
-                      <QuantityStepper
-                        quantity={item.quantity}
-                        min={Math.max(1, item.product.min_order_qty)}
-                        max={item.product.stock_qty}
-                        disabled={
-                          updateItem.isPending ||
-                          removeItem.isPending ||
-                          item.product.stock_qty < Math.max(1, item.product.min_order_qty)
-                        }
-                        onChange={(quantity) => {
-                          const bounded = Math.min(
-                            item.product.stock_qty,
-                            Math.max(Math.max(1, item.product.min_order_qty), quantity),
-                          );
-                          setMutationError(null);
-                          updateItem.mutate(
-                            { productId: item.product_id, quantity: bounded },
-                            {
+        <div className="grid items-start gap-7 lg:grid-cols-[1fr_320px]">
+          <div>
+            <div className="surface divide-y divide-[var(--line)] overflow-hidden dark:border-white/10 dark:bg-slate-900">
+              {items.map((item) => {
+                const name = localizedField(language, item.product, "name");
+                return (
+                  <div key={item.id} className="flex gap-4 p-4 sm:p-5">
+                    <div className="size-20 shrink-0 overflow-hidden rounded-xl sm:size-24">
+                      <ProductImage product={item.product} className="p-2" />
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-3">
+                      <p className="line-clamp-2 text-sm font-semibold text-[var(--ink)] dark:text-white">
+                        {name}
+                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <QuantityStepper
+                          quantity={item.quantity}
+                          min={Math.max(1, item.product.min_order_qty)}
+                          max={item.product.stock_qty}
+                          disabled={
+                            updateItem.isPending ||
+                            removeItem.isPending ||
+                            item.product.stock_qty <
+                              Math.max(1, item.product.min_order_qty)
+                          }
+                          onChange={(quantity) => {
+                            const bounded = Math.min(
+                              item.product.stock_qty,
+                              Math.max(
+                                Math.max(1, item.product.min_order_qty),
+                                quantity,
+                              ),
+                            );
+                            setMutationError(null);
+                            updateItem.mutate(
+                              { productId: item.product_id, quantity: bounded },
+                              {
+                                onSuccess: () => {
+                                  const current = useAuthStore.getState();
+                                  if (
+                                    current.authEpoch === authEpoch &&
+                                    current.userId === userId
+                                  ) {
+                                    setMutationError(null);
+                                  }
+                                },
+                                onError: () => {
+                                  const current = useAuthStore.getState();
+                                  if (
+                                    current.authEpoch === authEpoch &&
+                                    current.userId === userId
+                                  ) {
+                                    setMutationError("update");
+                                  }
+                                },
+                              },
+                            );
+                          }}
+                        />
+                        <button
+                          aria-label={`${t("cart.remove")} ${name}`}
+                          className="min-h-11 min-w-11 rounded-md px-2 py-1 text-xs font-medium text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
+                          disabled={
+                            updateItem.isPending || removeItem.isPending
+                          }
+                          onClick={() => {
+                            setMutationError(null);
+                            removeItem.mutate(item.product_id, {
                               onSuccess: () => {
                                 const current = useAuthStore.getState();
-                                if (current.authEpoch === authEpoch && current.userId === userId) {
+                                if (
+                                  current.authEpoch === authEpoch &&
+                                  current.userId === userId
+                                ) {
                                   setMutationError(null);
                                 }
                               },
                               onError: () => {
                                 const current = useAuthStore.getState();
-                                if (current.authEpoch === authEpoch && current.userId === userId) {
-                                  setMutationError("update");
+                                if (
+                                  current.authEpoch === authEpoch &&
+                                  current.userId === userId
+                                ) {
+                                  setMutationError("remove");
                                 }
                               },
-                            },
-                          );
-                        }}
-                      />
-                      <button
-                        aria-label={`${t("cart.remove")} ${name}`}
-                        className="min-h-11 min-w-11 rounded-md px-2 py-1 text-xs font-medium text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
-                        disabled={updateItem.isPending || removeItem.isPending}
-                        onClick={() => {
-                          setMutationError(null);
-                          removeItem.mutate(item.product_id, {
-                            onSuccess: () => {
-                              const current = useAuthStore.getState();
-                              if (current.authEpoch === authEpoch && current.userId === userId) {
-                                setMutationError(null);
-                              }
-                            },
-                            onError: () => {
-                              const current = useAuthStore.getState();
-                              if (current.authEpoch === authEpoch && current.userId === userId) {
-                                setMutationError("remove");
-                              }
-                            },
-                          });
-                        }}
-                        type="button"
-                      >
-                        {t("cart.remove")}
-                      </button>
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                        {formatLineTotal(item.product.price, item.quantity)} {t("common.som")}
-                      </span>
+                            });
+                          }}
+                          type="button"
+                        >
+                          {t("cart.remove")}
+                        </button>
+                        <span className="text-sm font-semibold text-[var(--ink)] dark:text-white">
+                          {formatLineTotal(item.product.price, item.quantity)}{" "}
+                          {t("common.som")}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {mutationError && (
+              <p
+                className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700"
+                role="alert"
+              >
+                {mutationError === "update"
+                  ? t("cart.update_error")
+                  : t("cart.remove_error")}
+              </p>
+            )}
           </div>
-
-          {mutationError && (
-            <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-200" role="alert">
-              {mutationError === "update" ? t("cart.update_error") : t("cart.remove_error")}
-            </p>
-          )}
-
-          <div className="fixed bottom-24 mx-auto flex w-full max-w-lg flex-col gap-3 border-t border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#14161b]">
+          <div className="action-bar cart-summary w-full flex flex-col gap-4 lg:top-28 dark:border-white/10 dark:bg-slate-900">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">{t("cart.subtotal")}</span>
-              <span className="font-semibold text-gray-900 dark:text-white">
+              <span className="text-[var(--muted)] dark:text-gray-400">
+                {t("cart.subtotal")}
+              </span>
+              <span className="font-semibold text-[var(--ink)] dark:text-white">
                 {formatExactPrice(cart?.subtotal ?? "0")} {t("common.som")}
               </span>
             </div>
             <button
               onClick={() => navigate("/checkout")}
-              className="min-h-11 rounded-lg bg-brand py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              className="primary-button focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
               {t("cart.checkout")}
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

@@ -2,6 +2,8 @@ import { useLanguageStore } from "@/store/language";
 
 const dict = {
   uz: {
+    "page.not_found": "Sahifa topilmadi",
+    "page.back_catalog": "Katalogga qaytish",
     "nav.catalog": "Katalog",
     "nav.cart": "Savat",
     "nav.orders": "Buyurtmalar",
@@ -480,6 +482,8 @@ const dict = {
     "admin.broadcasts.load_error": "Yuborish holatini yuklab bo'lmadi.",
   },
   ru: {
+    "page.not_found": "Страница не найдена",
+    "page.back_catalog": "Вернуться в каталог",
     "nav.catalog": "Каталог",
     "nav.cart": "Корзина",
     "nav.orders": "Заказы",

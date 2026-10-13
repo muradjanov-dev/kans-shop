@@ -26,8 +26,8 @@ export function ProductCard({ product }: { product: Product }) {
   useEffect(() => setImageFailed(false), [image?.id, image?.url]);
 
   return (
-    <article className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-lg hover:shadow-violet-900/10 dark:border-white/10 dark:bg-slate-900 dark:hover:border-violet-300/40">
-      <div className="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
+    <article className="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-2.5 sm:p-3 dark:border-white/10 dark:bg-slate-900">
+      <div className="product-card-image relative aspect-square overflow-hidden rounded-xl bg-[#EDF1E7] dark:bg-slate-800">
         <Link
           className="flex size-full items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           onClick={rememberCatalogScroll}
@@ -37,7 +37,7 @@ export function ProductCard({ product }: { product: Product }) {
           {image?.url && !imageFailed ? (
             <img
               alt={name}
-              className="size-full object-cover"
+              className="size-full object-contain"
               loading="lazy"
               onError={() => setImageFailed(true)}
               src={image.url.trim()}
@@ -48,11 +48,16 @@ export function ProductCard({ product }: { product: Product }) {
               className="flex size-full items-center justify-center bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
               role="img"
             >
-              <span aria-hidden="true" className="size-10 rounded-xl border-2 border-current opacity-40" />
+              <svg aria-hidden="true" viewBox="0 0 160 160" className="size-28" fill="none">
+                <rect x="40" y="24" width="76" height="108" rx="9" fill="#D6E2D8" />
+                <rect x="48" y="24" width="68" height="108" rx="7" fill="#FAFCF8" stroke="#A9BCAA" />
+                <path d="M62 53h39M62 68h39M62 83h25" stroke="#A9BCAA" strokeWidth="3" strokeLinecap="round" />
+                <path d="m105 103 26-58 8 4-26 58-9 10z" fill="#EE7938" />
+              </svg>
             </span>
           )}
           {product.is_featured && (
-            <span className="absolute left-2 top-2 rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-900 dark:bg-violet-400/20 dark:text-violet-100">
+            <span className="absolute left-2 top-2 rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-[#153F32] dark:bg-slate-900 dark:text-white">
               {t("product.featured")}
             </span>
           )}
@@ -65,7 +70,7 @@ export function ProductCard({ product }: { product: Product }) {
         {!outOfStock && (
           <button
             aria-label={t("product.add_to_cart")}
-            className="absolute bottom-2 right-2 flex min-h-11 min-w-11 items-center justify-center rounded-full bg-brand text-lg font-bold text-white shadow-md transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
+            className="product-card-add absolute bottom-2 right-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-brand text-lg font-bold text-white shadow-md transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
             disabled={pending}
             onClick={() => add(product.id, Math.max(1, product.min_order_qty), catalogReturnTo)}
             type="button"
@@ -74,18 +79,18 @@ export function ProductCard({ product }: { product: Product }) {
           </button>
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-1.5 p-3">
+      <div className="flex flex-1 flex-col gap-1.5 px-1 pb-1 pt-3">
         <Link
           className="flex flex-1 flex-col gap-1.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           onClick={rememberCatalogScroll}
           state={detailState}
           to={`/product/${product.id}`}
         >
-          <p className="line-clamp-2 min-h-10 text-sm font-medium text-slate-900 dark:text-slate-100">
+          <p className="line-clamp-2 min-h-10 text-sm font-semibold text-slate-900 dark:text-slate-100">
             {name}
           </p>
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span className="text-base font-semibold text-slate-900 dark:text-white">
+            <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
               {formatExactPrice(product.price)}
             </span>
             <span className="text-xs text-slate-500 dark:text-slate-400">{t("common.som")}</span>
