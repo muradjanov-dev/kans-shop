@@ -406,8 +406,13 @@ describe("cart action recovery", () => {
       await user.type(await screen.findByLabelText("Kirish kodi"), "12345678");
       await user.click(screen.getByRole("button", { name: "Kirish" }));
       await cartReadStarted;
-      expect(await screen.findByText("Daftar", { exact: true })).toBeInTheDocument();
-      expect(rendered.queryClient.getQueryData(["cart", "42"])).toEqual(addedCart);
+      // The product name also exists on the origin card. Wait for the cart route
+      // and the successful add to commit before releasing the stale cart read.
+      await screen.findByRole("heading", { name: "Savat", exact: true });
+      await waitFor(() => {
+        expect(screen.getByText("Daftar", { exact: true })).toBeInTheDocument();
+        expect(rendered.queryClient.getQueryData(["cart", "42"])).toEqual(addedCart);
+      });
 
       releaseCartRead();
       await waitFor(() => {
