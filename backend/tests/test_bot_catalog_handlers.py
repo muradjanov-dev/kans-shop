@@ -66,8 +66,7 @@ async def test_add_to_cart_acknowledges_before_service_and_falls_back_to_message
         calls.append("service")
         raise OutOfStockError("out of stock")
 
-    sent_message = SimpleNamespace(edit_reply_markup=AsyncMock())
-    message = SimpleNamespace(answer=AsyncMock(return_value=sent_message))
+    message = SimpleNamespace(answer=AsyncMock())
     callback = SimpleNamespace(answer=answer, message=message)
     monkeypatch.setattr(catalog.cart_service, "add_item", add_item)
     callback_data = AddToCartCallback(product_id=7, qty=1, origin="category", ref_id=2, page=1)
@@ -84,18 +83,18 @@ async def test_add_to_cart_acknowledges_before_service_and_falls_back_to_message
     message.answer.assert_awaited_once()
     assert message.answer.await_args.args == ("cart.out_of_stock_alert",)
     assert isinstance(message.answer.await_args.kwargs["reply_markup"], ReplyKeyboardRemove)
-    sent_message.edit_reply_markup.assert_not_awaited()
 
 
 async def test_successful_add_sends_one_message_with_continue_and_cart_choices(
     monkeypatch,
 ) -> None:
-    sent_message = SimpleNamespace(edit_reply_markup=AsyncMock())
+    first_sent_message = SimpleNamespace()
+    transient_message = SimpleNamespace(delete=AsyncMock())
     callback = SimpleNamespace(
         answer=AsyncMock(),
         message=SimpleNamespace(
             photo=[SimpleNamespace(file_id="photo-1")],
-            answer=AsyncMock(return_value=sent_message),
+            answer=AsyncMock(side_effect=[first_sent_message, transient_message]),
         ),
     )
     add_item = AsyncMock()
@@ -111,13 +110,17 @@ async def test_successful_add_sends_one_message_with_continue_and_cart_choices(
     )
 
     add_item.assert_awaited_once_with(SimpleNamespace(), 3, 7, 4)
-    feedback = callback.message.answer.await_args
+    assert callback.message.answer.await_count == 2
+    feedback = callback.message.answer.await_args_list[0]
     assert feedback.args == ("cart.added_alert",)
-    assert isinstance(feedback.kwargs["reply_markup"], ReplyKeyboardRemove)
-    sent_message.edit_reply_markup.assert_awaited_once()
-    assert callback.message.answer.await_count == 1
+    assert feedback.kwargs["reply_markup"] is not None
+    assert not isinstance(feedback.kwargs["reply_markup"], ReplyKeyboardRemove)
+    cleanup = callback.message.answer.await_args_list[1]
+    assert cleanup.args == ("cart.added_alert",)
+    assert isinstance(cleanup.kwargs["reply_markup"], ReplyKeyboardRemove)
+    transient_message.delete.assert_awaited_once_with()
     assert callback.answer.await_count == 1
-    keyboard = sent_message.edit_reply_markup.await_args.kwargs["reply_markup"]
+    keyboard = feedback.kwargs["reply_markup"]
     buttons = [button for row in keyboard.inline_keyboard for button in row]
     assert [button.text for button in buttons] == [
         "catalog.continue_shopping",
@@ -125,24 +128,39 @@ async def test_successful_add_sends_one_message_with_continue_and_cart_choices(
     ]
 
 
-async def test_catalog_entry_clears_reply_keyboard_on_same_category_message(
+async def test_catalog_entry_sends_all_root_categories_inline_and_cleans_transient_reply_keyboard(
     monkeypatch,
 ) -> None:
-    sent_message = SimpleNamespace(edit_reply_markup=AsyncMock())
-    message = SimpleNamespace(answer=AsyncMock(return_value=sent_message))
-    markup = object()
-
-    async def send_category_level(send, *_args, **_kwargs):
-        await send("catalog.choose_category", reply_markup=markup)
-
-    monkeypatch.setattr(catalog, "send_category_level", send_category_level)
+    categories = [
+        SimpleNamespace(id=11, name_uz="Yozuv", name_ru="Письмо"),
+        SimpleNamespace(id=12, name_uz="Qog'oz", name_ru="Бумага"),
+        SimpleNamespace(id=13, name_uz="Maktab", name_ru="Школа"),
+    ]
+    first_sent_message = SimpleNamespace()
+    transient_message = SimpleNamespace(delete=AsyncMock())
+    message = SimpleNamespace(
+        answer=AsyncMock(side_effect=[first_sent_message, transient_message])
+    )
+    list_root_categories = AsyncMock(return_value=categories)
+    monkeypatch.setattr(catalog.catalog_service, "list_root_categories", list_root_categories)
 
     await catalog.open_catalog(message, SimpleNamespace(), "uz", lambda key: key)
 
-    message.answer.assert_awaited_once()
-    assert message.answer.await_args.args == ("catalog.choose_category",)
-    assert isinstance(message.answer.await_args.kwargs["reply_markup"], ReplyKeyboardRemove)
-    sent_message.edit_reply_markup.assert_awaited_once_with(reply_markup=markup)
+    assert message.answer.await_count == 2
+    category_message = message.answer.await_args_list[0]
+    assert category_message.args == ("catalog.choose_category",)
+    markup = category_message.kwargs["reply_markup"]
+    category_buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [button.text for button in category_buttons] == ["Yozuv", "Qog'oz", "Maktab"]
+    assert [
+        CategoryCallback.unpack(button.callback_data).category_id
+        for button in category_buttons
+    ] == [11, 12, 13]
+    cleanup = message.answer.await_args_list[1]
+    assert cleanup.args == ("catalog.choose_category",)
+    assert isinstance(cleanup.kwargs["reply_markup"], ReplyKeyboardRemove)
+    transient_message.delete.assert_awaited_once_with()
+    list_root_categories.assert_awaited_once_with(SimpleNamespace())
 
 
 async def test_add_continue_and_add_second_product_is_one_mutation_per_product(
@@ -160,10 +178,13 @@ async def test_add_continue_and_add_second_product_is_one_mutation_per_product(
     session = SimpleNamespace()
     user = SimpleNamespace(id=3)
 
-    first_sent_message = SimpleNamespace(edit_reply_markup=AsyncMock())
+    first_sent_message = SimpleNamespace()
+    first_transient_message = SimpleNamespace(delete=AsyncMock())
     first_callback = SimpleNamespace(
         answer=AsyncMock(),
-        message=SimpleNamespace(answer=AsyncMock(return_value=first_sent_message)),
+        message=SimpleNamespace(
+            answer=AsyncMock(side_effect=[first_sent_message, first_transient_message])
+        ),
     )
     await catalog.on_add_to_cart(
         first_callback,
@@ -179,7 +200,8 @@ async def test_add_continue_and_add_second_product_is_one_mutation_per_product(
         lambda key, **_: key,
     )
 
-    post_add_markup = first_sent_message.edit_reply_markup.await_args.kwargs["reply_markup"]
+    post_add_markup = first_callback.message.answer.await_args_list[0].kwargs["reply_markup"]
+    first_transient_message.delete.assert_awaited_once_with()
     continue_data = ContinueShoppingCallback.unpack(
         post_add_markup.inline_keyboard[0][0].callback_data
     )
@@ -209,10 +231,13 @@ async def test_add_continue_and_add_second_product_is_one_mutation_per_product(
     )
     assert send_product_list.await_args.args[1:] == (session, 42, 3)
 
-    second_sent_message = SimpleNamespace(edit_reply_markup=AsyncMock())
+    second_sent_message = SimpleNamespace()
+    second_transient_message = SimpleNamespace(delete=AsyncMock())
     second_callback = SimpleNamespace(
         answer=AsyncMock(),
-        message=SimpleNamespace(answer=AsyncMock(return_value=second_sent_message)),
+        message=SimpleNamespace(
+            answer=AsyncMock(side_effect=[second_sent_message, second_transient_message])
+        ),
     )
     await catalog.on_add_to_cart(
         second_callback,
@@ -233,6 +258,7 @@ async def test_add_continue_and_add_second_product_is_one_mutation_per_product(
         (session, 3, 8, 1),
     ]
     assert add_item.await_count == 2
+    second_transient_message.delete.assert_awaited_once_with()
 
 
 def test_product_detail_has_no_direct_cart_navigation_before_adding() -> None:

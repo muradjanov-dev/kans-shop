@@ -28,24 +28,27 @@ def test_checkout_reply_keyboards_keep_contact_and_location_requests() -> None:
     assert location.keyboard[0][0].request_location is True
 
 
-async def test_keyboard_removal_and_inline_choices_share_one_visible_message() -> None:
-    sent = SimpleNamespace(edit_reply_markup=AsyncMock(return_value="edited"))
-    message = SimpleNamespace(answer=AsyncMock(return_value=sent))
+async def test_inline_choices_are_sent_before_best_effort_keyboard_cleanup() -> None:
+    primary = SimpleNamespace()
+    cleanup = SimpleNamespace(delete=AsyncMock())
+    message = SimpleNamespace(answer=AsyncMock(side_effect=[primary, cleanup]))
     markup = InlineKeyboardMarkup(inline_keyboard=[])
 
     result = await answer_with_inline_keyboard(message, "Added", reply_markup=markup)
 
-    assert result == "edited"
-    message.answer.assert_awaited_once()
-    assert message.answer.await_args.args == ("Added",)
-    assert message.answer.await_args.kwargs["reply_markup"].__class__.__name__ == (
+    assert result is primary
+    assert message.answer.await_count == 2
+    assert message.answer.await_args_list[0].args == ("Added",)
+    assert message.answer.await_args_list[0].kwargs["reply_markup"] is markup
+    assert message.answer.await_args_list[1].args == ("Added",)
+    assert message.answer.await_args_list[1].kwargs["reply_markup"].__class__.__name__ == (
         "ReplyKeyboardRemove"
     )
-    sent.edit_reply_markup.assert_awaited_once_with(reply_markup=markup)
+    cleanup.delete.assert_awaited_once_with()
 
 
 async def test_keyboard_removal_without_inline_choices_sends_one_visible_message() -> None:
-    sent = SimpleNamespace(edit_reply_markup=AsyncMock())
+    sent = SimpleNamespace(delete=AsyncMock())
     message = SimpleNamespace(answer=AsyncMock(return_value=sent))
 
     result = await answer_with_inline_keyboard(message, "Keyboard cleared")
@@ -56,31 +59,36 @@ async def test_keyboard_removal_without_inline_choices_sends_one_visible_message
     assert message.answer.await_args.kwargs["reply_markup"].__class__.__name__ == (
         "ReplyKeyboardRemove"
     )
-    sent.edit_reply_markup.assert_not_awaited()
+    sent.delete.assert_not_awaited()
 
 
-async def test_inline_markup_failure_does_not_undo_successful_visible_message(
+async def test_keyboard_cleanup_failure_does_not_undo_successful_inline_message(
     monkeypatch,
 ) -> None:
     warning = Mock()
     monkeypatch.setattr("app.bot.utils.messages.logger.warning", warning)
-    sent = SimpleNamespace(
-        edit_reply_markup=AsyncMock(
-            side_effect=TelegramBadRequest(
-                method=SimpleNamespace(), message="Bad Request: message is too old"
-            )
+    primary = SimpleNamespace()
+    message = SimpleNamespace(
+        answer=AsyncMock(
+            side_effect=[
+                primary,
+                TelegramBadRequest(
+                    method=SimpleNamespace(), message="Bad Request: private api diagnostic"
+                ),
+            ]
         )
     )
-    message = SimpleNamespace(answer=AsyncMock(return_value=sent))
     markup = InlineKeyboardMarkup(inline_keyboard=[])
 
     result = await answer_with_inline_keyboard(message, "Added", reply_markup=markup)
 
-    assert result is sent
-    warning.assert_called_once_with(
-        "inline keyboard attachment failed after message delivery",
-        extra={"telegram_error_type": "TelegramBadRequest"},
-    )
+    assert result is primary
+    assert message.answer.await_count == 2
+    warning.assert_called_once()
+    warning_call = warning.call_args
+    assert "cleanup" in warning_call.args[0].casefold()
+    assert warning_call.kwargs["extra"]["telegram_error_type"] == "TelegramBadRequest"
+    assert "private api diagnostic" not in str(warning_call)
 
 
 async def test_initial_reply_keyboard_removal_send_error_still_propagates() -> None:
@@ -176,30 +184,32 @@ async def test_start_preserves_checkout_reply_keyboard_inside_active_fsm() -> No
 
 
 async def test_menu_command_removes_reply_keyboard_on_inline_menu_message() -> None:
-    sent = SimpleNamespace(edit_reply_markup=AsyncMock(return_value="edited"))
-    message = SimpleNamespace(answer=AsyncMock(return_value=sent))
+    primary = SimpleNamespace()
+    cleanup = SimpleNamespace(delete=AsyncMock())
+    message = SimpleNamespace(answer=AsyncMock(side_effect=[primary, cleanup]))
     state = SimpleNamespace(clear=AsyncMock())
 
     await menu_handler.cmd_menu(message, None, _translator, state)
 
     state.clear.assert_awaited_once_with()
-    message.answer.assert_awaited_once()
-    assert message.answer.await_args.args == (_translator("menu.choose_action"),)
-    assert message.answer.await_args.kwargs["reply_markup"].__class__.__name__ == (
-        "ReplyKeyboardRemove"
-    )
-    sent.edit_reply_markup.assert_awaited_once()
-    assert sent.edit_reply_markup.await_args.kwargs["reply_markup"].__class__.__name__ == (
+    assert message.answer.await_count == 2
+    assert message.answer.await_args_list[0].args == (_translator("menu.choose_action"),)
+    assert message.answer.await_args_list[0].kwargs["reply_markup"].__class__.__name__ == (
         "InlineKeyboardMarkup"
     )
+    assert message.answer.await_args_list[1].kwargs["reply_markup"].__class__.__name__ == (
+        "ReplyKeyboardRemove"
+    )
+    cleanup.delete.assert_awaited_once_with()
 
 
 async def test_legacy_cart_reply_clears_fsm_and_keyboard_without_mutating_cart(
     monkeypatch,
 ) -> None:
     events = []
-    sent = SimpleNamespace(edit_reply_markup=AsyncMock(return_value="edited"))
-    message = SimpleNamespace(answer=AsyncMock(return_value=sent))
+    primary = SimpleNamespace()
+    cleanup = SimpleNamespace(delete=AsyncMock())
+    message = SimpleNamespace(answer=AsyncMock(side_effect=[primary, cleanup]))
 
     async def clear_state() -> None:
         events.append("clear")
@@ -222,12 +232,15 @@ async def test_legacy_cart_reply_clears_fsm_and_keyboard_without_mutating_cart(
     )
 
     assert events == ["clear", "get_cart"]
-    message.answer.assert_awaited_once()
-    assert message.answer.await_args.args == (_translator("cart.empty"),)
-    assert message.answer.await_args.kwargs["reply_markup"].__class__.__name__ == (
+    assert message.answer.await_count == 2
+    assert message.answer.await_args_list[0].args == (_translator("cart.empty"),)
+    assert message.answer.await_args_list[0].kwargs["reply_markup"].__class__.__name__ == (
+        "InlineKeyboardMarkup"
+    )
+    assert message.answer.await_args_list[1].kwargs["reply_markup"].__class__.__name__ == (
         "ReplyKeyboardRemove"
     )
-    sent.edit_reply_markup.assert_awaited_once()
+    cleanup.delete.assert_awaited_once_with()
     add_item.assert_not_awaited()
 
 
