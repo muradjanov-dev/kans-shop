@@ -247,6 +247,72 @@ describe("cart action recovery", () => {
     }
   });
 
+  it("lets a sourcing product start at one and increase past inventory without stock messaging", async () => {
+    useAuthStore.getState().setTokens({
+      access_token: jwt(42),
+      refresh_token: "refresh-42",
+      is_admin: false,
+    });
+    const sourcingProduct = {
+      ...product,
+      min_order_qty: 1,
+      stock_tracking_enabled: false,
+      stock_qty: null,
+    };
+    const originalAdapter = api.defaults.adapter;
+    let addQuantity: number | undefined;
+    api.defaults.adapter = async (config) => {
+      if (config.url?.endsWith("/catalog/products/12")) return response(config, sourcingProduct, 200);
+      if (config.url?.endsWith("/cart/items")) {
+        addQuantity = JSON.parse(String(config.data)).quantity as number;
+        return response(config, { items: [], subtotal: "0", items_count: 0 }, 201);
+      }
+      if (config.url?.endsWith("/cart")) return response(config, { items: [], subtotal: "0", items_count: 0 }, 200);
+      throw new Error(`Unexpected request ${config.method} ${config.url}`);
+    };
+    const user = userEvent.setup();
+
+    try {
+      renderWithProviders(<ProductToCartRoutes />, "/product/12", true);
+      expect(await screen.findByRole("heading", { name: "Daftar" })).toBeInTheDocument();
+      expect(screen.queryByText(/qoldiq:/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/sotuvda yo'q/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /miqdorni kamaytirish/i })).toBeDisabled();
+
+      const increase = screen.getByRole("button", { name: /miqdorni oshirish/i });
+      for (let index = 0; index < 10; index += 1) await user.click(increase);
+      expect(screen.getByText("11")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /savatga qo'shish/i }));
+
+      await waitFor(() => expect(addQuantity).toBe(11));
+    } finally {
+      api.defaults.adapter = originalAdapter;
+    }
+  });
+
+  it("keeps the catalog add button available for an untracked product and queues one unit", async () => {
+    const sourcingProduct = {
+      ...product,
+      min_order_qty: 1,
+      stock_tracking_enabled: false,
+      stock_qty: null,
+    };
+    const user = userEvent.setup();
+
+    renderWithProviders(<ProductCard product={sourcingProduct} />, "/", true);
+    expect(screen.queryByText(/qoldiq:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sotuvda yo'q/i)).not.toBeInTheDocument();
+    const addButton = screen.getByRole("button", { name: /savatga qo'shish/i });
+    expect(addButton).toBeEnabled();
+
+    await user.click(addButton);
+
+    expect(JSON.parse(localStorage.getItem("kans-shop-pending-add") ?? "{}")).toMatchObject({
+      productId: 12,
+      quantity: 1,
+    });
+  });
+
   it("navigates from product detail to the cart only after add succeeds", async () => {
     const detailProduct = { ...product, min_order_qty: 2 };
     const originalApiAdapter = api.defaults.adapter;

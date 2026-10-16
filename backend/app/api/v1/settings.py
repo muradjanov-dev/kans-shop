@@ -7,6 +7,7 @@ from app.db.models.enums import PaymentProvider
 from app.db.repositories import setting_repository
 from app.services import payment_service
 from app.services.checkout_settings import CheckoutSettings
+from app.services.inventory_policy import get_inventory_policy
 from app.services.store_settings_service import checkout_settings_from_store
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -34,6 +35,7 @@ async def get_public_settings(
 ) -> PublicSettingsOut:
     settings_map = await setting_repository.get_all(session)
     checkout = await checkout_settings_from_store(session)
+    inventory_policy = await get_inventory_policy(session)
     enabled_providers = [
         provider.value
         for provider in PaymentProvider
@@ -54,6 +56,7 @@ async def get_public_settings(
         )
     for key in ("is_shop_open", "card_number", "card_holder"):
         public_values[key] = getattr(checkout, key)
+    public_values["stock_tracking_enabled"] = inventory_policy.stock_tracking_enabled
     return PublicSettingsOut(
         **public_values,
         enabled_payment_providers=enabled_providers,

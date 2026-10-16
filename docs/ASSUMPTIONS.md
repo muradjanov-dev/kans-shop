@@ -291,3 +291,18 @@ production cutover remain separate release requirements.
   no real merchant credentials or paid transaction; only fake invalid callback requests are
   appropriate for route checks. Paynet remains unavailable until its merchant protocol and
   credentials are separately reviewed.
+
+## Products sourced on request
+- `stock_tracking_enabled` is a persisted boolean shop setting. Missing or malformed values
+  preserve stock tracking. Setting it to `false` lets customers order from one unit without
+  using the supplier's inventory or package minimum as a purchase limit.
+- Sourcing mode leaves the real product inventory and package minimum intact for admins.
+  Customer product responses expose `stock_qty: null`, `stock_tracking_enabled: false`, and
+  an effective minimum of one; bot cards omit inventory counts. Hidden or inactive products
+  and the normal checkout/payment settings still restrict purchases.
+- Every order snapshots whether inventory was deducted in `orders.stock_deducted`. Orders
+  sourced on request do not deduct or restore inventory. Historical orders keep their original
+  inventory behavior even after the shop changes mode. Sales counters still track orders.
+- Telegram product cards display their main photo when available. Callback queries are
+  acknowledged before slow work; expired queries do not repeat cart mutations. Tests use
+  synthetic Telegram responses, never the production bot token or a customer's order.

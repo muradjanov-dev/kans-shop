@@ -99,6 +99,55 @@ describe("cart page", () => {
     }
   });
 
+  it("allows sourcing cart quantities to grow without inventory limits", async () => {
+    useAuthStore.getState().setTokens({
+      access_token: jwt(42),
+      refresh_token: "refresh-42",
+      is_admin: false,
+    });
+    const sourcingProduct = {
+      ...product,
+      stock_tracking_enabled: false,
+      stock_qty: null,
+      min_order_qty: 1,
+    };
+    const initialCart: Cart = {
+      ...cart,
+      items: [{ ...cart.items[0]!, quantity: 1, product: sourcingProduct }],
+      subtotal: "450",
+      items_count: 1,
+    };
+    const updatedCart: Cart = {
+      ...initialCart,
+      items: [{ ...initialCart.items[0]!, quantity: 2 }],
+      subtotal: "900",
+      items_count: 2,
+    };
+    const originalAdapter = api.defaults.adapter;
+    let updateQuantity: number | undefined;
+    api.defaults.adapter = async (config) => {
+      if (config.method === "patch") {
+        updateQuantity = JSON.parse(String(config.data)).quantity as number;
+        return response(config, updatedCart);
+      }
+      return response(config, initialCart);
+    };
+    const user = userEvent.setup();
+
+    try {
+      renderWithProviders(<CartPage />, "/cart", true);
+      expect(await screen.findByText("1")).toBeInTheDocument();
+      const increase = screen.getByRole("button", { name: /increase quantity|miqdorni oshirish/i });
+      expect(increase).toBeEnabled();
+      await user.click(increase);
+
+      await waitFor(() => expect(updateQuantity).toBe(2));
+      expect(await screen.findByText("2")).toBeInTheDocument();
+    } finally {
+      api.defaults.adapter = originalAdapter;
+    }
+  });
+
   it("keeps the rendered quantity unchanged until the server confirms an update", async () => {
     useAuthStore.getState().setTokens({
       access_token: jwt(42),

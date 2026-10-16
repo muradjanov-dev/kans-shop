@@ -12,6 +12,7 @@ from app.core.config import settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 OLD_HEAD = "9c1f4a7be2d0"
+PRE_INVENTORY_HEAD = "3a8d0f24c1e6"
 
 
 def _migration_config(database_url: str, monkeypatch: pytest.MonkeyPatch) -> Config:
@@ -155,6 +156,106 @@ def test_purchase_metadata_migration_round_trips_historical_orders(monkeypatch) 
                     )
                 )
                 == 0
+            )
+    finally:
+        if test_engine is not None:
+            test_engine.dispose()
+        with maintenance_engine.connect() as connection:
+            connection.execute(text(f'DROP DATABASE IF EXISTS "{database_name}" WITH (FORCE)'))
+        maintenance_engine.dispose()
+
+
+def test_inventory_migration_marks_old_orders_and_guards_sourcing_downgrade(
+    monkeypatch,
+) -> None:
+    configured_url = make_url(settings.database_url_sync)
+    database_name = f"kansshop_test_inventory_migration_{token_hex(6)}"
+    test_url = configured_url.set(database=database_name)
+    maintenance_url = configured_url.set(database="postgres")
+    maintenance_engine = create_engine(maintenance_url, isolation_level="AUTOCOMMIT")
+    test_engine = None
+    with maintenance_engine.connect() as connection:
+        connection.execute(text(f'CREATE DATABASE "{database_name}"'))
+
+    try:
+        config = _migration_config(test_url.render_as_string(hide_password=False), monkeypatch)
+        command.upgrade(config, PRE_INVENTORY_HEAD)
+        test_engine = create_engine(test_url)
+        with test_engine.begin() as connection:
+            user_id = connection.execute(
+                text(
+                    "INSERT INTO users (telegram_id, first_name) "
+                    "VALUES (:telegram_id, 'Inventory Buyer') RETURNING id"
+                ),
+                {"telegram_id": 9_000_000_000_000_002},
+            ).scalar_one()
+            old_order_id = _insert_order(
+                connection, order_number="KANS-INV-OLD-0001", user_id=user_id
+            )
+
+        command.upgrade(config, "head")
+        with test_engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    text("SELECT stock_deducted FROM orders WHERE id = :id"),
+                    {"id": old_order_id},
+                )
+                is True
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT value FROM settings WHERE key = 'stock_tracking_enabled'")
+                )
+                is False
+            )
+            sourcing_order_id = connection.execute(
+                text(
+                    "INSERT INTO orders ("
+                    "order_number, user_id, order_type, customer_name, customer_phone, "
+                    "subtotal, total, payment_method, stock_deducted"
+                    ") VALUES ("
+                    ":order_number, :user_id, 'delivery', 'Sourcing Buyer', "
+                    "'+998901234567', 5000, 5000, 'cash', false"
+                    ") RETURNING id"
+                ),
+                {"order_number": "KANS-INV-SOURCE-0002", "user_id": user_id},
+            ).scalar_one()
+
+        with pytest.raises(RuntimeError, match="sourcing-mode orders exist"):
+            command.downgrade(config, PRE_INVENTORY_HEAD)
+        with test_engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_name = 'orders' AND column_name = 'stock_deducted'"
+                    )
+                )
+                == 1
+            )
+            connection.execute(
+                text("DELETE FROM orders WHERE id = :id"), {"id": sourcing_order_id}
+            )
+
+        test_engine.dispose()
+        test_engine = None
+        command.downgrade(config, PRE_INVENTORY_HEAD)
+        test_engine = create_engine(test_url)
+        with test_engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_name = 'orders' AND column_name = 'stock_deducted'"
+                    )
+                )
+                == 0
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM orders WHERE id = :id"), {"id": old_order_id}
+                )
+                == 1
             )
     finally:
         if test_engine is not None:

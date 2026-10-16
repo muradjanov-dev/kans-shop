@@ -102,6 +102,7 @@ re-snapshots at creation time), `UNIQUE(cart_id, product_id)`.
 | latitude, longitude | NUMERIC(9,6) | nullable |
 | comment | TEXT | nullable, customer note |
 | subtotal, delivery_fee, discount, total | NUMERIC(12,2) | |
+| stock_deducted | BOOLEAN | NOT NULL, default true for historical orders; false for orders sourced on request. Cancellation restores inventory only when this snapshot is true. |
 | payment_method | ENUM payment_method | `cash`,`card_transfer`,`click`,`payme`,`paynet`,`tender` |
 | payment_status | ENUM payment_status | `pending`,`receipt_uploaded`,`paid`,`failed` |
 | receipt_file_id | VARCHAR(255) | nullable |

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import OutOfStockError, ProductNotFoundError
 from app.db.models.product import Product
 from app.db.models.user import User
+from app.db.repositories import setting_repository
 from app.services import cart_service
 
 
@@ -34,6 +35,43 @@ async def test_add_item_beyond_stock_raises(
         await cart_service.add_item(
             db_session, user.id, product.id, quantity=product.stock_qty + 1
         )
+
+
+async def test_sourcing_mode_uses_one_item_minimum_even_when_source_minimum_is_higher(
+    db_session: AsyncSession, user: User, product: Product
+) -> None:
+    product.stock_qty = 3
+    product.min_order_qty = 12
+    await setting_repository.set_value(db_session, "stock_tracking_enabled", False)
+
+    item = await cart_service.add_item(db_session, user.id, product.id, quantity=1)
+
+    assert item.quantity == 1
+
+
+async def test_sourcing_mode_allows_add_above_zero_stock(
+    db_session: AsyncSession, user: User, product: Product
+) -> None:
+    product.stock_qty = 0
+    product.min_order_qty = 12
+    await setting_repository.set_value(db_session, "stock_tracking_enabled", False)
+
+    item = await cart_service.add_item(db_session, user.id, product.id, quantity=1000)
+
+    assert item.quantity == 1000
+
+
+async def test_sourcing_mode_allows_quantity_update_above_stock(
+    db_session: AsyncSession, user: User, product: Product
+) -> None:
+    await setting_repository.set_value(db_session, "stock_tracking_enabled", False)
+    await cart_service.add_item(db_session, user.id, product.id, quantity=1)
+    product.stock_qty = 0
+
+    item = await cart_service.update_item_quantity(db_session, user.id, product.id, 1000)
+
+    assert item is not None
+    assert item.quantity == 1000
 
 
 async def test_add_item_unknown_product_raises(db_session: AsyncSession, user: User) -> None:

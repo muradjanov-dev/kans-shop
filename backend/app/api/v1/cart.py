@@ -4,17 +4,28 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
-from app.api.schemas.cart import AddCartItemIn, CartOut, UpdateCartItemIn
+from app.api.schemas.cart import AddCartItemIn, CartItemOut, CartOut, UpdateCartItemIn
+from app.api.schemas.catalog import public_product_out
 from app.db.models.cart import Cart
 from app.db.models.user import User
 from app.services import cart_replay_service, cart_service
+from app.services.inventory_policy import InventoryPolicy, get_inventory_policy
 
 router = APIRouter(prefix="/cart", tags=["cart"])
 
 
-def _cart_to_out(cart: Cart) -> CartOut:
+def _cart_to_out(cart: Cart, inventory_policy: InventoryPolicy) -> CartOut:
     return CartOut(
-        items=list(cart.items),
+        items=[
+            CartItemOut(
+                id=item.id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                price_snapshot=item.price_snapshot,
+                product=public_product_out(item.product, inventory_policy),
+            )
+            for item in cart.items
+        ],
         subtotal=cart_service.calculate_subtotal(cart),
         items_count=cart_service.calculate_items_count(cart),
     )
@@ -26,7 +37,7 @@ async def get_cart(
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> CartOut:
     cart = await cart_service.get_cart(session, user.id)
-    return _cart_to_out(cart)
+    return _cart_to_out(cart, await get_inventory_policy(session))
 
 
 @router.post("/items", response_model=CartOut, status_code=201)
@@ -47,7 +58,7 @@ async def add_cart_item(
             quantity=payload.quantity,
             mutation_key=idempotency_key,
         )
-    return _cart_to_out(cart)
+    return _cart_to_out(cart, await get_inventory_policy(session))
 
 
 @router.patch("/items/{product_id}", response_model=CartOut)
@@ -59,7 +70,7 @@ async def update_cart_item(
 ) -> CartOut:
     await cart_service.update_item_quantity(session, user.id, product_id, payload.quantity)
     cart = await cart_service.get_cart(session, user.id)
-    return _cart_to_out(cart)
+    return _cart_to_out(cart, await get_inventory_policy(session))
 
 
 @router.delete("/items/{product_id}", response_model=CartOut)
@@ -70,7 +81,7 @@ async def remove_cart_item(
 ) -> CartOut:
     await cart_service.remove_item(session, user.id, product_id)
     cart = await cart_service.get_cart(session, user.id)
-    return _cart_to_out(cart)
+    return _cart_to_out(cart, await get_inventory_policy(session))
 
 
 @router.delete("", response_model=CartOut)
@@ -80,4 +91,4 @@ async def clear_cart(
 ) -> CartOut:
     await cart_service.clear_cart(session, user.id)
     cart = await cart_service.get_cart(session, user.id)
-    return _cart_to_out(cart)
+    return _cart_to_out(cart, await get_inventory_policy(session))

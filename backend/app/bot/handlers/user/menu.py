@@ -14,7 +14,7 @@ from app.bot.keyboards.callback_data import ROOT_CATEGORY_ID, MenuCallback
 from app.bot.keyboards.inline.language import language_keyboard
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
 from app.bot.utils.i18n import menu_button_texts
-from app.bot.utils.messages import require_message
+from app.bot.utils.messages import answer_callback_safely, require_message
 from app.db.models.admin import Admin
 from app.db.models.user import User
 from app.db.repositories import setting_repository
@@ -78,10 +78,11 @@ async def on_menu_action(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
     # A menu tap is an explicit "start over" — drop any half-finished checkout/search FSM
     # so the chosen section is not swallowed by a state filter.
     await state.clear()
-    await callback.answer()
 
     action = callback_data.action
     if action == "catalog":

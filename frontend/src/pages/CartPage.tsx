@@ -78,6 +78,10 @@ export function CartPage() {
             <div className="surface divide-y divide-[var(--line)] overflow-hidden dark:border-white/10 dark:bg-slate-900">
               {items.map((item) => {
                 const name = localizedField(language, item.product, "name");
+                const minimumQuantity = Math.max(1, item.product.min_order_qty);
+                const maximumQuantity = item.product.stock_tracking_enabled === false
+                  ? undefined
+                  : Math.max(0, item.product.stock_qty ?? 0);
                 return (
                   <div key={item.id} className="flex gap-4 p-4 sm:p-5">
                     <div className="size-20 shrink-0 overflow-hidden rounded-xl sm:size-24">
@@ -90,25 +94,21 @@ export function CartPage() {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <QuantityStepper
                           quantity={item.quantity}
-                          min={Math.max(1, item.product.min_order_qty)}
-                          max={item.product.stock_qty}
+                          min={minimumQuantity}
+                          max={maximumQuantity}
                           disabled={
                             updateItem.isPending ||
                             removeItem.isPending ||
-                            item.product.stock_qty <
-                              Math.max(1, item.product.min_order_qty)
+                            (maximumQuantity !== undefined && maximumQuantity < minimumQuantity)
                           }
                           onChange={(quantity) => {
-                            const bounded = Math.min(
-                              item.product.stock_qty,
-                              Math.max(
-                                Math.max(1, item.product.min_order_qty),
-                                quantity,
-                              ),
-                            );
+                            const bounded = Math.max(minimumQuantity, quantity);
+                            const requested = maximumQuantity === undefined
+                              ? bounded
+                              : Math.min(maximumQuantity, bounded);
                             setMutationError(null);
                             updateItem.mutate(
-                              { productId: item.product_id, quantity: bounded },
+                              { productId: item.product_id, quantity: requested },
                               {
                                 onSuccess: () => {
                                   const current = useAuthStore.getState();

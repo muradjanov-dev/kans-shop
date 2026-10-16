@@ -124,6 +124,7 @@ export function useCheckoutFlow() {
             quantity: item.quantity,
             price: item.product?.price ?? null,
             is_active: item.product?.is_active ?? null,
+            stock_tracking_enabled: item.product?.stock_tracking_enabled ?? true,
             stock_qty: item.product?.stock_qty ?? null,
             lot_url: item.product?.lot_url ?? null,
           }))

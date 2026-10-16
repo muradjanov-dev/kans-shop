@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -85,6 +86,9 @@ class Order(IDMixin, TimestampMixin, Base):
     checkout_key: Mapped[str | None] = mapped_column(String(36))
     checkout_fingerprint: Mapped[str | None] = mapped_column(String(64))
     payment_instructions: Mapped[dict | None] = mapped_column(JSONB)
+    stock_deducted: Mapped[bool] = mapped_column(
+        Boolean, server_default="true", nullable=False
+    )
     receipt_storage_key: Mapped[str | None] = mapped_column(String(512))
     receipt_content_type: Mapped[str | None] = mapped_column(String(255))
     receipt_version: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)

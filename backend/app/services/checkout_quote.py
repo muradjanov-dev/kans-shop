@@ -14,6 +14,7 @@ from app.db.models.product import Product
 from app.db.repositories import cart_repository, product_repository
 from app.services import payment_service
 from app.services.checkout_settings import CheckoutSettings, load_checkout_settings
+from app.services.inventory_policy import InventoryPolicy, get_inventory_policy
 
 _CENT = Decimal("0.01")
 
@@ -56,13 +57,17 @@ def _required_numeric_settings(order_type: OrderType) -> tuple[str, ...]:
     return ()
 
 
-def _cart_row(item: CartItem, product: Product | None) -> dict[str, object]:
+def _cart_row(
+    item: CartItem, product: Product | None, inventory_policy: InventoryPolicy
+) -> dict[str, object]:
     return {
         "product_id": item.product_id,
         "quantity": item.quantity,
         "live_price": _money_string(product.price) if product is not None else None,
         "active": product.is_active if product is not None else False,
-        "min_order_qty": product.min_order_qty if product is not None else None,
+        "min_order_qty": (
+            inventory_policy.minimum_quantity(product) if product is not None else None
+        ),
     }
 
 
@@ -75,6 +80,7 @@ def _quote_fingerprint(
     delivery_fee: Decimal | None,
     total: Decimal | None,
     settings: CheckoutSettings,
+    inventory_policy: InventoryPolicy,
 ) -> str:
     relevant_keys = {
         OrderType.DELIVERY: ("delivery_fee", "free_delivery_from", "min_order_amount"),
@@ -112,7 +118,7 @@ def _quote_fingerprint(
 
     canonical = {
         "cart": [
-            _cart_row(item, item.product)
+            _cart_row(item, item.product, inventory_policy)
             for item in sorted(items, key=lambda current: current.product_id)
         ],
         "order_type": order_type.value,
@@ -121,6 +127,7 @@ def _quote_fingerprint(
         "delivery_fee": _money_string(delivery_fee),
         "total": _money_string(total),
         "settings": applicable_settings,
+        "stock_tracking_enabled": inventory_policy.stock_tracking_enabled,
         "instructions": instructions,
     }
     body = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
@@ -133,8 +140,10 @@ async def quote_checkout(
     user_id: int,
     order_type: OrderType,
     payment_method: PaymentMethod,
+    inventory_policy: InventoryPolicy | None = None,
 ) -> CheckoutQuote:
     settings = await load_checkout_settings(session)
+    inventory_policy = inventory_policy or await get_inventory_policy(session)
     cart = await cart_repository.get_active_cart(session, user_id)
     items = list(cart.items) if cart is not None else []
     reasons: list[str] = []
@@ -155,17 +164,18 @@ async def quote_checkout(
             blockers.append(f"CHECKOUT_UNAVAILABLE: Product {item.product_id} is unavailable.")
             continue
         subtotal += product.price * item.quantity
-        if item.quantity < product.min_order_qty:
+        minimum_quantity = inventory_policy.minimum_quantity(product)
+        if item.quantity < minimum_quantity:
             # A minimum can change after this item was added; stale carts must be reviewed.
             blockers.append(
                 f"{MinimumOrderQuantityError.code}: Minimum order quantity for "
-                f"{product.name_uz} is {product.min_order_qty} "
+                f"{product.name_uz} is {minimum_quantity} "
                 f"(requested {item.quantity})."
             )
         if not product.is_active:
             stock_ok = False
             blockers.append(f"Product {product.name_uz} is no longer active.")
-        if product.stock_qty < item.quantity:
+        if inventory_policy.stock_tracking_enabled and product.stock_qty < item.quantity:
             stock_ok = False
             blockers.append(
                 f"Insufficient stock for {product.name_uz} "
@@ -295,6 +305,7 @@ async def quote_checkout(
             delivery_fee=delivery_fee,
             total=total,
             settings=settings,
+            inventory_policy=inventory_policy,
         )
 
     return CheckoutQuote(

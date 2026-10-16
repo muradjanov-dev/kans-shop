@@ -52,6 +52,8 @@
     "empty_category": "В этой категории пока нет товаров.",
     "product_card": "<b>{name}</b>\n\n{description}\n\n💰 Цена: {price} сум\n📦 Остаток: {stock} {unit}",
     "product_card_no_description": "<b>{name}</b>\n\n💰 Цена: {price} сум\n📦 Остаток: {stock} {unit}",
+    "product_card_sourcing": "<b>{name}</b>\n\n{description}\n\n💰 Цена: {price} сум\n📦 Ед. изм.: {unit}",
+    "product_card_no_description_sourcing": "<b>{name}</b>\n\n💰 Цена: {price} сум\n📦 Ед. изм.: {unit}",
     "out_of_stock": "Нет в наличии ❌",
     "page_indicator": "📄 {page}/{total_pages}",
     "search_prompt": "🔎 Введите название товара для поиска:",

@@ -190,6 +190,26 @@ describe("CatalogPage", () => {
     await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 321 }));
   });
 
+  it("hides and ignores the inventory filter when stock tracking is disabled", async () => {
+    const requestedStockFilters: boolean[] = [];
+    get.mockImplementation(async (url: string, config?: AxiosRequestConfig) => {
+      if (url === "/catalog/categories") return response(categoryChildren(config?.params?.parent_id));
+      if (url === "/catalog/featured") return response([]);
+      if (url === "/settings/public") return response(publicSettings({ stock_tracking_enabled: false }));
+      if (url === "/catalog/products") {
+        requestedStockFilters.push(config?.params?.in_stock === true);
+        return response(productPage([]));
+      }
+      if (url === "/catalog/products/7") return response(product(7, "Product 7"));
+      throw new Error(`Unexpected GET ${String(url)}`);
+    });
+
+    renderCatalog("/?in_stock=true");
+
+    await waitFor(() => expect(requestedStockFilters.at(-1)).toBe(false));
+    expect(screen.queryByRole("checkbox", { name: "Faqat mavjud" })).not.toBeInTheDocument();
+  });
+
   it("test_catalog_filters_reset_page_and_append_unique_ids", async () => {
     const requests: Array<{ params: Record<string, unknown> | undefined; signal: AbortSignal | undefined }> = [];
     const pageOne = productPage(Array.from({ length: 24 }, (_, index) => product(index + 1)), 1, 2);

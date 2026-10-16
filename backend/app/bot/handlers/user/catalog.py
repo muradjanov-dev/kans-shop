@@ -1,7 +1,10 @@
+import re
 from collections.abc import Awaitable, Callable
 from decimal import Decimal
+from html import escape, unescape
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -27,13 +30,18 @@ from app.bot.keyboards.inline.catalog import (
     search_results_keyboard,
 )
 from app.bot.utils.i18n import menu_button_texts
-from app.bot.utils.messages import require_message
+from app.bot.utils.messages import (
+    answer_callback_safely,
+    edit_or_send_message,
+    require_message,
+)
 from app.core.exceptions import CategoryNotFoundError, OutOfStockError, ProductNotFoundError
 from app.db.models.category import Category
 from app.db.models.product import Product
 from app.db.models.user import User
 from app.services import cart_service, catalog_service, favorite_service
 from app.services.common import DEFAULT_CATALOG_PAGE_SIZE
+from app.services.inventory_policy import get_inventory_policy
 
 router = Router(name="catalog")
 
@@ -50,6 +58,55 @@ def _product_name(product: Product, lang: str) -> str:
 
 def _product_description(product: Product, lang: str) -> str:
     return (product.description_uz if lang == "uz" else product.description_ru) or ""
+
+
+def _product_photo(product: Product) -> str | None:
+    images = sorted(product.images, key=lambda image: (not image.is_main, image.sort_order))
+    return next(
+        (
+            image.telegram_file_id or image.url
+            for image in images
+            if image.telegram_file_id or image.url
+        ),
+        None,
+    )
+
+
+def _rendered_length(text: str) -> int:
+    return len(unescape(re.sub(r"<[^>]*>", "", text)))
+
+
+def _is_unavailable_product_photo(error: TelegramBadRequest) -> bool:
+    message = getattr(error, "message", str(error)).casefold()
+    return any(
+        marker in message
+        for marker in (
+            "wrong file identifier",
+            "failed to get http url content",
+            "wrong type of the web page content",
+            "can't parse input media",
+            "photo must be",
+            "photo is too big",
+            "caption is too long",
+        )
+    )
+
+
+async def _edit_catalog_message(
+    message: Message,
+    text: str,
+    reply_markup=None,
+    *,
+    photo: str | None = None,
+    preserve_photo: bool = False,
+) -> object:
+    return await edit_or_send_message(
+        message,
+        text,
+        reply_markup=reply_markup,
+        photo=photo,
+        preserve_photo=preserve_photo,
+    )
 
 
 def _format_price(price: Decimal) -> str:
@@ -167,44 +224,87 @@ async def send_product_detail(
     description = _product_description(product, lang)
     price = _format_price(product.price)
     unit = translator(f"units.{product.unit.value}")
-    in_stock = product.stock_qty > 0
-    stock = str(product.stock_qty) if in_stock else translator("catalog.out_of_stock")
+    policy = await get_inventory_policy(session)
+    minimum_quantity = policy.minimum_quantity(product)
+    in_stock = not policy.stock_tracking_enabled or product.stock_qty >= minimum_quantity
+    qty = max(minimum_quantity, qty)
+    if policy.stock_tracking_enabled and in_stock:
+        qty = min(qty, product.stock_qty)
 
-    if description:
+    card_name = escape(name)
+    card_description = escape(description)
+    if policy.stock_tracking_enabled:
+        stock = str(product.stock_qty) if in_stock else translator("catalog.out_of_stock")
+        if card_description:
+            text = translator(
+                "catalog.product_card",
+                name=card_name,
+                description=card_description,
+                price=price,
+                stock=stock,
+                unit=unit,
+            )
+        else:
+            text = translator(
+                "catalog.product_card_no_description",
+                name=card_name,
+                price=price,
+                stock=stock,
+                unit=unit,
+            )
+    elif card_description:
         text = translator(
-            "catalog.product_card",
-            name=name,
-            description=description,
+            "catalog.product_card_sourcing",
+            name=card_name,
+            description=card_description,
             price=price,
-            stock=stock,
             unit=unit,
         )
     else:
         text = translator(
-            "catalog.product_card_no_description",
-            name=name,
+            "catalog.product_card_no_description_sourcing",
+            name=card_name,
             price=price,
-            stock=stock,
             unit=unit,
         )
 
-    is_favorite = await favorite_service.is_favorite(session, user_id, product_id)
-    qty = max(1, min(qty, product.stock_qty)) if in_stock else qty
+    photo = _product_photo(product)
+    if photo is not None and _rendered_length(text) > 900:
+        if policy.stock_tracking_enabled:
+            text = translator(
+                "catalog.product_card_no_description",
+                name=card_name,
+                price=price,
+                stock=stock,
+                unit=unit,
+            )
+        else:
+            text = translator(
+                "catalog.product_card_no_description_sourcing",
+                name=card_name,
+                price=price,
+                unit=unit,
+            )
 
-    await send(
-        text,
-        reply_markup=product_detail_keyboard(
-            product_id=product_id,
-            origin=origin,
-            ref_id=ref_id,
-            page=page,
-            qty=qty,
-            in_stock=in_stock,
-            is_favorite=is_favorite,
-            back_callback_data=back_callback_data,
-            translator=translator,
-        ),
+    is_favorite = await favorite_service.is_favorite(session, user_id, product_id)
+    reply_markup = product_detail_keyboard(
+        product_id=product_id,
+        origin=origin,
+        ref_id=ref_id,
+        page=page,
+        qty=qty,
+        in_stock=in_stock,
+        is_favorite=is_favorite,
+        back_callback_data=back_callback_data,
+        translator=translator,
     )
+
+    try:
+        await send(text, reply_markup=reply_markup, photo=photo)
+    except TelegramBadRequest as error:
+        if photo is None or not _is_unavailable_product_photo(error):
+            raise
+        await send(text, reply_markup=reply_markup)
 
 
 @router.message(F.text.in_(menu_button_texts("menu.catalog")))
@@ -227,14 +327,15 @@ async def on_category_selected(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
-    async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+    async def edit(text: str, reply_markup=None, photo=None) -> object:
+        return await _edit_catalog_message(message, text, reply_markup, photo=photo)
 
     await send_category_level(
         edit, session, callback_data.category_id, lang=lang, translator=_
     )
-    await callback.answer()
 
 
 @router.callback_query(ProductListCallback.filter())
@@ -248,14 +349,15 @@ async def on_product_list_page(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
-    async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+    async def edit(text: str, reply_markup=None, photo=None) -> object:
+        return await _edit_catalog_message(message, text, reply_markup, photo=photo)
 
     await send_product_list(
         edit, session, callback_data.category_id, callback_data.page, lang=lang, translator=_
     )
-    await callback.answer()
 
 
 @router.callback_query(ProductCallback.filter())
@@ -270,9 +372,11 @@ async def on_product_selected(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
-    async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+    async def edit(text: str, reply_markup=None, photo=None) -> object:
+        return await _edit_catalog_message(message, text, reply_markup, photo=photo)
 
     back = ProductListCallback(
         category_id=callback_data.category_id, page=callback_data.page
@@ -289,7 +393,6 @@ async def on_product_selected(
         lang=lang,
         translator=_,
     )
-    await callback.answer()
 
 
 @router.callback_query(ProductQtyCallback.filter())
@@ -304,9 +407,13 @@ async def on_product_qty_change(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
-    async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+    async def edit(text: str, reply_markup=None, photo=None) -> object:
+        return await _edit_catalog_message(
+            message, text, reply_markup, photo=photo, preserve_photo=True
+        )
 
     delta = 1 if callback_data.action == "inc" else -1
     new_qty = max(1, callback_data.qty + delta)
@@ -325,7 +432,6 @@ async def on_product_qty_change(
         translator=_,
         track_view=False,
     )
-    await callback.answer()
 
 
 @router.callback_query(AddToCartCallback.filter())
@@ -336,17 +442,26 @@ async def on_add_to_cart(
     user: User,
     _: Callable,
 ) -> None:
+    if not await answer_callback_safely(callback):
+        return
+
+    async def send_feedback(text: str) -> None:
+        message = callback.message
+        send = getattr(message, "answer", None)
+        if callable(send):
+            await send(text)
+
     try:
         await cart_service.add_item(
             session, user.id, callback_data.product_id, callback_data.qty
         )
     except OutOfStockError:
-        await callback.answer(_("cart.out_of_stock_alert"), show_alert=True)
+        await send_feedback(_("cart.out_of_stock_alert"))
         return
     except ProductNotFoundError:
-        await callback.answer(_("common.not_found"), show_alert=True)
+        await send_feedback(_("common.not_found"))
         return
-    await callback.answer(_("cart.added_alert"))
+    await send_feedback(_("cart.added_alert"))
 
 
 @router.callback_query(FavoriteToggleCallback.filter())
@@ -361,6 +476,8 @@ async def on_favorite_toggle(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
     is_favorite = await favorite_service.is_favorite(
         session, user.id, callback_data.product_id
@@ -371,11 +488,13 @@ async def on_favorite_toggle(
         try:
             await favorite_service.add_favorite(session, user.id, callback_data.product_id)
         except ProductNotFoundError:
-            await callback.answer(_("common.not_found"), show_alert=True)
+            await message.answer(_("common.not_found"))
             return
 
-    async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+    async def edit(text: str, reply_markup=None, photo=None) -> object:
+        return await _edit_catalog_message(
+            message, text, reply_markup, photo=photo, preserve_photo=True
+        )
 
     back = _back_callback_for(callback_data.origin, callback_data.ref_id, callback_data.page)
     await send_product_detail(
@@ -391,12 +510,11 @@ async def on_favorite_toggle(
         translator=_,
         track_view=False,
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "noop")
 async def on_noop(callback: CallbackQuery) -> None:
-    await callback.answer()
+    await answer_callback_safely(callback)
 
 
 @router.callback_query(SearchPageCallback.filter())
@@ -411,17 +529,19 @@ async def on_search_page(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
     data = await state.get_data()
     query = data.get("search_query", "")
     result = await catalog_service.search_products(
         session, query, page=callback_data.page, limit=DEFAULT_CATALOG_PAGE_SIZE
     )
-    await message.edit_text(
+    await _edit_catalog_message(
+        message,
         _("catalog.search_results", query=query, count=result.total),
         reply_markup=search_results_keyboard(result, lang=lang, translator=_),
     )
-    await callback.answer()
 
 
 @router.callback_query(SearchProductCallback.filter())
@@ -436,9 +556,11 @@ async def on_search_product_selected(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
-    async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+    async def edit(text: str, reply_markup=None, photo=None) -> object:
+        return await _edit_catalog_message(message, text, reply_markup, photo=photo)
 
     back = SearchPageCallback(page=callback_data.page).pack()
     await send_product_detail(
@@ -453,7 +575,6 @@ async def on_search_product_selected(
         lang=lang,
         translator=_,
     )
-    await callback.answer()
 
 
 @router.message(StateFilter(None), F.text, ~F.text.startswith("/"))

@@ -1,10 +1,13 @@
 from decimal import Decimal
 from uuid import uuid4
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.models.cart import Cart, CartItem
 from app.db.models.product import Product
+from app.db.models.setting import Setting
+from app.db.repositories import setting_repository
 
 from .api_helpers import IMAGE_URL, ApiCase, make_api_case
 
@@ -95,6 +98,60 @@ async def test_new_empty_cart_serializes(test_engine: AsyncEngine) -> None:
 
         assert response.status_code == 200
         _assert_empty_cart(response.json())
+
+
+async def test_sourcing_public_product_hides_stock_and_cart_uses_one_minimum(
+    test_engine: AsyncEngine,
+) -> None:
+    async with make_api_case(test_engine) as case:
+        async with case.session_maker() as session:
+            existing_setting = await setting_repository.get(session, "stock_tracking_enabled")
+            previous_setting = (
+                (True, existing_setting.value, existing_setting.description)
+                if existing_setting is not None
+                else (False, None, None)
+            )
+            product = await session.get(Product, case.product_id)
+            assert product is not None
+            product.stock_qty = 3
+            product.min_order_qty = 12
+            await setting_repository.set_value(session, "stock_tracking_enabled", False)
+            await session.commit()
+        try:
+            public_settings = await case.client.get("/api/v1/settings/public")
+            public_product = await case.client.get(
+                f"/api/v1/catalog/products/{case.product_id}"
+            )
+            cart = await case.client.post(
+                "/api/v1/cart/items",
+                headers=_auth(case.token),
+                json={"product_id": case.product_id, "quantity": 1000},
+            )
+
+            assert public_settings.status_code == 200
+            assert public_settings.json()["stock_tracking_enabled"] is False
+            assert public_product.status_code == 200
+            assert public_product.json()["stock_qty"] is None
+            assert public_product.json()["min_order_qty"] == 1
+            assert public_product.json()["stock_tracking_enabled"] is False
+            assert cart.status_code == 201
+            assert cart.json()["items"][0]["quantity"] == 1000
+            assert cart.json()["items"][0]["product"]["stock_qty"] is None
+            assert cart.json()["items"][0]["product"]["min_order_qty"] == 1
+        finally:
+            async with case.session_maker() as session:
+                if previous_setting[0]:
+                    await setting_repository.set_value(
+                        session, "stock_tracking_enabled", previous_setting[1]
+                    )
+                    restored = await setting_repository.get(session, "stock_tracking_enabled")
+                    if restored is not None:
+                        restored.description = previous_setting[2]
+                else:
+                    await session.execute(
+                        delete(Setting).where(Setting.key == "stock_tracking_enabled")
+                    )
+                await session.commit()
 
 
 async def test_cart_api_isolates_users(test_engine: AsyncEngine) -> None:

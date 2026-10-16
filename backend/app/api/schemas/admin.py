@@ -409,6 +409,7 @@ STORE_SETTING_FIELDS = (
     "support_username",
     "shop_phone",
     "is_shop_open",
+    "stock_tracking_enabled",
     "welcome_text_uz",
     "welcome_text_ru",
 )
@@ -444,6 +445,7 @@ class StoreSettingsPatch(BaseModel):
     support_username: str | None = Field(default=None, max_length=32)
     shop_phone: str | None = Field(default=None, max_length=20)
     is_shop_open: bool | None = None
+    stock_tracking_enabled: bool = True
     welcome_text_uz: str | None = Field(default=None, max_length=4000)
     welcome_text_ru: str | None = Field(default=None, max_length=4000)
 
@@ -504,6 +506,13 @@ class StoreSettingsPatch(BaseModel):
             return value
         raise ValueError("is_shop_open must be a boolean or null")
 
+    @field_validator("stock_tracking_enabled", mode="before")
+    @classmethod
+    def require_boolean_stock_tracking(cls, value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        raise ValueError("stock_tracking_enabled must be a boolean")
+
 
 class StoreSettingsSnapshot(BaseModel):
     """Typed, secret-free view of the keys that can be configured by store staff."""
@@ -520,6 +529,7 @@ class StoreSettingsSnapshot(BaseModel):
     support_username: str | None
     shop_phone: str | None
     is_shop_open: bool | None
+    stock_tracking_enabled: bool
     welcome_text_uz: str | None
     welcome_text_ru: str | None
     readiness: dict[str, bool]

@@ -5,12 +5,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.api.schemas.catalog import CategoryOut, ProductOut
+from app.api.schemas.catalog import CategoryOut, ProductOut, public_product_out
 from app.api.schemas.common import PageOut
 from app.services import catalog_service
 from app.services.common import DEFAULT_CATALOG_PAGE_SIZE, PUBLIC_CATALOG_PAGE_SIZE
+from app.services.inventory_policy import InventoryPolicy, get_inventory_policy
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+
+def _public_page(result, policy: InventoryPolicy) -> PageOut[ProductOut]:
+    return PageOut[ProductOut](
+        items=[public_product_out(product, policy) for product in result.items],
+        total=result.total,
+        page=result.page,
+        limit=result.limit,
+        total_pages=result.total_pages,
+    )
 
 
 def _catalog_options(
@@ -56,10 +67,16 @@ async def list_category_products(
     options: catalog_service.CatalogFilters = Depends(_catalog_options),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
+    inventory_policy = await get_inventory_policy(session)
     result = await catalog_service.list_products(
-        session, category_id, page=page, limit=limit, filters=options
+        session,
+        category_id,
+        page=page,
+        limit=limit,
+        filters=options,
+        inventory_policy=inventory_policy,
     )
-    return PageOut[ProductOut].from_page(result)
+    return _public_page(result, inventory_policy)
 
 
 @router.get("/products", response_model=PageOut[ProductOut])
@@ -70,10 +87,16 @@ async def list_all_products(
     filters: catalog_service.CatalogFilters = Depends(_catalog_filters),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
+    inventory_policy = await get_inventory_policy(session)
     result = await catalog_service.list_public_products(
-        session, query=q, filters=filters, page=page, limit=limit
+        session,
+        query=q,
+        filters=filters,
+        page=page,
+        limit=limit,
+        inventory_policy=inventory_policy,
     )
-    return PageOut[ProductOut].from_page(result)
+    return _public_page(result, inventory_policy)
 
 
 @router.get("/featured", response_model=list[ProductOut])
@@ -82,7 +105,8 @@ async def list_featured_products(
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> list[ProductOut]:
     products = await catalog_service.list_featured_products(session, limit=limit)
-    return [ProductOut.model_validate(product) for product in products]
+    inventory_policy = await get_inventory_policy(session)
+    return [public_product_out(product, inventory_policy) for product in products]
 
 
 @router.get("/products/{product_id}", response_model=ProductOut)
@@ -90,7 +114,8 @@ async def get_product(
     product_id: int, session: AsyncSession = Depends(get_db, scope="function")
 ) -> ProductOut:
     product = await catalog_service.get_product(session, product_id, track_view=True)
-    return ProductOut.model_validate(product)
+    inventory_policy = await get_inventory_policy(session)
+    return public_product_out(product, inventory_policy)
 
 
 @router.get("/search", response_model=PageOut[ProductOut])
@@ -101,7 +126,13 @@ async def search_products(
     filters: catalog_service.CatalogFilters = Depends(_catalog_filters),
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
+    inventory_policy = await get_inventory_policy(session)
     result = await catalog_service.list_public_products(
-        session, query=q, filters=filters, page=page, limit=limit
+        session,
+        query=q,
+        filters=filters,
+        page=page,
+        limit=limit,
+        inventory_policy=inventory_policy,
     )
-    return PageOut[ProductOut].from_page(result)
+    return _public_page(result, inventory_policy)

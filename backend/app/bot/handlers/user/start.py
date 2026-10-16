@@ -141,8 +141,16 @@ async def _handle_deeplink(
         except ValueError:
             return
         back = CategoryCallback(category_id=ROOT_CATEGORY_ID).pack()
+
+        async def send_product(text: str, reply_markup=None, photo=None) -> object:
+            if photo is not None:
+                return await message.answer_photo(
+                    photo=photo, caption=text, reply_markup=reply_markup
+                )
+            return await message.answer(text, reply_markup=reply_markup)
+
         await send_product_detail(
-            message.answer,
+            send_product,
             session,
             product_id,
             user_id=user_id,

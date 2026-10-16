@@ -17,7 +17,8 @@ export function ProductCard({ product }: { product: Product }) {
   const name = localizedField(language, product, "name");
   const image = product.images.find((candidate) => candidate.is_main && candidate.url?.trim())
     ?? product.images.find((candidate) => candidate.url?.trim());
-  const outOfStock = product.stock_qty < Math.max(1, product.min_order_qty);
+  const stockTracked = product.stock_tracking_enabled !== false;
+  const outOfStock = stockTracked && (product.stock_qty ?? 0) < Math.max(1, product.min_order_qty);
   const catalogReturnTo = `${location.pathname}${location.search}`;
   const detailState = { catalogReturnTo, catalogScrollY: window.scrollY };
   const rememberCatalogScroll = () =>
@@ -98,12 +99,14 @@ export function ProductCard({ product }: { product: Product }) {
               <span className="text-xs text-slate-400 line-through">{formatExactPrice(product.old_price!)}</span>
             )}
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {t("product.stock", {
-              qty: product.stock_qty,
-              unit: t(productUnitTranslationKey[product.unit]),
-            })}
-          </p>
+          {stockTracked && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t("product.stock", {
+                qty: product.stock_qty ?? 0,
+                unit: t(productUnitTranslationKey[product.unit]),
+              })}
+            </p>
+          )}
           <p className="text-xs text-slate-500 dark:text-slate-400">{t("product.sku")}: {product.sku}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {t("product.min_order", { qty: product.min_order_qty })}
