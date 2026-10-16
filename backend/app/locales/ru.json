@@ -54,6 +54,7 @@
     "product_card_no_description": "<b>{name}</b>\n\n💰 Цена: {price} сум\n📦 Остаток: {stock} {unit}",
     "product_card_sourcing": "<b>{name}</b>\n\n{description}\n\n💰 Цена: {price} сум\n📦 Ед. изм.: {unit}",
     "product_card_no_description_sourcing": "<b>{name}</b>\n\n💰 Цена: {price} сум\n📦 Ед. изм.: {unit}",
+    "continue_shopping": "🛍 Продолжить покупки",
     "out_of_stock": "Нет в наличии ❌",
     "page_indicator": "📄 {page}/{total_pages}",
     "search_prompt": "🔎 Введите название товара для поиска:",

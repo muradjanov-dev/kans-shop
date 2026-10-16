@@ -77,6 +77,12 @@ class CartActionCallback(CallbackData, prefix="cart"):
     action: str  # "open" | "clear" | "clear_confirm" | "clear_cancel" | "checkout"
 
 
+class ContinueShoppingCallback(CallbackData, prefix="cshop"):
+    origin: str
+    ref_id: int
+    page: int
+
+
 # --- Checkout FSM ---
 class OrderTypeCallback(CallbackData, prefix="otype"):
     value: str  # OrderType.value

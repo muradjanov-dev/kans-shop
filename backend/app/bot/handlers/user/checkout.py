@@ -33,7 +33,6 @@ from app.bot.keyboards.inline.checkout import (
 )
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
 from app.bot.keyboards.reply.checkout import location_request_keyboard, phone_request_keyboard
-from app.bot.keyboards.reply.menu import browse_cart_keyboard
 from app.bot.states.checkout import CheckoutStates
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.bot.utils.messages import answer_callback_safely, require_message
@@ -178,9 +177,7 @@ async def _cancel_checkout(
     message: Message, state: FSMContext, translator: Callable[..., str]
 ) -> None:
     await state.clear()
-    await message.answer(
-        translator("checkout.cancelled"), reply_markup=browse_cart_keyboard(translator)
-    )
+    await message.answer(translator("checkout.cancelled"), reply_markup=ReplyKeyboardRemove())
     await message.answer(
         translator("menu.choose_action"),
         reply_markup=main_menu_inline_keyboard(translator),
@@ -910,7 +907,7 @@ async def on_confirm(
     await state.clear()
     await message.answer(
         _("checkout.success", order_number=order.order_number, summary=summary),
-        reply_markup=browse_cart_keyboard(_),
+        reply_markup=ReplyKeyboardRemove(),
     )
 
     if order.payment_method == PaymentMethod.TENDER:

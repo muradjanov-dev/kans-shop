@@ -1,7 +1,37 @@
+import logging
 from collections.abc import Awaitable, Callable
 
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, InaccessibleMessage, InputMediaPhoto, Message
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
+from aiogram.types import (
+    CallbackQuery,
+    InaccessibleMessage,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Message,
+    ReplyKeyboardRemove,
+)
+
+logger = logging.getLogger(__name__)
+
+
+async def answer_with_inline_keyboard(
+    message: Message,
+    text: str,
+    *,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> Message | bool:
+    """Replace a legacy reply keyboard and attach inline choices to the same visible text."""
+    sent_message = await message.answer(text, reply_markup=ReplyKeyboardRemove())
+    if reply_markup is None:
+        return sent_message
+    try:
+        return await sent_message.edit_reply_markup(reply_markup=reply_markup)
+    except TelegramAPIError as error:
+        logger.warning(
+            "inline keyboard attachment failed after message delivery",
+            extra={"telegram_error_type": type(error).__name__},
+        )
+        return sent_message
 
 
 def _is_expired_callback_query(error: TelegramBadRequest) -> bool:
@@ -95,6 +125,8 @@ async def _edit_or_keep_message(
         return await edit()
     except TelegramBadRequest as error:
         error_message = getattr(error, "message", str(error)).casefold().strip()
+        if error_message.startswith("bad request:"):
+            error_message = error_message.removeprefix("bad request:").strip()
         if error_message.startswith("message is not modified"):
             return message
         raise

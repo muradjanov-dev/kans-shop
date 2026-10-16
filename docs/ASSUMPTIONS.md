@@ -311,10 +311,13 @@ production cutover remain separate release requirements.
 - The stored `manager` role is displayed as **Admin** in both languages. It retains full
   business access; team CRUD and session revocation remain restricted to `superadmin`.
   New staff forms default to Admin. Existing Operator accounts retain their permissions.
-- Catalog browsing exposes a persistent Cart reply button and inline cart shortcuts on
-  product cards and add confirmations. Checkout removes the browsing reply keyboard before
-  accepting customer text, and restores it when the wizard finishes. Explicit cart navigation
-  clears a draft checkout without changing cart contents.
+- Product cards show quantity selection and Add to cart. After a successful add, one
+  confirmation offers Continue shopping and Go to cart. Continue returns to the same category
+  or search results page, with a root catalog fallback when context is unavailable.
+  Browsing does not install a persistent Cart reply keyboard; customer entry points and add
+  confirmations clear keyboards cached from older releases. Checkout retains its phone and
+  location keyboards. Explicit cart navigation clears a draft checkout without changing cart
+  contents.
 - `WEBAPP_ENTRY_VERSION` versions customer and admin entry URLs independently of `WEBAPP_URL`,
   preserving the base origin/payment URLs. Webhook startup updates the global Telegram WebApp
   menu. SPA HTML is not cached; hashed assets retain immutable caching and missing assets stay

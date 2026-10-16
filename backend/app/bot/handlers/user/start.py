@@ -7,6 +7,7 @@ from aiogram.types import (
     CallbackQuery,
     InaccessibleMessage,
     Message,
+    ReplyKeyboardRemove,
 )
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +22,9 @@ from app.bot.keyboards.callback_data import (
 )
 from app.bot.keyboards.inline.language import language_keyboard
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
-from app.bot.keyboards.reply.menu import browse_cart_keyboard
 from app.bot.states.receipt_redirect import ReceiptRedirectStates
 from app.bot.utils.i18n import translate
+from app.bot.utils.messages import answer_with_inline_keyboard
 from app.core.exceptions import (
     ForbiddenError,
     OrderAlreadyProcessedError,
@@ -195,13 +196,15 @@ async def cmd_start(
         )
 
     if is_new_user:
-        await message.answer(_("start.choose_language"), reply_markup=language_keyboard())
+        await answer_with_inline_keyboard(
+            message, _("start.choose_language"), reply_markup=language_keyboard()
+        )
         return
 
     is_admin = admin is not None and admin.is_active
     welcome = _("start.welcome", name=user.first_name)
     if await state.get_state() is None:
-        await message.answer(welcome, reply_markup=browse_cart_keyboard(_))
+        await message.answer(welcome, reply_markup=ReplyKeyboardRemove())
     else:
         await message.answer(welcome)
     await message.answer(
@@ -243,7 +246,7 @@ async def on_language_selected(
         await message.edit_text(translator("start.language_set"))
         await message.answer(
             translator("start.welcome", name=user.first_name),
-            reply_markup=browse_cart_keyboard(translator),
+            reply_markup=ReplyKeyboardRemove(),
         )
         await message.answer(
             translator("menu.choose_action"),

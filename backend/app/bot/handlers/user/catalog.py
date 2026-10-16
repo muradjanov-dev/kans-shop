@@ -16,6 +16,7 @@ from app.bot.keyboards.callback_data import (
     ROOT_CATEGORY_ID,
     AddToCartCallback,
     CategoryCallback,
+    ContinueShoppingCallback,
     FavoriteToggleCallback,
     ProductCallback,
     ProductListCallback,
@@ -23,17 +24,17 @@ from app.bot.keyboards.callback_data import (
     SearchPageCallback,
     SearchProductCallback,
 )
-from app.bot.keyboards.inline.cart import cart_open_keyboard
+from app.bot.keyboards.inline.cart import post_add_keyboard
 from app.bot.keyboards.inline.catalog import (
     categories_keyboard,
     product_detail_keyboard,
     product_list_keyboard,
     search_results_keyboard,
 )
-from app.bot.keyboards.reply.menu import install_browse_cart_keyboard
 from app.bot.utils.i18n import menu_button_texts
 from app.bot.utils.messages import (
     answer_callback_safely,
+    answer_with_inline_keyboard,
     edit_or_send_message,
     require_message,
 )
@@ -184,11 +185,16 @@ async def send_product_list(
     result = await catalog_service.list_products(
         session, category_id, page=page, limit=DEFAULT_CATALOG_PAGE_SIZE
     )
+    back_target = category.parent_id if category.parent_id is not None else ROOT_CATEGORY_ID
     if not result.items:
-        await send(translator("catalog.empty_category"))
+        await send(
+            translator("catalog.empty_category"),
+            reply_markup=categories_keyboard(
+                [], lang=lang, translator=translator, back_target=back_target
+            ),
+        )
         return
 
-    back_target = category.parent_id if category.parent_id is not None else ROOT_CATEGORY_ID
     await send(
         _category_name(category, lang),
         reply_markup=product_list_keyboard(
@@ -313,10 +319,10 @@ async def send_product_detail(
 async def open_catalog(
     message: Message, session: AsyncSession, lang: str, _: Callable
 ) -> None:
-    await install_browse_cart_keyboard(message.answer, _)
-    await send_category_level(
-        message.answer, session, ROOT_CATEGORY_ID, lang=lang, translator=_
-    )
+    async def send(text: str, reply_markup=None) -> object:
+        return await answer_with_inline_keyboard(message, text, reply_markup=reply_markup)
+
+    await send_category_level(send, session, ROOT_CATEGORY_ID, lang=lang, translator=_)
 
 
 @router.callback_query(CategoryCallback.filter())
@@ -445,29 +451,114 @@ async def on_add_to_cart(
     user: User,
     _: Callable,
 ) -> None:
+    message = await require_message(callback, _)
+    if message is None:
+        return
     if not await answer_callback_safely(callback):
         return
-
-    async def send_feedback(text: str, reply_markup=None) -> None:
-        message = callback.message
-        send = getattr(message, "answer", None)
-        if callable(send):
-            if reply_markup is None:
-                await send(text)
-            else:
-                await send(text, reply_markup=reply_markup)
 
     try:
         await cart_service.add_item(
             session, user.id, callback_data.product_id, callback_data.qty
         )
     except OutOfStockError:
-        await send_feedback(_("cart.out_of_stock_alert"))
+        await answer_with_inline_keyboard(message, _("cart.out_of_stock_alert"))
         return
     except ProductNotFoundError:
-        await send_feedback(_("common.not_found"))
+        await answer_with_inline_keyboard(message, _("common.not_found"))
         return
-    await send_feedback(_("cart.added_alert"), cart_open_keyboard(_))
+    await answer_with_inline_keyboard(
+        message,
+        _("cart.added_alert"),
+        reply_markup=post_add_keyboard(
+            _,
+            origin=callback_data.origin,
+            ref_id=callback_data.ref_id,
+            page=callback_data.page,
+        ),
+    )
+
+
+@router.callback_query(ContinueShoppingCallback.filter())
+async def on_continue_shopping(
+    callback: CallbackQuery,
+    callback_data: ContinueShoppingCallback,
+    session: AsyncSession,
+    lang: str,
+    _: Callable,
+    state: FSMContext,
+) -> None:
+    message = await require_message(callback, _)
+    if message is None:
+        return
+    if not await answer_callback_safely(callback):
+        return
+
+    search_query = ""
+    if callback_data.origin == ORIGIN_SEARCH:
+        data = await state.get_data()
+        value = data.get("search_query")
+        search_query = value.strip() if isinstance(value, str) else ""
+
+    if await state.get_state() is not None:
+        await state.clear()
+        if search_query:
+            await state.update_data(search_query=search_query)
+
+    async def edit(text: str, reply_markup=None) -> object:
+        return await _edit_catalog_message(message, text, reply_markup)
+
+    if callback_data.origin == ORIGIN_SEARCH and search_query:
+        result = await catalog_service.search_products(
+            session,
+            search_query,
+            page=callback_data.page,
+            limit=DEFAULT_CATALOG_PAGE_SIZE,
+        )
+        if not result.items:
+            await send_category_level(
+                edit,
+                session,
+                ROOT_CATEGORY_ID,
+                lang=lang,
+                translator=_,
+            )
+            return
+        await edit(
+            _("catalog.search_results", query=search_query, count=result.total),
+            reply_markup=search_results_keyboard(result, lang=lang, translator=_),
+        )
+        return
+
+    if callback_data.origin == ORIGIN_CATEGORY and callback_data.ref_id > ROOT_CATEGORY_ID:
+        try:
+            await catalog_service.get_category(session, callback_data.ref_id)
+        except CategoryNotFoundError:
+            await send_category_level(
+                edit,
+                session,
+                ROOT_CATEGORY_ID,
+                lang=lang,
+                translator=_,
+            )
+            return
+        await send_product_list(
+            edit,
+            session,
+            callback_data.ref_id,
+            callback_data.page,
+            lang=lang,
+            translator=_,
+        )
+        return
+
+    await send_category_level(
+        edit,
+        session,
+        ROOT_CATEGORY_ID,
+        lang=lang,
+        translator=_,
+    )
 
 
 @router.callback_query(FavoriteToggleCallback.filter())

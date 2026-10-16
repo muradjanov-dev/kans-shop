@@ -14,7 +14,6 @@ from app.bot.keyboards.callback_data import (
     SearchPageCallback,
     SearchProductCallback,
 )
-from app.bot.keyboards.inline.cart import cart_open_button
 from app.db.models.category import Category
 from app.db.models.product import Product
 from app.services.common import Page
@@ -183,7 +182,6 @@ def product_detail_keyboard(
                 ).pack(),
             )
         )
-    builder.row(cart_open_button(translator))
     fav_text = (
         translator("favorites.remove_button")
         if is_favorite

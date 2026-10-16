@@ -13,9 +13,12 @@ from app.bot.handlers.user.orders import render_orders
 from app.bot.keyboards.callback_data import ROOT_CATEGORY_ID, MenuCallback
 from app.bot.keyboards.inline.language import language_keyboard
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
-from app.bot.keyboards.reply.menu import install_browse_cart_keyboard
 from app.bot.utils.i18n import menu_button_texts
-from app.bot.utils.messages import answer_callback_safely, require_message
+from app.bot.utils.messages import (
+    answer_callback_safely,
+    answer_with_inline_keyboard,
+    require_message,
+)
 from app.db.models.admin import Admin
 from app.db.models.user import User
 from app.db.repositories import setting_repository
@@ -30,17 +33,14 @@ async def send_main_menu(
     is_admin: bool = False,
     clear_reply_keyboard: bool = False,
 ) -> None:
-    """Send the inline main menu and, when requested, install the customer cart shortcut.
-
-    The cart reply keyboard uses its own message because Telegram does not allow reply and
-    inline keyboards on the same message.
-    """
-    await message.answer(
-        translator("menu.choose_action"),
-        reply_markup=main_menu_inline_keyboard(translator, is_admin=is_admin),
-    )
+    """Send the inline main menu, replacing any reply keyboard when requested."""
+    keyboard = main_menu_inline_keyboard(translator, is_admin=is_admin)
     if clear_reply_keyboard:
-        await install_browse_cart_keyboard(message.answer, translator)
+        await answer_with_inline_keyboard(
+            message, translator("menu.choose_action"), reply_markup=keyboard
+        )
+    else:
+        await message.answer(translator("menu.choose_action"), reply_markup=keyboard)
 
 
 async def _about_text(translator: Callable[..., str]) -> str:
@@ -94,23 +94,23 @@ async def on_menu_action(
     # so the chosen section is not swallowed by a state filter.
     await state.clear()
 
+    async def send(text: str, reply_markup=None) -> object:
+        return await answer_with_inline_keyboard(message, text, reply_markup=reply_markup)
+
     if action == "catalog":
-        await install_browse_cart_keyboard(message.answer, _)
-        await send_category_level(
-            message.answer, session, ROOT_CATEGORY_ID, lang=lang, translator=_
-        )
+        await send_category_level(send, session, ROOT_CATEGORY_ID, lang=lang, translator=_)
     elif action == "cart":
-        await render_cart(message.answer, session, user.id, lang=lang, translator=_)
+        await render_cart(send, session, user.id, lang=lang, translator=_)
     elif action == "orders":
-        await render_orders(message.answer, session, user.id, translator=_)
+        await render_orders(send, session, user.id, translator=_)
     elif action == "favorites":
-        await render_favorites(message.answer, session, user.id, lang=lang, translator=_)
+        await render_favorites(send, session, user.id, lang=lang, translator=_)
     elif action == "about":
-        await message.answer(await _about_text(_))
+        await send(await _about_text(_))
     elif action == "contact":
-        await message.answer(await _contact_text(session, _))
+        await send(await _contact_text(session, _))
     elif action == "settings":
-        await message.answer(_("settings.text"), reply_markup=language_keyboard())
+        await send(_("settings.text"), reply_markup=language_keyboard())
     elif action == "admin":
         from app.bot.handlers.admin.menu import render_admin_menu
 

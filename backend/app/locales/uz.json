@@ -54,6 +54,7 @@
     "product_card_no_description": "<b>{name}</b>\n\n💰 Narx: {price} so'm\n📦 Qoldiq: {stock} {unit}",
     "product_card_sourcing": "<b>{name}</b>\n\n{description}\n\n💰 Narx: {price} so'm\n📦 O'lchov: {unit}",
     "product_card_no_description_sourcing": "<b>{name}</b>\n\n💰 Narx: {price} so'm\n📦 O'lchov: {unit}",
+    "continue_shopping": "🛍 Xaridni davom ettirish",
     "out_of_stock": "Mavjud emas ❌",
     "page_indicator": "📄 {page}/{total_pages}",
     "search_prompt": "🔎 Qidirmoqchi bo'lgan mahsulot nomini yozing:",
