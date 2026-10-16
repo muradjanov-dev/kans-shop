@@ -82,6 +82,13 @@ def _snapshot_from_values(*, values: dict[str, object], version: int) -> StoreSe
     shop_phone = _optional_string(values, "shop_phone", states)
     welcome_text_uz = _optional_string(values, "welcome_text_uz", states)
     welcome_text_ru = _optional_string(values, "welcome_text_ru", states)
+    stock_tracking_value = values.get("stock_tracking_enabled", True)
+    if isinstance(stock_tracking_value, bool):
+        stock_tracking_enabled = stock_tracking_value
+        states["stock_tracking_enabled"] = "valid"
+    else:
+        stock_tracking_enabled = True
+        states["stock_tracking_enabled"] = "malformed"
 
     readiness = {key: states.get(key) == "valid" for key in STORE_SETTING_FIELDS}
 
@@ -100,6 +107,7 @@ def _snapshot_from_values(*, values: dict[str, object], version: int) -> StoreSe
         support_username=support_username,
         shop_phone=shop_phone,
         is_shop_open=checkout.is_shop_open,
+        stock_tracking_enabled=stock_tracking_enabled,
         welcome_text_uz=welcome_text_uz,
         welcome_text_ru=welcome_text_ru,
         readiness=readiness,

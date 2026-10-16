@@ -279,6 +279,7 @@ async def test_public_settings_has_only_allowlisted_customer_fields(
             "support_username",
             "shop_phone",
             "is_shop_open",
+            "stock_tracking_enabled",
             "welcome_text_uz",
             "welcome_text_ru",
             "enabled_payment_providers",

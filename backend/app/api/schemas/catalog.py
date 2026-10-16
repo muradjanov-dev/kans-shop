@@ -3,6 +3,8 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict
 
 from app.db.models.enums import ProductUnit
+from app.db.models.product import Product
+from app.services.inventory_policy import InventoryPolicy
 
 
 class CategoryOut(BaseModel):
@@ -44,7 +46,8 @@ class ProductOut(BaseModel):
     sku: str
     price: Decimal
     old_price: Decimal | None
-    stock_qty: int
+    stock_qty: int | None
+    stock_tracking_enabled: bool = True
     unit: ProductUnit
     min_order_qty: int
     is_active: bool
@@ -54,3 +57,17 @@ class ProductOut(BaseModel):
     sold_count: int
     edit_version: int
     images: list[ProductImageOut] = []
+
+
+def public_product_out(product: Product, inventory_policy: InventoryPolicy) -> ProductOut:
+    """Project internal inventory onto the public product contract."""
+    result = ProductOut.model_validate(product)
+    return result.model_copy(
+        update={
+            "stock_qty": (
+                product.stock_qty if inventory_policy.stock_tracking_enabled else None
+            ),
+            "stock_tracking_enabled": inventory_policy.stock_tracking_enabled,
+            "min_order_qty": inventory_policy.minimum_quantity(product),
+        }
+    )

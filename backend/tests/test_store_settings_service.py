@@ -33,6 +33,7 @@ SETTING_FIELDS = {
     "support_username",
     "shop_phone",
     "is_shop_open",
+    "stock_tracking_enabled",
     "welcome_text_uz",
     "welcome_text_ru",
 }
@@ -217,6 +218,10 @@ async def test_settings_validation_and_null_readiness(test_engine: AsyncEngine) 
         StoreSettingsPatch.model_validate({"expected_version": 0, "is_shop_open": "false"})
     with pytest.raises(ValidationError):
         StoreSettingsPatch.model_validate(
+            {"expected_version": 0, "stock_tracking_enabled": "false"}
+        )
+    with pytest.raises(ValidationError):
+        StoreSettingsPatch.model_validate(
             {"expected_version": 0, "support_phone": "+998901234567"}
         )
     with pytest.raises(ValidationError):
@@ -241,7 +246,13 @@ async def test_settings_validation_and_null_readiness(test_engine: AsyncEngine) 
                 assert initial_body["min_order_amount"] is None
                 assert initial_body["work_hours"] is None
                 assert initial_body["is_shop_open"] is None
-                assert all(value is False for value in initial_body["readiness"].values())
+                assert initial_body["stock_tracking_enabled"] is True
+                assert initial_body["readiness"]["stock_tracking_enabled"] is True
+                assert all(
+                    value is False
+                    for key, value in initial_body["readiness"].items()
+                    if key != "stock_tracking_enabled"
+                )
 
                 invalid_negative = await case.client.patch(
                     "/api/v1/admin/settings",
@@ -265,6 +276,7 @@ async def test_settings_validation_and_null_readiness(test_engine: AsyncEngine) 
                         "free_delivery_from": "0.00",
                         "min_order_amount": "0",
                         "is_shop_open": False,
+                        "stock_tracking_enabled": False,
                         "work_hours": None,
                     },
                 )
@@ -278,11 +290,14 @@ async def test_settings_validation_and_null_readiness(test_engine: AsyncEngine) 
                 assert body["readiness"]["min_order_amount"] is True
                 assert body["readiness"]["is_shop_open"] is True
                 assert body["is_shop_open"] is False
+                assert body["stock_tracking_enabled"] is False
+                assert body["readiness"]["stock_tracking_enabled"] is True
                 assert body["work_hours"] is None
                 assert body["readiness"]["work_hours"] is False
 
                 public = await case.client.get("/api/v1/settings/public")
                 assert public.status_code == 200
+                assert public.json()["stock_tracking_enabled"] is False
                 assert isinstance(public.json()["delivery_fee"], (int, float))
                 assert not isinstance(public.json()["delivery_fee"], str)
 

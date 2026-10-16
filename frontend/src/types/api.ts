@@ -106,7 +106,8 @@ export interface Product {
   sku: string;
   price: string;
   old_price: string | null;
-  stock_qty: number;
+  stock_qty: number | null;
+  stock_tracking_enabled?: boolean;
   unit: ProductUnit;
   min_order_qty: number;
   is_active: boolean;
@@ -210,6 +211,7 @@ export interface LotLinksResponse {
 }
 
 export interface PublicSettings {
+  stock_tracking_enabled?: boolean;
   delivery_fee: number | null;
   free_delivery_from: number | null;
   min_order_amount: number | null;

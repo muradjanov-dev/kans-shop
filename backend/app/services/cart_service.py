@@ -10,6 +10,7 @@ from app.core.exceptions import (
 from app.db.models.cart import Cart, CartItem
 from app.db.models.product import Product
 from app.db.repositories import cart_repository, product_repository
+from app.services.inventory_policy import get_inventory_policy
 from app.services.purchase_locks import lock_customer_cart
 
 
@@ -51,12 +52,15 @@ async def add_item_to_locked_cart(
 ) -> CartItem:
     """Apply an add delta after the caller has taken the customer/cart locks."""
     product = await _get_active_product(session, product_id, for_update=True)
+    inventory_policy = await get_inventory_policy(session)
     existing = await cart_repository.get_item(session, cart.id, product_id)
 
     new_quantity = (
-        existing.quantity + quantity if existing else max(quantity, product.min_order_qty)
+        existing.quantity + quantity
+        if existing
+        else max(quantity, inventory_policy.minimum_quantity(product))
     )
-    if new_quantity > product.stock_qty:
+    if inventory_policy.stock_tracking_enabled and new_quantity > product.stock_qty:
         raise OutOfStockError(
             f"Only {product.stock_qty} left for {product.sku}",
             details={"product_id": product.id, "available": product.stock_qty},
@@ -82,12 +86,14 @@ async def update_item_quantity(
         return None
 
     product = await _get_active_product(session, product_id, for_update=True)
-    if quantity < product.min_order_qty:
+    inventory_policy = await get_inventory_policy(session)
+    minimum_quantity = inventory_policy.minimum_quantity(product)
+    if quantity < minimum_quantity:
         raise MinimumOrderQuantityError(
-            f"Minimum order quantity for {product.sku} is {product.min_order_qty}",
-            details={"product_id": product.id, "minimum": product.min_order_qty},
+            f"Minimum order quantity for {product.sku} is {minimum_quantity}",
+            details={"product_id": product.id, "minimum": minimum_quantity},
         )
-    if quantity > product.stock_qty:
+    if inventory_policy.stock_tracking_enabled and quantity > product.stock_qty:
         raise OutOfStockError(
             f"Only {product.stock_qty} left for {product.sku}",
             details={"product_id": product.id, "available": product.stock_qty},

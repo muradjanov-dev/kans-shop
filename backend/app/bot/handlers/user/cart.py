@@ -9,11 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.keyboards.callback_data import CartActionCallback, CartItemQtyCallback
 from app.bot.keyboards.inline.cart import cart_clear_confirm_keyboard, cart_keyboard
 from app.bot.utils.i18n import menu_button_texts
-from app.bot.utils.messages import require_message
+from app.bot.utils.messages import (
+    answer_callback_safely,
+    edit_or_send_message,
+    require_message,
+)
 from app.core.exceptions import OutOfStockError
 from app.db.models.cart import Cart
 from app.db.models.user import User
 from app.services import cart_service
+from app.services.inventory_policy import get_inventory_policy
 
 router = Router(name="cart")
 
@@ -80,9 +85,11 @@ async def on_cart_item_action(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
     async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+        return await edit_or_send_message(message, text, reply_markup=reply_markup)
 
     if callback_data.action == "remove":
         await cart_service.remove_item(session, user.id, callback_data.product_id)
@@ -91,16 +98,20 @@ async def on_cart_item_action(
         item = next((i for i in cart.items if i.product_id == callback_data.product_id), None)
         current_qty = item.quantity if item else 0
         delta = 1 if callback_data.action == "inc" else -1
+        if item is not None:
+            policy = await get_inventory_policy(session)
+            new_quantity = max(policy.minimum_quantity(item.product), current_qty + delta)
+        else:
+            new_quantity = current_qty + delta
         try:
             await cart_service.update_item_quantity(
-                session, user.id, callback_data.product_id, current_qty + delta
+                session, user.id, callback_data.product_id, new_quantity
             )
         except OutOfStockError:
-            await callback.answer(_("cart.out_of_stock_alert"), show_alert=True)
+            await message.answer(_("cart.out_of_stock_alert"))
             return
 
     await render_cart(edit, session, user.id, lang=lang, translator=_)
-    await callback.answer()
 
 
 @router.callback_query(CartActionCallback.filter(F.action == "clear"))
@@ -110,14 +121,14 @@ async def on_cart_clear_request(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
     cart = await cart_service.get_cart(session, user.id)
     if not cart.items:
-        await callback.answer()
         return
     await message.edit_text(
         _("cart.clear_confirm"), reply_markup=cart_clear_confirm_keyboard(_)
     )
-    await callback.answer()
 
 
 @router.callback_query(CartActionCallback.filter(F.action == "clear_confirm"))
@@ -127,13 +138,15 @@ async def on_cart_clear_confirm(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
     async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+        return await edit_or_send_message(message, text, reply_markup=reply_markup)
 
     await cart_service.clear_cart(session, user.id)
     await render_cart(edit, session, user.id, lang=lang, translator=_)
-    await callback.answer(_("cart.cleared"))
+    await message.answer(_("cart.cleared"))
 
 
 @router.callback_query(CartActionCallback.filter(F.action == "clear_cancel"))
@@ -143,9 +156,10 @@ async def on_cart_clear_cancel(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
     async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+        return await edit_or_send_message(message, text, reply_markup=reply_markup)
 
     await render_cart(edit, session, user.id, lang=lang, translator=_)
-    await callback.answer()

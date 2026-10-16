@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.keyboards.callback_data import FavoriteRemoveCallback
 from app.bot.keyboards.inline.favorites import favorites_keyboard
 from app.bot.utils.i18n import menu_button_texts
-from app.bot.utils.messages import require_message
+from app.bot.utils.messages import (
+    answer_callback_safely,
+    edit_or_send_message,
+    require_message,
+)
 from app.db.models.user import User
 from app.services import favorite_service
 
@@ -69,10 +73,12 @@ async def on_favorite_remove(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
     async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+        return await edit_or_send_message(message, text, reply_markup=reply_markup)
 
     await favorite_service.remove_favorite(session, user.id, callback_data.product_id)
     await render_favorites(edit, session, user.id, lang=lang, translator=_)
-    await callback.answer(_("favorites.removed"))
+    await message.answer(_("favorites.removed"))

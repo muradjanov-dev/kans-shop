@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
-from app.api.schemas.catalog import ProductOut
+from app.api.schemas.catalog import ProductOut, public_product_out
 from app.api.schemas.common import PageOut
 from app.api.schemas.favorites import FavoriteStateOut
 from app.db.models.user import User
 from app.services import favorite_service
+from app.services.inventory_policy import get_inventory_policy
 
 router = APIRouter(prefix="/favorites", tags=["favorites"])
 
@@ -19,7 +20,14 @@ async def list_favorites(
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> PageOut[ProductOut]:
     result = await favorite_service.list_favorites(session, user.id, page=page, limit=limit)
-    return PageOut[ProductOut].from_page(result)
+    inventory_policy = await get_inventory_policy(session)
+    return PageOut[ProductOut](
+        items=[public_product_out(product, inventory_policy) for product in result.items],
+        total=result.total,
+        page=result.page,
+        limit=result.limit,
+        total_pages=result.total_pages,
+    )
 
 
 @router.get("/{product_id}", response_model=FavoriteStateOut)

@@ -10,6 +10,7 @@ from app.db.models.category import Category
 from app.db.models.product import Product
 from app.db.repositories import category_repository, product_repository
 from app.services.common import DEFAULT_CATALOG_PAGE_SIZE, PUBLIC_CATALOG_PAGE_SIZE, Page
+from app.services.inventory_policy import InventoryPolicy, get_inventory_policy
 
 CatalogSort = Literal["default", "price_asc", "price_desc", "newest"]
 
@@ -53,6 +54,7 @@ async def list_products(
     page: int = 1,
     limit: int = DEFAULT_CATALOG_PAGE_SIZE,
     filters: CatalogFilters | None = None,
+    inventory_policy: InventoryPolicy | None = None,
 ) -> Page[Product]:
     await get_category(session, category_id)
     return await list_public_products(
@@ -61,6 +63,7 @@ async def list_products(
         filters=replace(filters or CatalogFilters(), category_id=category_id),
         page=page,
         limit=limit,
+        inventory_policy=inventory_policy,
     )
 
 
@@ -71,6 +74,7 @@ async def list_public_products(
     filters: CatalogFilters,
     page: int = 1,
     limit: int = PUBLIC_CATALOG_PAGE_SIZE,
+    inventory_policy: InventoryPolicy | None = None,
 ) -> Page[Product]:
     if (
         filters.min_price is not None
@@ -81,13 +85,14 @@ async def list_public_products(
     normalized_query = query.strip() if query is not None else None
     if query is not None and not normalized_query:
         return Page(items=[], total=0, page=page, limit=limit)
+    inventory_policy = inventory_policy or await get_inventory_policy(session)
     items, total = await product_repository.list_public(
         session,
         query=normalized_query,
         category_id=filters.category_id,
         min_price=filters.min_price,
         max_price=filters.max_price,
-        in_stock=filters.in_stock,
+        in_stock=filters.in_stock and inventory_policy.stock_tracking_enabled,
         sort=filters.sort,
         page=page,
         limit=limit,
@@ -107,7 +112,12 @@ async def get_product(
 
 
 async def search_products(
-    session: AsyncSession, query: str, *, page: int = 1, limit: int = DEFAULT_CATALOG_PAGE_SIZE
+    session: AsyncSession,
+    query: str,
+    *,
+    page: int = 1,
+    limit: int = DEFAULT_CATALOG_PAGE_SIZE,
+    inventory_policy: InventoryPolicy | None = None,
 ) -> Page[Product]:
     return await list_public_products(
         session,
@@ -115,6 +125,7 @@ async def search_products(
         filters=CatalogFilters(),
         page=page,
         limit=limit,
+        inventory_policy=inventory_policy,
     )
 
 

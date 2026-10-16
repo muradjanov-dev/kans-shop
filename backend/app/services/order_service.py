@@ -329,7 +329,8 @@ async def cancel_order(
                 session, item.product_id, for_update=True
             )
             if product is not None:
-                await product_repository.adjust_stock(session, product, item.quantity)
+                if order.stock_deducted:
+                    await product_repository.adjust_stock(session, product, item.quantity)
                 await product_repository.increment_sold(session, product, -item.quantity)
 
     history = await order_repository.add_status_history(

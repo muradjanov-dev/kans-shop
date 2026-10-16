@@ -98,7 +98,15 @@ export function CatalogPage() {
     }
   }, [categoryTree.isLoading, query.category, selectedCategory, updateParams]);
 
-  const catalog = useCatalog({ ...query, q: debouncedQuery, category: query.category });
+  const settingsQuery = usePublicSettings();
+  const stockTrackingEnabled = settingsQuery.data?.stock_tracking_enabled !== false;
+  const catalogQuery = {
+    ...query,
+    q: debouncedQuery,
+    category: query.category,
+    in_stock: stockTrackingEnabled && query.in_stock,
+  };
+  const catalog = useCatalog(catalogQuery);
   const lastCatalogPage = catalog.pages.at(-1);
   useEffect(() => {
     const lastAvailablePage = lastCatalogPage ? Math.max(1, lastCatalogPage.total_pages) : null;
@@ -107,7 +115,6 @@ export function CatalogPage() {
     }
   }, [lastCatalogPage, query.page, updateParams]);
   const featuredQuery = useFeaturedProducts();
-  const settingsQuery = usePublicSettings();
   const welcomeText = language === "ru"
     ? settingsQuery.data?.welcome_text_ru?.trim()
     : settingsQuery.data?.welcome_text_uz?.trim();
@@ -124,7 +131,7 @@ export function CatalogPage() {
   }
 
   const hasActiveFilters = Boolean(
-    query.q.trim() || query.category || query.min_price || query.max_price || query.in_stock || query.sort !== "default",
+    query.q.trim() || query.category || query.min_price || query.max_price || (stockTrackingEnabled && query.in_stock) || query.sort !== "default",
   );
 
   return (
@@ -168,10 +175,11 @@ export function CatalogPage() {
         <CatalogFilters
           onChange={updateFilters}
           onClear={() => updateParams({}, true)}
+          showStockFilter={stockTrackingEnabled}
           values={{
             min_price: query.min_price,
             max_price: query.max_price,
-            in_stock: query.in_stock,
+            in_stock: catalogQuery.in_stock,
             sort: query.sort,
           }}
         />

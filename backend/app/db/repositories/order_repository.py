@@ -44,6 +44,7 @@ async def create(
     checkout_key: str | None = None,
     checkout_fingerprint: str | None = None,
     payment_instructions: dict | None = None,
+    stock_deducted: bool = True,
 ) -> Order:
     order = Order(
         order_number=order_number,
@@ -67,6 +68,7 @@ async def create(
         checkout_key=checkout_key,
         checkout_fingerprint=checkout_fingerprint,
         payment_instructions=payment_instructions,
+        stock_deducted=stock_deducted,
     )
     session.add(order)
     await session.flush()

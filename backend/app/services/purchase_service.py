@@ -29,6 +29,7 @@ from app.db.models.product import Product
 from app.db.repositories import cart_repository, order_repository, product_repository
 from app.services.checkout_quote import quote_checkout
 from app.services.checkout_settings import load_checkout_settings
+from app.services.inventory_policy import InventoryPolicy, get_inventory_policy
 from app.services.notification_outbox_service import enqueue_outbox_event
 from app.services.purchase_locks import lock_customer_cart
 
@@ -157,12 +158,16 @@ def checkout_request_fingerprint(
 
 
 async def _lock_and_validate_products(
-    session: AsyncSession, cart: Cart
+    session: AsyncSession, cart: Cart, inventory_policy: InventoryPolicy
 ) -> list[tuple[Product, int]]:
     locked: list[tuple[Product, int]] = []
     for item in sorted(cart.items, key=lambda current: current.product_id):
         product = await product_repository.get_by_id(session, item.product_id, for_update=True)
-        if product is None or not product.is_active or product.stock_qty < item.quantity:
+        if (
+            product is None
+            or not product.is_active
+            or (inventory_policy.stock_tracking_enabled and product.stock_qty < item.quantity)
+        ):
             available = product.stock_qty if product is not None else 0
             raise OutOfStockError(
                 f"Not enough stock for product {item.product_id}",
@@ -173,11 +178,12 @@ async def _lock_and_validate_products(
                 f"Product {item.product_id} is no longer available for purchase.",
                 details={"product_id": item.product_id},
             )
-        if item.quantity < product.min_order_qty:
+        minimum_quantity = inventory_policy.minimum_quantity(product)
+        if item.quantity < minimum_quantity:
             # Enforce the live minimum under the same product lock as stock validation.
             raise MinimumOrderQuantityError(
-                f"Minimum order quantity for {product.sku} is {product.min_order_qty}",
-                details={"product_id": product.id, "minimum": product.min_order_qty},
+                f"Minimum order quantity for {product.sku} is {minimum_quantity}",
+                details={"product_id": product.id, "minimum": minimum_quantity},
             )
         locked.append((product, item.quantity))
     return locked
@@ -235,12 +241,14 @@ async def submit_checkout(
     if not cart.items:
         raise CartEmptyError("Cart is empty")
 
-    locked_products = await _lock_and_validate_products(session, cart)
+    inventory_policy = await get_inventory_policy(session)
+    locked_products = await _lock_and_validate_products(session, cart, inventory_policy)
     quote = await quote_checkout(
         session,
         user_id=user_id,
         order_type=normalized.order_type,
         payment_method=normalized.payment_method,
+        inventory_policy=inventory_policy,
     )
     if quote_bound and (
         quote.quote_fingerprint != expected_quote or quote.total != expected_total
@@ -299,6 +307,7 @@ async def submit_checkout(
         checkout_key=str(checkout_key) if checkout_key is not None else None,
         checkout_fingerprint=fingerprint if checkout_key is not None else None,
         payment_instructions=payment_instructions,
+        stock_deducted=inventory_policy.stock_tracking_enabled,
     )
 
     for product, quantity in locked_products:
@@ -312,7 +321,8 @@ async def submit_checkout(
             price=product.price,
             quantity=quantity,
         )
-        await product_repository.adjust_stock(session, product, -quantity)
+        if inventory_policy.stock_tracking_enabled:
+            await product_repository.adjust_stock(session, product, -quantity)
         await product_repository.increment_sold(session, product, quantity)
 
     await order_repository.add_status_history(

@@ -231,8 +231,12 @@ async def test_bot_and_web_use_same_favorite_service(
             )
         assert any("Test pen" in message for message in bot_messages)
 
+        editable_messages = []
+
         async def editable_message(callback, translator):
-            return SimpleNamespace(edit_text=AsyncMock())
+            message = SimpleNamespace(edit_text=AsyncMock(), answer=AsyncMock())
+            editable_messages.append(message)
+            return message
 
         monkeypatch.setattr(bot_catalog, "require_message", editable_message)
         monkeypatch.setattr(bot_catalog, "send_product_detail", AsyncMock())
@@ -293,3 +297,4 @@ async def test_bot_and_web_use_same_favorite_service(
         )
         assert web_list_after_favorite_remove.status_code == 200
         assert web_list_after_favorite_remove.json()["items"] == []
+        editable_messages[-1].answer.assert_awaited_once_with("favorites.removed")

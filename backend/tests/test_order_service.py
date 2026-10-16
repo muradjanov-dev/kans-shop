@@ -162,6 +162,35 @@ async def test_cancel_order_restores_stock(
     assert product.stock_qty == 10
 
 
+async def test_sourcing_checkout_does_not_deduct_or_restore_stock_across_mode_change(
+    db_session: AsyncSession, user: User, product: Product, admin: Admin
+) -> None:
+    product.stock_qty = 0
+    product.min_order_qty = 12
+    await setting_repository.set_value(db_session, "stock_tracking_enabled", False)
+    await setting_repository.set_value(db_session, "min_order_amount", 0)
+    await cart_service.add_item(db_session, user.id, product.id, quantity=1000)
+
+    order = await _checkout_delivery(db_session, user.id, order_type=OrderType.PICKUP)
+
+    assert order.stock_deducted is False
+    assert order.items[0].quantity == 1000
+    await db_session.refresh(product)
+    assert product.stock_qty == 0
+    assert product.sold_count == 1000
+
+    # Cancellation follows the policy captured at checkout, even after tracking is enabled.
+    await setting_repository.set_value(db_session, "stock_tracking_enabled", True)
+    cancelled = await order_service.cancel_order(
+        db_session, order, admin_id=admin.id, reason="source order cancelled"
+    )
+
+    assert cancelled.status == OrderStatus.CANCELLED
+    await db_session.refresh(product)
+    assert product.stock_qty == 0
+    assert product.sold_count == 0
+
+
 async def test_cancel_completed_order_raises(
     db_session: AsyncSession, user: User, product: Product, admin: Admin
 ) -> None:

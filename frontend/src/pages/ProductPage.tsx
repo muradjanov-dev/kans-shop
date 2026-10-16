@@ -69,12 +69,12 @@ export function ProductPage() {
   const name = localizedField(language, product, "name");
   const description = localizedField(language, product, "description");
   const minimumQuantity = Math.max(1, product.min_order_qty);
-  const maximumQuantity = Math.max(0, product.stock_qty);
-  const boundedQuantity = Math.min(
-    maximumQuantity,
-    Math.max(minimumQuantity, quantity),
-  );
-  const outOfStock = maximumQuantity < minimumQuantity;
+  const stockTracked = product.stock_tracking_enabled !== false;
+  const maximumQuantity = stockTracked ? Math.max(0, product.stock_qty ?? 0) : undefined;
+  const boundedQuantity = maximumQuantity === undefined
+    ? Math.max(minimumQuantity, quantity)
+    : Math.min(maximumQuantity, Math.max(minimumQuantity, quantity));
+  const outOfStock = maximumQuantity !== undefined && maximumQuantity < minimumQuantity;
 
   return (
     <div className="page-shell page-shell-wide">
@@ -112,12 +112,14 @@ export function ProductPage() {
               </span>
             )}
           </div>
-          <p className="text-sm text-[var(--muted)] dark:text-gray-400">
-            {t("product.stock", {
-              qty: product.stock_qty,
-              unit: t(productUnitTranslationKey[product.unit]),
-            })}
-          </p>
+          {stockTracked && (
+            <p className="text-sm text-[var(--muted)] dark:text-gray-400">
+              {t("product.stock", {
+                qty: product.stock_qty ?? 0,
+                unit: t(productUnitTranslationKey[product.unit]),
+              })}
+            </p>
+          )}
           <p className="text-sm text-[var(--muted)] dark:text-gray-400">
             {t("product.sku")}: {product.sku}
           </p>
@@ -141,12 +143,10 @@ export function ProductPage() {
                 max={maximumQuantity}
                 min={minimumQuantity}
                 onChange={(nextQuantity) => {
-                  setQuantity(
-                    Math.min(
-                      maximumQuantity,
-                      Math.max(minimumQuantity, nextQuantity),
-                    ),
-                  );
+                  const bounded = Math.max(minimumQuantity, nextQuantity);
+                  setQuantity(maximumQuantity === undefined
+                    ? bounded
+                    : Math.min(maximumQuantity, bounded));
                 }}
                 quantity={boundedQuantity}
               />

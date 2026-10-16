@@ -169,6 +169,53 @@ async def test_quote_preorder_exemption(db_session, user, product) -> None:
     assert quote.total == Decimal("10000")
 
 
+async def test_sourcing_quote_ignores_stock_and_source_minimum(
+    db_session, user, product
+) -> None:
+    quote_checkout = _quote_checkout_function()
+    await _set_checkout_settings(db_session, min_order_amount=0)
+    await setting_repository.set_value(db_session, "stock_tracking_enabled", False)
+    product.stock_qty = 0
+    product.min_order_qty = 12
+    await _replace_cart(db_session, user.id, [(product, 1000)])
+
+    quote = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.PICKUP,
+        payment_method=PaymentMethod.CASH,
+    )
+
+    assert quote.ready
+    assert quote.subtotal == Decimal("5000000")
+    assert not any("Insufficient stock" in reason for reason in quote.reasons)
+    assert not any("Minimum order quantity" in reason for reason in quote.reasons)
+
+
+async def test_quote_fingerprint_changes_when_inventory_policy_changes(
+    db_session, user, product
+) -> None:
+    quote_checkout = _quote_checkout_function()
+    await _set_checkout_settings(db_session, min_order_amount=0)
+    await _replace_cart(db_session, user.id, [(product, 1)])
+
+    tracked_quote = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.PICKUP,
+        payment_method=PaymentMethod.CASH,
+    )
+    await setting_repository.set_value(db_session, "stock_tracking_enabled", False)
+    sourcing_quote = await quote_checkout(
+        db_session,
+        user_id=user.id,
+        order_type=OrderType.PICKUP,
+        payment_method=PaymentMethod.CASH,
+    )
+
+    assert tracked_quote.quote_fingerprint != sourcing_quote.quote_fingerprint
+
+
 async def test_payment_method_readiness(
     db_session, user, product, category: Category, monkeypatch: pytest.MonkeyPatch
 ) -> None:

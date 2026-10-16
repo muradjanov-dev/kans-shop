@@ -569,4 +569,55 @@ describe("quote-based checkout flow", () => {
     await waitFor(() => expect(submit).toBeEnabled());
     expect(screen.getAllByText(/101/)).toHaveLength(2);
   });
+
+  it("refreshes the quote when inventory tracking changes for a null-stock cart item", async () => {
+    signedIn();
+    originalAdapter = api.defaults.adapter;
+    let trackingEnabled = true;
+    let quoteCalls = 0;
+    let releaseUpdatedQuote!: () => void;
+    let startUpdatedQuote!: () => void;
+    const updatedQuoteGate = new Promise<void>((resolve) => { releaseUpdatedQuote = resolve; });
+    const updatedQuoteStarted = new Promise<void>((resolve) => { startUpdatedQuote = resolve; });
+    const cartWithTracking = (enabled: boolean): Cart => {
+      const base = cartAtPrice("100.00");
+      return {
+        ...base,
+        items: base.items.map((item) => ({
+          ...item,
+          product: { ...item.product, stock_qty: null, stock_tracking_enabled: enabled },
+        })),
+      };
+    };
+    api.defaults.adapter = async (config) => {
+      const customerResponse = customerReadResponse(config);
+      if (customerResponse) return customerResponse;
+      if (config.url === "/cart") return response(config, cartWithTracking(trackingEnabled));
+      if (config.url === "/settings/public") return response(config, settings);
+      if (config.url === "/orders/quote") {
+        quoteCalls += 1;
+        if (quoteCalls === 1) return response(config, readyQuote);
+        startUpdatedQuote();
+        await updatedQuoteGate;
+        return response(config, { ...readyQuote, quote_fingerprint: "tracking-changed-quote" });
+      }
+      throw new Error(`Unexpected request: ${config.method} ${config.url}`);
+    };
+    const user = userEvent.setup();
+    const rendered = renderWithProviders(<CheckoutPage />, "/checkout", true);
+
+    await fillDeliveryForm(user);
+    const submit = await screen.findByRole("button", { name: "Buyurtmani tasdiqlash" });
+    await waitFor(() => expect(quoteCalls).toBe(1));
+    expect(submit).toBeEnabled();
+
+    trackingEnabled = false;
+    rendered.queryClient.setQueryData(["cart", "42"], cartWithTracking(false));
+    await waitFor(() => expect(quoteCalls).toBe(2));
+    await updatedQuoteStarted;
+    expect(submit).toBeDisabled();
+    releaseUpdatedQuote();
+
+    await waitFor(() => expect(submit).toBeEnabled());
+  });
 });

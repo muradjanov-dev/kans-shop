@@ -11,6 +11,7 @@ class PublicSettingsOut(BaseModel):
     support_username: str | None = None
     shop_phone: str | None = None
     is_shop_open: bool | None = None
+    stock_tracking_enabled: bool = True
     welcome_text_uz: str | None = None
     welcome_text_ru: str | None = None
     enabled_payment_providers: list[str] = Field(default_factory=list)

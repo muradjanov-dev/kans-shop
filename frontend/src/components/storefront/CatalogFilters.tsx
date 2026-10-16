@@ -10,10 +10,12 @@ export function CatalogFilters({
   values,
   onChange,
   onClear,
+  showStockFilter = true,
 }: {
   values: CatalogFilterValues;
   onChange: (values: Partial<CatalogFilterValues>) => void;
   onClear: () => void;
+  showStockFilter?: boolean;
 }) {
   const t = useTranslate();
 
@@ -42,16 +44,18 @@ export function CatalogFilters({
           value={values.max_price}
         />
       </label>
-      <label className="flex min-h-11 items-center gap-2 self-end rounded-lg px-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-        <input
-          aria-label={t("catalog.in_stock")}
-          checked={values.in_stock}
-          className="size-5 accent-brand"
-          onChange={(event) => onChange({ in_stock: event.target.checked })}
-          type="checkbox"
-        />
-        {t("catalog.in_stock")}
-      </label>
+      {showStockFilter && (
+        <label className="flex min-h-11 items-center gap-2 self-end rounded-lg px-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+          <input
+            aria-label={t("catalog.in_stock")}
+            checked={values.in_stock}
+            className="size-5 accent-brand"
+            onChange={(event) => onChange({ in_stock: event.target.checked })}
+            type="checkbox"
+          />
+          {t("catalog.in_stock")}
+        </label>
+      )}
       <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
         {t("catalog.sort")}
         <select

@@ -9,6 +9,7 @@ from app.core.exceptions import CategoryNotFoundError, ProductNotFoundError
 from app.db.models.category import Category
 from app.db.models.enums import ProductUnit
 from app.db.models.product import Product
+from app.db.repositories import setting_repository
 from app.services import catalog_service
 from app.services.catalog_service import CatalogFilters, CatalogSort, list_public_products
 
@@ -105,6 +106,31 @@ async def test_catalog_all_products_filters_with_decimal_prices(
     ]
     in_stock_product_ids = [product.id for product in in_stock.items]
     assert in_stock_product_ids == [minimum_satisfied_product.id]
+
+
+async def test_in_stock_filter_does_not_hide_products_when_stock_is_untracked(
+    db_session: AsyncSession, category: Category
+) -> None:
+    product = Product(
+        category_id=category.id,
+        name_uz="Source on request",
+        name_ru="Source on request",
+        sku="SOURCING-STOCK-ZERO",
+        price=Decimal("10.00"),
+        stock_qty=0,
+        unit=ProductUnit.DONA,
+    )
+    db_session.add(product)
+    await db_session.flush()
+    await setting_repository.set_value(db_session, "stock_tracking_enabled", False)
+
+    result = await list_public_products(
+        db_session,
+        query=None,
+        filters=CatalogFilters(category_id=category.id, in_stock=True),
+    )
+
+    assert [item.id for item in result.items] == [product.id]
 
 
 async def test_catalog_sorts_stably_and_paginates(
