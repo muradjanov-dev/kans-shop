@@ -20,18 +20,23 @@ async def answer_with_inline_keyboard(
     *,
     reply_markup: InlineKeyboardMarkup | None = None,
 ) -> Message | bool:
-    """Replace a legacy reply keyboard and attach inline choices to the same visible text."""
-    sent_message = await message.answer(text, reply_markup=ReplyKeyboardRemove())
+    """Deliver inline buttons directly; clear legacy reply keyboards separately.
+
+    Telegram cannot edit a message originally sent with ReplyKeyboardRemove.
+    The primary message must carry the inline markup on its initial send.
+    """
     if reply_markup is None:
-        return sent_message
+        return await message.answer(text, reply_markup=ReplyKeyboardRemove())
+    sent_message = await message.answer(text, reply_markup=reply_markup)
     try:
-        return await sent_message.edit_reply_markup(reply_markup=reply_markup)
+        cleanup = await message.answer(text, reply_markup=ReplyKeyboardRemove())
+        await cleanup.delete()
     except TelegramAPIError as error:
         logger.warning(
-            "inline keyboard attachment failed after message delivery",
+            "reply keyboard cleanup failed after inline message delivery",
             extra={"telegram_error_type": type(error).__name__},
         )
-        return sent_message
+    return sent_message
 
 
 def _is_expired_callback_query(error: TelegramBadRequest) -> bool:
