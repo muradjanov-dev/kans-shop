@@ -51,6 +51,19 @@ def cart_keyboard(
     return builder.as_markup()
 
 
+def cart_open_button(translator: Callable[..., str]) -> InlineKeyboardButton:
+    return InlineKeyboardButton(
+        text=translator("cart.open_button"),
+        callback_data=CartActionCallback(action="open").pack(),
+    )
+
+
+def cart_open_keyboard(translator: Callable[..., str]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(cart_open_button(translator))
+    return builder.as_markup()
+
+
 def cart_clear_confirm_keyboard(translator: Callable[..., str]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(

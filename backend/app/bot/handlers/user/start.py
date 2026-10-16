@@ -7,7 +7,6 @@ from aiogram.types import (
     CallbackQuery,
     InaccessibleMessage,
     Message,
-    ReplyKeyboardRemove,
 )
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +21,7 @@ from app.bot.keyboards.callback_data import (
 )
 from app.bot.keyboards.inline.language import language_keyboard
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
+from app.bot.keyboards.reply.menu import browse_cart_keyboard
 from app.bot.states.receipt_redirect import ReceiptRedirectStates
 from app.bot.utils.i18n import translate
 from app.core.exceptions import (
@@ -199,11 +199,11 @@ async def cmd_start(
         return
 
     is_admin = admin is not None and admin.is_active
-    # ReplyKeyboardRemove clears the legacy persistent keyboard that pre-inline-menu users
-    # still have pinned; the menu itself is the inline keyboard on the next message.
-    await message.answer(
-        _("start.welcome", name=user.first_name), reply_markup=ReplyKeyboardRemove()
-    )
+    welcome = _("start.welcome", name=user.first_name)
+    if await state.get_state() is None:
+        await message.answer(welcome, reply_markup=browse_cart_keyboard(_))
+    else:
+        await message.answer(welcome)
     await message.answer(
         _("menu.choose_action"),
         reply_markup=main_menu_inline_keyboard(_, is_admin=is_admin),
@@ -243,7 +243,7 @@ async def on_language_selected(
         await message.edit_text(translator("start.language_set"))
         await message.answer(
             translator("start.welcome", name=user.first_name),
-            reply_markup=ReplyKeyboardRemove(),
+            reply_markup=browse_cart_keyboard(translator),
         )
         await message.answer(
             translator("menu.choose_action"),

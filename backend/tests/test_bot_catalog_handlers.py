@@ -4,8 +4,21 @@ from unittest.mock import AsyncMock
 
 from aiogram.exceptions import TelegramBadRequest
 
-from app.bot.handlers.user import catalog
-from app.bot.keyboards.callback_data import AddToCartCallback
+from app.bot.handlers.user import (
+    cart as cart_handler,
+)
+from app.bot.handlers.user import (
+    catalog,
+)
+from app.bot.handlers.user import (
+    menu as menu_handler,
+)
+from app.bot.handlers.user import (
+    start as start_handler,
+)
+from app.bot.keyboards.callback_data import AddToCartCallback, CartActionCallback, MenuCallback
+from app.bot.keyboards.inline.catalog import product_detail_keyboard
+from app.bot.keyboards.reply.menu import browse_cart_keyboard
 from app.bot.utils.messages import answer_callback_safely, edit_or_send_message
 from app.core.exceptions import OutOfStockError
 from app.services.inventory_policy import InventoryPolicy
@@ -69,6 +82,167 @@ async def test_add_to_cart_acknowledges_before_service_and_falls_back_to_message
 
     assert calls == ["answer", "service"]
     message.answer.assert_awaited_once_with("cart.out_of_stock_alert")
+
+
+async def test_successful_add_feedback_has_one_inline_open_cart_button(monkeypatch) -> None:
+    callback = SimpleNamespace(
+        answer=AsyncMock(),
+        message=SimpleNamespace(
+            photo=[SimpleNamespace(file_id="photo-1")], answer=AsyncMock()
+        ),
+    )
+    add_item = AsyncMock()
+    monkeypatch.setattr(catalog.cart_service, "add_item", add_item)
+    callback_data = AddToCartCallback(product_id=7, qty=4, origin="category", ref_id=2, page=1)
+
+    await catalog.on_add_to_cart(
+        callback,
+        callback_data,
+        SimpleNamespace(),
+        SimpleNamespace(id=3),
+        lambda key, **_: key,
+    )
+
+    add_item.assert_awaited_once_with(SimpleNamespace(), 3, 7, 4)
+    feedback = callback.message.answer.await_args
+    assert feedback.args == ("cart.added_alert",)
+    assert feedback.kwargs["reply_markup"] is not None
+    buttons = [
+        button for row in feedback.kwargs["reply_markup"].inline_keyboard for button in row
+    ]
+    cart_button = next(
+        button for button in buttons if button.callback_data.startswith("cart:")
+    )
+    assert CartActionCallback.unpack(cart_button.callback_data).action == "open"
+
+
+async def test_start_installs_persistent_cart_keyboard_for_returning_customer() -> None:
+    message = SimpleNamespace(answer=AsyncMock())
+    user = SimpleNamespace(first_name="Buyer")
+
+    await start_handler.cmd_start(
+        message,
+        SimpleNamespace(args=None),
+        SimpleNamespace(),
+        user,
+        False,
+        "uz",
+        lambda key, **_: key,
+        SimpleNamespace(get_state=AsyncMock(return_value=None)),
+        None,
+        SimpleNamespace(),
+    )
+
+    welcome_markup = message.answer.await_args_list[0].kwargs["reply_markup"]
+    assert welcome_markup.is_persistent is True
+    assert welcome_markup.keyboard[0][0].text == "menu.cart"
+
+
+async def test_start_does_not_restore_browse_keyboard_inside_active_fsm() -> None:
+    message = SimpleNamespace(answer=AsyncMock())
+
+    await start_handler.cmd_start(
+        message,
+        SimpleNamespace(args=None),
+        SimpleNamespace(),
+        SimpleNamespace(first_name="Buyer"),
+        False,
+        "uz",
+        lambda key, **_: key,
+        SimpleNamespace(get_state=AsyncMock(return_value="checkout:entering_name")),
+        None,
+        SimpleNamespace(),
+    )
+
+    assert "reply_markup" not in message.answer.await_args_list[0].kwargs
+
+
+async def test_catalog_menu_entry_installs_keyboard_once_before_browsing(monkeypatch) -> None:
+    message = SimpleNamespace(answer=AsyncMock())
+    callback = SimpleNamespace(answer=AsyncMock(), message=message)
+    state = SimpleNamespace(clear=AsyncMock())
+    send_categories = AsyncMock()
+    monkeypatch.setattr(menu_handler, "send_category_level", send_categories)
+
+    await menu_handler.on_menu_action(
+        callback,
+        MenuCallback(action="catalog"),
+        SimpleNamespace(),
+        SimpleNamespace(id=3),
+        None,
+        state,
+        "uz",
+        lambda key, **_: key,
+    )
+
+    assert message.answer.await_count == 1
+    keyboard = message.answer.await_args.kwargs["reply_markup"]
+    assert keyboard.is_persistent is True
+    send_categories.assert_awaited_once()
+    state.clear.assert_awaited_once()
+
+
+async def test_product_card_cart_action_replaces_photo_with_cart_view(monkeypatch) -> None:
+    message = SimpleNamespace(
+        photo=[SimpleNamespace(file_id="product-photo")],
+        answer=AsyncMock(return_value=SimpleNamespace(photo=[])),
+        delete=AsyncMock(),
+        edit_text=AsyncMock(),
+    )
+    callback = SimpleNamespace(answer=AsyncMock(), message=message)
+    state = SimpleNamespace(clear=AsyncMock())
+    monkeypatch.setattr(
+        cart_handler.cart_service,
+        "get_cart",
+        AsyncMock(return_value=SimpleNamespace(items=[])),
+    )
+    add_item = AsyncMock()
+    monkeypatch.setattr(cart_handler.cart_service, "add_item", add_item)
+
+    await cart_handler.on_open_cart_from_catalog(
+        callback,
+        SimpleNamespace(),
+        SimpleNamespace(id=3),
+        state,
+        "uz",
+        lambda key, **_: key,
+    )
+
+    callback.answer.assert_awaited_once_with()
+    state.clear.assert_awaited_once_with()
+    add_item.assert_not_awaited()
+    message.answer.assert_awaited_once()
+    assert message.answer.await_args.args == ("cart.empty",)
+    message.delete.assert_awaited_once_with()
+    message.edit_text.assert_not_awaited()
+
+
+def test_product_detail_keyboard_includes_quick_open_cart_button() -> None:
+    keyboard = product_detail_keyboard(
+        product_id=7,
+        origin="cat",
+        ref_id=2,
+        page=1,
+        qty=1,
+        in_stock=True,
+        is_favorite=False,
+        back_callback_data="back",
+        translator=lambda key, **_: key,
+    )
+
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    cart_button = next(
+        button for button in buttons if button.callback_data.startswith("cart:")
+    )
+    assert CartActionCallback.unpack(cart_button.callback_data).action == "open"
+
+
+def test_browse_cart_reply_keyboard_is_persistent_and_uses_localized_label() -> None:
+    keyboard = browse_cart_keyboard(lambda key, **_: f"uz:{key}")
+
+    assert keyboard.is_persistent is True
+    assert keyboard.resize_keyboard is True
+    assert keyboard.keyboard[0][0].text == "uz:menu.cart"
 
 
 async def test_callback_ack_does_not_suppress_unexpected_bad_request() -> None:
@@ -268,6 +442,8 @@ async def test_sourcing_product_detail_hides_stock_and_uses_minimum_one(
     button_data = [button.callback_data for row in keyboard.inline_keyboard for button in row]
     add_data = next(value for value in button_data if value and value.startswith("addcart:"))
     assert AddToCartCallback.unpack(add_data).qty == 1
+    cart_data = next(value for value in button_data if value and value.startswith("cart:"))
+    assert CartActionCallback.unpack(cart_data).action == "open"
 
 
 async def test_product_photo_caption_drops_only_long_description(monkeypatch) -> None:

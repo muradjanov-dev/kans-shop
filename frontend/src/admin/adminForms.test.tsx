@@ -9,10 +9,11 @@ import { adminApi, setAdminCsrfToken } from "@/admin/api";
 import { CatalogPage } from "@/admin/pages/CatalogPage";
 import { BroadcastsPage } from "@/admin/pages/BroadcastsPage";
 import { SettingsPage } from "@/admin/pages/SettingsPage";
+import { TeamPage } from "@/admin/pages/TeamPage";
 import { adminRouteRegistry } from "@/admin/adminRoutes";
 
 const originalAdapter = adminApi.defaults.adapter;
-const route = (id: "catalog" | "settings" | "broadcasts") => adminRouteRegistry.find((entry) => entry.id === id)!;
+const route = (id: "catalog" | "settings" | "broadcasts" | "team") => adminRouteRegistry.find((entry) => entry.id === id)!;
 
 function response<T>(config: Parameters<AxiosAdapter>[0], data: T): AxiosResponse<T> {
   return { data, status: 200, statusText: "OK", headers: new AxiosHeaders(), config };
@@ -38,6 +39,39 @@ describe("admin forms use the versioned REST contracts", () => {
   afterEach(() => {
     adminApi.defaults.adapter = originalAdapter;
     setAdminCsrfToken(null);
+  });
+
+  it("creates new staff as Admin by default and resets the form to Admin", async () => {
+    const user = userEvent.setup();
+    const writes: Array<Record<string, unknown>> = [];
+    let member: Record<string, unknown> | null = null;
+    adminApi.defaults.adapter = async (config) => {
+      if (config.url === "/auth/admin/session") return response(config, { admin_id: 1, full_name: "Owner", role: "superadmin", csrf_token: "csrf" });
+      if (config.url === "/admin/team" && config.method === "get") {
+        return response(config, { items: member ? [member] : [], total: member ? 1 : 0, page: 1, limit: 100, total_pages: member ? 1 : 0 });
+      }
+      if (config.url === "/admin/team" && config.method === "post") {
+        const payload = typeof config.data === "string" ? JSON.parse(config.data) as Record<string, unknown> : config.data as Record<string, unknown>;
+        writes.push(payload);
+        member = { id: 12, telegram_id: payload.telegram_id, full_name: payload.full_name, role: payload.role, is_active: true, notifications_enabled: true, created_at: "2026-10-16T08:00:00Z" };
+        return response(config, member);
+      }
+      return response(config, {});
+    };
+
+    renderPage(<TeamPage route={route("team")} />);
+    const role = await screen.findByLabelText("Rol");
+    expect(role).toHaveValue("manager");
+    expect(screen.queryByRole("option", { name: "Operator" })).not.toBeInTheDocument();
+    expect(screen.getByText(/superadmin.*barcha bo‘limlar.*xodimlarni boshqarish.*admin.*biznes bo‘limlari.*xodimlarni boshqarishdan tashqari/i)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Telegram ID"), "123456");
+    await user.type(screen.getByLabelText("Ism familiya"), "New Admin");
+    await user.click(screen.getByRole("button", { name: "Xodim qo'shish" }));
+
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toMatchObject({ telegram_id: 123456, full_name: "New Admin", role: "manager" });
+    expect(role).toHaveValue("manager");
   });
 
   it("keeps a settings draft after a conflict and only refreshes on request", async () => {

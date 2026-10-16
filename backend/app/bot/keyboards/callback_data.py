@@ -74,7 +74,7 @@ class CartItemQtyCallback(CallbackData, prefix="citem"):
 
 
 class CartActionCallback(CallbackData, prefix="cart"):
-    action: str  # "clear" | "clear_confirm" | "clear_cancel" | "checkout"
+    action: str  # "open" | "clear" | "clear_confirm" | "clear_cancel" | "checkout"
 
 
 # --- Checkout FSM ---

@@ -19,6 +19,13 @@ function renderAdmin(session: AdminSession, path = "/admin") {
     if (config.url === "/admin/stats/overview") return response(config, { period: "today", orders_count: 0, order_value: "0", paid_amount: "0", revenue: "0", avg_check: "0", new_users: 0, top_products: [] });
     if (config.url === "/admin/orders") return response(config, { items: [], total: 0, page: 1, limit: 20, total_pages: 1 });
     if (config.url === "/admin/sources") return response(config, { items: [], total: 0, page: 1, limit: 100, total_pages: 1 });
+    if (config.url === "/admin/team") return response(config, {
+      items: [{ id: 12, telegram_id: 123456, full_name: "Business Admin", role: "manager", is_active: true, notifications_enabled: true, created_at: "2026-10-16T08:00:00Z" }],
+      total: 1,
+      page: 1,
+      limit: 100,
+      total_pages: 1,
+    });
     return response(config, { ok: true });
   };
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -53,6 +60,27 @@ describe("admin responsive shell", () => {
     expect(within(navigation).getByRole("link", { name: "Клиенты" })).toBeInTheDocument();
     expect(within(navigation).getByRole("link", { name: "Источники" })).toBeInTheDocument();
     expect(within(navigation).queryByRole("link", { name: "Команда" })).not.toBeInTheDocument();
+    expect(screen.getByText("Администратор")).toBeInTheDocument();
+  });
+
+  it("redirects an Admin away from direct Team access while keeping business navigation", async () => {
+    renderAdmin({ admin_id: 8, full_name: "Admin", role: "manager", csrf_token: "csrf" }, "/admin/team");
+    const navigation = await screen.findByRole("navigation", { name: /asosiy menyu/i });
+
+    expect(within(navigation).getByRole("link", { name: "Katalog" })).toBeInTheDocument();
+    expect(within(navigation).queryByRole("link", { name: "Jamoa" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Boshqaruv" })).toBeInTheDocument();
+  });
+
+  it("shows staff create, edit, session revoke, and delete controls to Superadmins", async () => {
+    renderAdmin({ admin_id: 1, full_name: "Owner", role: "superadmin", csrf_token: "csrf" }, "/admin/team");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Jamoa" })).toBeInTheDocument();
+    expect(await screen.findByText("Business Admin")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xodim qo'shish" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xodimni saqlash" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sessiyalarni bekor qilish" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xodimni o'chirish" })).toBeInTheDocument();
   });
 
   it("keeps the full navigation and shell scroll regions bounded at 360px", async () => {

@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.keyboards.callback_data import AdminOrderFilterCallback
 from app.bot.keyboards.inline.admin_orders_list import admin_order_list_keyboard
 from app.bot.utils.admin_guard import require_admin
-from app.bot.utils.messages import require_message
+from app.bot.utils.messages import (
+    answer_callback_safely,
+    edit_or_send_message,
+    require_message,
+)
 from app.db.models.admin import Admin
 from app.db.models.enums import OrderStatus
 from app.services import admin_order_service
@@ -61,11 +65,12 @@ async def on_order_filter(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
     async def edit(text: str, reply_markup=None) -> object:
-        return await message.edit_text(text, reply_markup=reply_markup)
+        return await edit_or_send_message(message, text, reply_markup=reply_markup)
 
     await render_orders_list(
         edit, session, admin.id, callback_data.status, callback_data.page, _
     )
-    await callback.answer()

@@ -81,6 +81,8 @@
     "add_button": "🛒 Savatga qo'shish",
     "added_alert": "Savatga qo'shildi ✅",
     "out_of_stock_alert": "Yetarli mahsulot yo'q",
+    "open_button": "🛒 Savatga o'tish",
+    "keyboard_hint": "🛒 Savatni istalgan vaqtda pastdagi tugma orqali oching.",
     "title": "🛒 <b>Savat</b>",
     "empty": "Savatingiz bo'sh.",
     "item_line": "{name}\n{qty} x {price} = {subtotal} so'm",
@@ -101,6 +103,7 @@
     "removed": "Sevimlilardan olib tashlandi."
   },
   "checkout": {
+    "starting": "📝 Buyurtmani rasmiylashtiramiz.",
     "choose_type": "Buyurtma turini tanlang:",
     "type_delivery": "🚚 Yetkazib berish",
     "type_pickup": "🏪 O'zim olib ketaman",
@@ -442,7 +445,7 @@
     "admin_cannot_remove_self": "O'zingizni o'chira olmaysiz.",
     "admin_last_superadmin": "Bu oxirgi faol superadmin — uni o'zgartirib bo'lmaydi, aks holda hech kim panelga kira olmaydi.",
     "role_superadmin": "👑 Superadmin",
-    "role_manager": "👔 Menejer",
+    "role_manager": "👔 Admin",
     "role_operator": "🎧 Operator"
   }
 }

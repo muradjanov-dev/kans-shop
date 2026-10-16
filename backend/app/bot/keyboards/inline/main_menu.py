@@ -34,7 +34,7 @@ def main_menu_inline_keyboard(
     builder.row(
         InlineKeyboardButton(
             text=translator("menu.webapp"),
-            web_app=WebAppInfo(url=settings.webapp_url),
+            web_app=WebAppInfo(url=settings.webapp_entry_url),
         ),
         _button(translator, "settings", "settings"),
     )

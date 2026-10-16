@@ -2,12 +2,24 @@ import ipaddress
 import os
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
+
+def build_webapp_entry_url(webapp_url: str, version: str) -> str:
+    """Add the current frontend contract version without changing WEBAPP_URL itself."""
+    parsed = urlsplit(webapp_url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key != "v"
+    ]
+    query.append(("v", version))
+    return urlunsplit(parsed._replace(query=urlencode(query, doseq=True)))
 
 
 class Settings(BaseSettings):
@@ -49,6 +61,7 @@ class Settings(BaseSettings):
 
     # --- Web / API ---
     webapp_url: str = Field(default="http://localhost:5173", alias="WEBAPP_URL")
+    webapp_entry_version: str = Field(default="2", alias="WEBAPP_ENTRY_VERSION")
     api_base_url: str = Field(default="http://localhost:8000", alias="API_BASE_URL")
     trusted_proxy_cidrs: str = Field(default="", alias="TRUSTED_PROXY_CIDRS")
     media_root: str = Field(default="./media", alias="MEDIA_ROOT")
@@ -110,6 +123,16 @@ class Settings(BaseSettings):
     def webapp_origin(self) -> str:
         parsed = urlsplit(self.webapp_url)
         return f"{parsed.scheme}://{parsed.netloc}"
+
+    @property
+    def webapp_entry_url(self) -> str:
+        return build_webapp_entry_url(self.webapp_url, self.webapp_entry_version)
+
+    @property
+    def webapp_admin_entry_url(self) -> str:
+        parsed = urlsplit(self.webapp_url)
+        admin_url = urlunsplit(parsed._replace(path=f"{parsed.path.rstrip('/')}/admin"))
+        return build_webapp_entry_url(admin_url, self.webapp_entry_version)
 
     @property
     def trusted_proxy_networks(

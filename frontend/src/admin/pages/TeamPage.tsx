@@ -20,7 +20,8 @@ import {
   primaryButtonClass,
 } from "@/admin/pages/AdminPageFrame";
 
-const roles: AdminRole[] = ["superadmin", "manager", "operator"];
+const standardRoles: AdminRole[] = ["superadmin", "manager"];
+const editableRoles: AdminRole[] = [...standardRoles, "operator"];
 
 export function TeamPage({ route }: AdminPageProps) {
   const t = useTranslate();
@@ -29,7 +30,7 @@ export function TeamPage({ route }: AdminPageProps) {
   const team = useAdminTeam();
   const [telegramId, setTelegramId] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<AdminRole>("operator");
+  const [role, setRole] = useState<AdminRole>("manager");
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
 
@@ -44,7 +45,7 @@ export function TeamPage({ route }: AdminPageProps) {
 
   const addMember = useMutation({
     mutationFn: () => createAdminTeamMember({ telegram_id: Number(telegramId), full_name: fullName.trim(), role }),
-    onSuccess: async () => { setTelegramId(""); setFullName(""); setRole("operator"); setError(null); await refreshTeam(); },
+    onSuccess: async () => { setTelegramId(""); setFullName(""); setRole("manager"); setError(null); await refreshTeam(); },
     onError: setError,
   });
   const updateMember = useMutation({
@@ -69,7 +70,8 @@ export function TeamPage({ route }: AdminPageProps) {
         <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); addMember.mutate(); }}>
           <AdminField label={t("admin.team.telegram_id")}>{(className) => <input className={className} min="1" onChange={(event) => setTelegramId(event.target.value)} required step="1" type="number" value={telegramId} />}</AdminField>
           <AdminField label={t("admin.team.full_name")}>{(className) => <input className={className} maxLength={128} onChange={(event) => setFullName(event.target.value)} required value={fullName} />}</AdminField>
-          <AdminField label={t("admin.team.role")}>{(className) => <RoleSelect className={className} role={role} onChange={setRole} />}</AdminField>
+          <AdminField label={t("admin.team.role")}>{(className) => <RoleSelect className={className} role={role} roles={standardRoles} onChange={setRole} />}</AdminField>
+          <p className="text-xs leading-5 text-slate-600 dark:text-slate-300">{t("admin.team.role_hint")}</p>
           {addMember.error != null && <AdminActionError code={(addMember.error as { response?: { data?: { error?: { code?: string } } } }).response?.data?.error?.code} />}
           <button className={primaryButtonClass} disabled={addMember.isPending || !telegramId || !fullName.trim()} type="submit">{t("admin.team.add")}</button>
         </form>
@@ -109,7 +111,7 @@ function TeamMemberCard({ member, self, pending, onUpdate, onRemove, onRevoke }:
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="break-words font-semibold">{member.full_name}</p><p className="text-xs text-slate-500">#{member.id} · {t("admin.team.telegram_id")} {member.telegram_id} · {t("admin.team.created")}: {formatAdminDate(member.created_at)}</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs dark:bg-white/10">{t(`admin.role.${member.role}` as "admin.role.superadmin" | "admin.role.manager" | "admin.role.operator")}</span></div>
     <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
       <AdminField label={t("admin.team.full_name")}>{(className) => <input className={className} maxLength={128} onChange={(event) => setName(event.target.value)} value={name} />}</AdminField>
-      <AdminField label={t("admin.team.role")}>{(className) => <RoleSelect className={className} role={role} onChange={setRole} />}</AdminField>
+      <AdminField label={t("admin.team.role")}>{(className) => <RoleSelect className={className} role={role} roles={editableRoles} onChange={setRole} />}</AdminField>
       <label className="flex min-h-11 items-center gap-3 text-sm font-medium"><input checked={member.is_active} onChange={(event) => onUpdate({ is_active: event.target.checked })} type="checkbox" />{t("admin.team.active")}</label>
       <label className="flex min-h-11 items-center gap-3 text-sm font-medium"><input checked={member.notifications_enabled} onChange={(event) => onUpdate({ notifications_enabled: event.target.checked })} type="checkbox" />{t("admin.team.notifications")}</label>
     </div>
@@ -121,7 +123,7 @@ function TeamMemberCard({ member, self, pending, onUpdate, onRemove, onRevoke }:
   </article>;
 }
 
-function RoleSelect({ className = inputClass, role, onChange }: { className?: string; role: AdminRole; onChange: (role: AdminRole) => void }) {
+function RoleSelect({ className = inputClass, role, roles, onChange }: { className?: string; role: AdminRole; roles: readonly AdminRole[]; onChange: (role: AdminRole) => void }) {
   const t = useTranslate();
   return <select className={className} onChange={(event) => onChange(event.target.value as AdminRole)} value={role}>{roles.map((item) => <option key={item} value={item}>{t(`admin.role.${item}` as "admin.role.superadmin" | "admin.role.manager" | "admin.role.operator")}</option>)}</select>;
 }

@@ -306,3 +306,16 @@ production cutover remain separate release requirements.
 - Telegram product cards display their main photo when available. Callback queries are
   acknowledged before slow work; expired queries do not repeat cart mutations. Tests use
   synthetic Telegram responses, never the production bot token or a customer's order.
+
+## Business administration and bot navigation
+- The stored `manager` role is displayed as **Admin** in both languages. It retains full
+  business access; team CRUD and session revocation remain restricted to `superadmin`.
+  New staff forms default to Admin. Existing Operator accounts retain their permissions.
+- Catalog browsing exposes a persistent Cart reply button and inline cart shortcuts on
+  product cards and add confirmations. Checkout removes the browsing reply keyboard before
+  accepting customer text, and restores it when the wizard finishes. Explicit cart navigation
+  clears a draft checkout without changing cart contents.
+- `WEBAPP_ENTRY_VERSION` versions customer and admin entry URLs independently of `WEBAPP_URL`,
+  preserving the base origin/payment URLs. Webhook startup updates the global Telegram WebApp
+  menu. SPA HTML is not cached; hashed assets retain immutable caching and missing assets stay
+  404s. Already-open legacy WebViews must be closed and reopened through the new entry URL.

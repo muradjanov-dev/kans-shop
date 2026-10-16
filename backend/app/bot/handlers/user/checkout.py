@@ -33,9 +33,10 @@ from app.bot.keyboards.inline.checkout import (
 )
 from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
 from app.bot.keyboards.reply.checkout import location_request_keyboard, phone_request_keyboard
+from app.bot.keyboards.reply.menu import browse_cart_keyboard
 from app.bot.states.checkout import CheckoutStates
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
-from app.bot.utils.messages import require_message
+from app.bot.utils.messages import answer_callback_safely, require_message
 from app.bot.utils.receipt_upload import download_telegram_receipt
 from app.core.config import settings
 from app.core.exceptions import (
@@ -177,7 +178,9 @@ async def _cancel_checkout(
     message: Message, state: FSMContext, translator: Callable[..., str]
 ) -> None:
     await state.clear()
-    await message.answer(translator("checkout.cancelled"), reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        translator("checkout.cancelled"), reply_markup=browse_cart_keyboard(translator)
+    )
     await message.answer(
         translator("menu.choose_action"),
         reply_markup=main_menu_inline_keyboard(translator),
@@ -310,16 +313,20 @@ async def start_checkout(
     message = await require_message(callback, _)
     if message is None:
         return
+    if not await answer_callback_safely(callback):
+        return
 
     cart = await cart_service.get_cart(session, user.id)
     if not cart.items:
-        await callback.answer(_("checkout.cart_empty"), show_alert=True)
+        await message.answer(_("checkout.cart_empty"))
         return
 
+    # The persistent browse shortcut would otherwise be accepted as a free-text name while
+    # checkout is waiting for customer fields. Remove it before activating the FSM.
+    await message.answer(_("checkout.starting"), reply_markup=ReplyKeyboardRemove())
     await state.set_state(CheckoutStates.choosing_type)
     await state.update_data(user_id=user.id)
     await message.answer(_("checkout.choose_type"), reply_markup=order_type_keyboard(_))
-    await callback.answer()
 
 
 # --- Step: order type ---
@@ -903,7 +910,7 @@ async def on_confirm(
     await state.clear()
     await message.answer(
         _("checkout.success", order_number=order.order_number, summary=summary),
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=browse_cart_keyboard(_),
     )
 
     if order.payment_method == PaymentMethod.TENDER:
