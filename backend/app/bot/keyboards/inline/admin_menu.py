@@ -67,7 +67,7 @@ def admin_menu_keyboard(
         )
     builder.row(
         InlineKeyboardButton(
-            text=translator("admin.menu_webapp"), url=f"{settings.webapp_url}/admin"
+            text=translator("admin.menu_webapp"), url=settings.webapp_admin_entry_url
         )
     )
     return builder.as_markup()

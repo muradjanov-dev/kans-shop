@@ -23,12 +23,14 @@ from app.bot.keyboards.callback_data import (
     SearchPageCallback,
     SearchProductCallback,
 )
+from app.bot.keyboards.inline.cart import cart_open_keyboard
 from app.bot.keyboards.inline.catalog import (
     categories_keyboard,
     product_detail_keyboard,
     product_list_keyboard,
     search_results_keyboard,
 )
+from app.bot.keyboards.reply.menu import install_browse_cart_keyboard
 from app.bot.utils.i18n import menu_button_texts
 from app.bot.utils.messages import (
     answer_callback_safely,
@@ -307,10 +309,11 @@ async def send_product_detail(
         await send(text, reply_markup=reply_markup)
 
 
-@router.message(F.text.in_(menu_button_texts("menu.catalog")))
+@router.message(StateFilter(None), F.text.in_(menu_button_texts("menu.catalog")))
 async def open_catalog(
     message: Message, session: AsyncSession, lang: str, _: Callable
 ) -> None:
+    await install_browse_cart_keyboard(message.answer, _)
     await send_category_level(
         message.answer, session, ROOT_CATEGORY_ID, lang=lang, translator=_
     )
@@ -445,11 +448,14 @@ async def on_add_to_cart(
     if not await answer_callback_safely(callback):
         return
 
-    async def send_feedback(text: str) -> None:
+    async def send_feedback(text: str, reply_markup=None) -> None:
         message = callback.message
         send = getattr(message, "answer", None)
         if callable(send):
-            await send(text)
+            if reply_markup is None:
+                await send(text)
+            else:
+                await send(text, reply_markup=reply_markup)
 
     try:
         await cart_service.add_item(
@@ -461,7 +467,7 @@ async def on_add_to_cart(
     except ProductNotFoundError:
         await send_feedback(_("common.not_found"))
         return
-    await send_feedback(_("cart.added_alert"))
+    await send_feedback(_("cart.added_alert"), cart_open_keyboard(_))
 
 
 @router.callback_query(FavoriteToggleCallback.filter())

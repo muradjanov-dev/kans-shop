@@ -3,7 +3,7 @@ from collections.abc import Awaitable, Callable
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.admin.broadcast import render_broadcast_entry
@@ -40,29 +40,43 @@ async def render_admin_menu(
     admin: Admin | None,
     *,
     translator: Callable[..., str],
+    reset_browse_keyboard: bool = False,
 ) -> None:
     if admin is None or not admin.is_active:
         await send(translator("admin.not_admin_alert"))
         return
     count = await _new_orders_count(session)
-    await send(
-        translator("admin.menu_title"),
-        reply_markup=admin_menu_keyboard(
-            translator,
-            new_orders_count=count,
-            is_superadmin=admin.role == AdminRole.SUPERADMIN,
-        ),
+    keyboard = admin_menu_keyboard(
+        translator,
+        new_orders_count=count,
+        is_superadmin=admin.role == AdminRole.SUPERADMIN,
     )
+    if reset_browse_keyboard:
+        await send(translator("admin.menu_title"), reply_markup=ReplyKeyboardRemove())
+        await send(translator("menu.choose_action"), reply_markup=keyboard)
+    else:
+        await send(translator("admin.menu_title"), reply_markup=keyboard)
 
 
 @router.message(Command("admin"))
 @router.message(F.text.in_(menu_button_texts("admin.menu_title")))
 async def cmd_admin(
-    message: Message, session: AsyncSession, admin: Admin | None, _: Callable
+    message: Message,
+    session: AsyncSession,
+    admin: Admin | None,
+    _: Callable,
+    state: FSMContext,
 ) -> None:
     if not await require_admin(message, admin, _):
         return
-    await render_admin_menu(message.answer, session, admin, translator=_)
+    await state.clear()
+    await render_admin_menu(
+        message.answer,
+        session,
+        admin,
+        translator=_,
+        reset_browse_keyboard=True,
+    )
 
 
 @router.callback_query(AdminMenuCallback.filter())

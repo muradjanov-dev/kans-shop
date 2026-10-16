@@ -513,12 +513,37 @@ async def test_seed_does_not_reactivate_existing_admin(
 
 
 @pytest.mark.asyncio
-async def test_team_routes_require_superadmin(test_engine: AsyncEngine) -> None:
+@pytest.mark.parametrize(
+    ("method", "suffix", "payload"),
+    [
+        ("GET", "", None),
+        (
+            "POST",
+            "",
+            {
+                "telegram_id": 9_500_000_000_000_123,
+                "full_name": "Business Admin",
+                "role": "manager",
+            },
+        ),
+        ("PATCH", "/{admin_id}", {"role": "superadmin"}),
+        ("DELETE", "/{admin_id}", None),
+        ("POST", "/{admin_id}/sessions/revoke", None),
+    ],
+)
+async def test_team_routes_require_superadmin(
+    test_engine: AsyncEngine, method: str, suffix: str, payload: dict | None
+) -> None:
     async with (
         make_api_case(test_engine, base_url="https://testserver") as case,
-        _superadmin_cookie(case, role=AdminRole.MANAGER) as (_actor, _csrf_token),
+        _superadmin_cookie(case, role=AdminRole.MANAGER) as (actor, csrf_token),
     ):
-        response = await case.client.get("/api/v1/admin/team")
+        response = await case.client.request(
+            method,
+            "/api/v1/admin/team" + suffix.format(admin_id=actor.id),
+            headers=_csrf_headers(csrf_token),
+            json=payload,
+        )
 
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "ADMIN_ROLE_REQUIRED"

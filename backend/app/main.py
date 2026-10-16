@@ -18,7 +18,7 @@ from app.api.rate_limit import RateLimitMiddleware
 from app.api.v1 import router as api_v1_router
 from app.bot.loader import create_bot, create_dispatcher
 from app.bot.services.system_notifications import notify_admins_deploy
-from app.bot.utils.commands import setup_bot_commands
+from app.bot.utils.commands import setup_bot_commands, setup_webapp_menu_button
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import get_redis
@@ -95,6 +95,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 secret_token=settings.webhook_secret,
                 drop_pending_updates=True,
             )
+            await setup_webapp_menu_button(bot)
             log.info("webhook_set", url=settings.webhook_url)
             async with session_maker() as session:
                 await notify_admins_deploy(session)

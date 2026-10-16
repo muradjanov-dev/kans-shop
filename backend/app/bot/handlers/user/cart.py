@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from decimal import Decimal
 
 from aiogram import F, Router
-from aiogram.filters import StateFilter
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,11 +66,43 @@ async def render_cart(
     return cart
 
 
-@router.message(StateFilter(None), F.text.in_(menu_button_texts("menu.cart")))
+@router.message(F.text.in_(menu_button_texts("menu.cart")))
 async def open_cart(
-    message: Message, session: AsyncSession, user: User, lang: str, _: Callable
+    message: Message,
+    session: AsyncSession,
+    user: User,
+    state: FSMContext,
+    lang: str,
+    _: Callable,
 ) -> None:
+    # The localized cart shortcut is explicit navigation, even if an old keyboard remains
+    # visible during checkout text entry.
+    await state.clear()
     await render_cart(message.answer, session, user.id, lang=lang, translator=_)
+
+
+@router.callback_query(CartActionCallback.filter(F.action == "open"))
+async def on_open_cart_from_catalog(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    user: User,
+    state: FSMContext,
+    lang: str,
+    _: Callable,
+) -> None:
+    message = await require_message(callback, _)
+    if message is None:
+        return
+    if not await answer_callback_safely(callback):
+        return
+    # Opening the cart from an old product message is an explicit navigation action; it
+    # exits checkout text-entry states so the next message cannot be mistaken for a name.
+    await state.clear()
+
+    async def edit(text: str, reply_markup=None) -> object:
+        return await edit_or_send_message(message, text, reply_markup=reply_markup)
+
+    await render_cart(edit, session, user.id, lang=lang, translator=_)
 
 
 @router.callback_query(CartItemQtyCallback.filter())

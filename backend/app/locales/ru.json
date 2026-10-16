@@ -81,6 +81,8 @@
     "add_button": "🛒 Добавить в корзину",
     "added_alert": "Добавлено в корзину ✅",
     "out_of_stock_alert": "Недостаточно товара",
+    "open_button": "🛒 Перейти в корзину",
+    "keyboard_hint": "🛒 Открыть корзину можно кнопкой внизу в любой момент.",
     "title": "🛒 <b>Корзина</b>",
     "empty": "Ваша корзина пуста.",
     "item_line": "{name}\n{qty} x {price} = {subtotal} сум",
@@ -101,6 +103,7 @@
     "removed": "Убрано из избранного."
   },
   "checkout": {
+    "starting": "📝 Оформляем заказ.",
     "choose_type": "Выберите тип заказа:",
     "type_delivery": "🚚 Доставка",
     "type_pickup": "🏪 Самовывоз",
@@ -442,7 +445,7 @@
     "admin_cannot_remove_self": "Нельзя удалить самого себя.",
     "admin_last_superadmin": "Это последний активный суперадмин — изменить нельзя, иначе в панель никто не войдёт.",
     "role_superadmin": "👑 Суперадмин",
-    "role_manager": "👔 Менеджер",
+    "role_manager": "👔 Администратор",
     "role_operator": "🎧 Оператор"
   }
 }
