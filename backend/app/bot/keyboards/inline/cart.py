@@ -3,7 +3,13 @@ from collections.abc import Callable, Sequence
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from app.bot.keyboards.callback_data import CartActionCallback, CartItemQtyCallback
+from app.bot.keyboards.callback_data import (
+    ORIGIN_CATEGORY,
+    ROOT_CATEGORY_ID,
+    CartActionCallback,
+    CartItemQtyCallback,
+    ContinueShoppingCallback,
+)
 from app.db.models.cart import CartItem
 
 
@@ -48,6 +54,7 @@ def cart_keyboard(
                 callback_data=CartActionCallback(action="checkout").pack(),
             )
         )
+    builder.row(continue_shopping_button(translator))
     return builder.as_markup()
 
 
@@ -60,6 +67,28 @@ def cart_open_button(translator: Callable[..., str]) -> InlineKeyboardButton:
 
 def cart_open_keyboard(translator: Callable[..., str]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.row(cart_open_button(translator))
+    return builder.as_markup()
+
+
+def continue_shopping_button(
+    translator: Callable[..., str],
+    *,
+    origin: str = ORIGIN_CATEGORY,
+    ref_id: int = ROOT_CATEGORY_ID,
+    page: int = 1,
+) -> InlineKeyboardButton:
+    return InlineKeyboardButton(
+        text=translator("catalog.continue_shopping"),
+        callback_data=ContinueShoppingCallback(origin=origin, ref_id=ref_id, page=page).pack(),
+    )
+
+
+def post_add_keyboard(
+    translator: Callable[..., str], *, origin: str, ref_id: int, page: int
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(continue_shopping_button(translator, origin=origin, ref_id=ref_id, page=page))
     builder.row(cart_open_button(translator))
     return builder.as_markup()
 

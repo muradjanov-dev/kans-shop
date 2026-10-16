@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, TelegramObject
+from aiogram.types import CallbackQuery, TelegramObject, Update
 from redis.asyncio import Redis
 
 
@@ -32,8 +32,9 @@ class ThrottlingMiddleware(BaseMiddleware):
         if current > self.limit:
             translator = data.get("_")
             message = translator("common.rate_limited") if translator else "Rate limited."
-            if isinstance(event, CallbackQuery):
-                await event.answer(message, show_alert=True)
+            callback = event.callback_query if isinstance(event, Update) else event
+            if isinstance(callback, CallbackQuery):
+                await callback.answer(message, show_alert=True)
             return None
 
         return await handler(event, data)

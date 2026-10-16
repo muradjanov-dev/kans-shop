@@ -11,6 +11,7 @@ from app.bot.keyboards.inline.cart import cart_clear_confirm_keyboard, cart_keyb
 from app.bot.utils.i18n import menu_button_texts
 from app.bot.utils.messages import (
     answer_callback_safely,
+    answer_with_inline_keyboard,
     edit_or_send_message,
     require_message,
 )
@@ -78,7 +79,12 @@ async def open_cart(
     # The localized cart shortcut is explicit navigation, even if an old keyboard remains
     # visible during checkout text entry.
     await state.clear()
-    await render_cart(message.answer, session, user.id, lang=lang, translator=_)
+    cart = await cart_service.get_cart(session, user.id)
+    await answer_with_inline_keyboard(
+        message,
+        _cart_text(cart, lang=lang, translator=_),
+        reply_markup=cart_keyboard(cart.items, lang=lang, translator=_),
+    )
 
 
 @router.callback_query(CartActionCallback.filter(F.action == "open"))
@@ -99,10 +105,13 @@ async def on_open_cart_from_catalog(
     # exits checkout text-entry states so the next message cannot be mistaken for a name.
     await state.clear()
 
-    async def edit(text: str, reply_markup=None) -> object:
-        return await edit_or_send_message(message, text, reply_markup=reply_markup)
-
-    await render_cart(edit, session, user.id, lang=lang, translator=_)
+    cart = await cart_service.get_cart(session, user.id)
+    await answer_with_inline_keyboard(
+        message,
+        _cart_text(cart, lang=lang, translator=_),
+        reply_markup=cart_keyboard(cart.items, lang=lang, translator=_),
+    )
+    await message.delete()
 
 
 @router.callback_query(CartItemQtyCallback.filter())
