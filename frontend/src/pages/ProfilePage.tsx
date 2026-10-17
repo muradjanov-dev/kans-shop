@@ -106,7 +106,7 @@ export function ProfilePage() {
   }
 
   return (
-    <section aria-labelledby="profile-title" className="mx-auto max-w-3xl p-4 sm:p-6">
+    <section aria-labelledby="profile-title" className="profile-page mx-auto max-w-3xl p-4 sm:p-6">
       <h1 className="mb-4 text-xl font-semibold text-slate-900 dark:text-white" id="profile-title">
         {t("account.profile_title")}
       </h1>

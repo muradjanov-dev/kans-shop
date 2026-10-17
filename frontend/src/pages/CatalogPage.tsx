@@ -166,6 +166,29 @@ export function CatalogPage() {
         </p>
       )}
 
+      {categoryTree.isError ? (
+        <div className="px-4">
+          <ErrorState
+            message={isRateLimitedError(categoryTree.error) ? t("catalog.rate_limited") : undefined}
+            onRetry={() => void categoryTree.refetch()}
+          />
+        </div>
+      ) : childCategories.length > 0 ? (
+        <section aria-label={t("catalog.categories")} className="catalog-categories mb-5">
+          <div className="category-rail grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+            {childCategories.map((category) => (
+              <CategoryTile
+                category={category}
+                key={category.id}
+                onSelect={(nextCategory) => updateParams({ category: nextCategory.id })}
+                selected={category.id === effectiveCategoryId}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+
       <div className="catalog-controls">
         <CategoryBreadcrumbs
           categories={categories}
@@ -185,27 +208,6 @@ export function CatalogPage() {
         />
       </div>
 
-      {categoryTree.isError ? (
-        <div className="px-4">
-          <ErrorState
-            message={isRateLimitedError(categoryTree.error) ? t("catalog.rate_limited") : undefined}
-            onRetry={() => void categoryTree.refetch()}
-          />
-        </div>
-      ) : childCategories.length > 0 ? (
-        <section aria-label={t("catalog.categories")} className="catalog-categories mb-5">
-          <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-            {childCategories.map((category) => (
-              <CategoryTile
-                category={category}
-                key={category.id}
-                onSelect={(nextCategory) => updateParams({ category: nextCategory.id })}
-                selected={category.id === effectiveCategoryId}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       {featuredQuery.data && featuredQuery.data.length > 0 && (
         <section aria-labelledby="featured-products-heading" className="catalog-featured mb-7">

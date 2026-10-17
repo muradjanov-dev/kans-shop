@@ -54,7 +54,7 @@ export function CartPage() {
   const items = cart?.items ?? [];
 
   return (
-    <div className="page-shell page-shell-wide">
+    <div className="cart-page page-shell page-shell-wide">
       <h1 className="page-title mb-7 dark:text-white">{t("cart.title")}</h1>
 
       {items.length === 0 ? (
@@ -75,7 +75,7 @@ export function CartPage() {
       ) : (
         <div className="grid items-start gap-7 lg:grid-cols-[1fr_320px]">
           <div>
-            <div className="surface divide-y divide-[var(--line)] overflow-hidden dark:border-white/10 dark:bg-slate-900">
+            <div className="cart-items surface divide-y divide-[var(--line)] overflow-hidden dark:border-white/10 dark:bg-slate-900">
               {items.map((item) => {
                 const name = localizedField(language, item.product, "name");
                 const minimumQuantity = Math.max(1, item.product.min_order_qty);

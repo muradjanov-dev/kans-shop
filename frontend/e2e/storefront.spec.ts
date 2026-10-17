@@ -42,7 +42,7 @@ const copy = {
     saveAddress: "Saqlash",
     addFavorite: "Sevimlilarga qo‘shish",
     removeFavorite: "Sevimlilardan olib tashlash",
-    addToCart: "Savatga qo‘shish",
+    addToCart: "Savatga qo'shish",
     sku: "Artikul: SYNTH-001",
     stock: "Qoldiq: 20 dona",
     minimum: "Minimal buyurtma: 1",
@@ -185,6 +185,45 @@ for (const language of languages) {
         await expect(page.getByRole("heading", { name: text.favorites })).toBeVisible();
         await expect(page.getByText(text.product, { exact: true }).first()).toBeVisible();
         expect(storefrontApi.favoriteIdsFor(42)).toContain(storefrontApi.product.id);
+        await expectNoNetworkEscapes(page, purchaseApi);
+      });
+
+      test("failed_product_keeps_a_way_back_to_catalog", async ({ page, storefrontApi }) => {
+        await openCatalog(page, language, theme, storefrontApi);
+        await page.route("**/api/v1/catalog/products/999999", (route) => route.fulfill({
+          status: 404, contentType: "application/json", body: JSON.stringify({ detail: "Synthetic missing product" }),
+        }));
+        await page.goto("/product/999999");
+        await expect(page.getByRole("button", { name: language === "uz" ? "Qayta urinish" : "Повторить" })).toBeVisible();
+        await page.getByRole("button", { name: text.back, exact: true }).click();
+        await expect(page.getByRole("heading", { name: text.allProducts })).toBeVisible();
+      });
+
+      test("mobile_purchase_controls_remain_available", async ({ page, purchaseApi, storefrontApi }, testInfo) => {
+        test.skip(page.viewportSize()?.width !== 390, "Mobile purchase dock");
+        await openCatalog(page, language, theme, storefrontApi);
+        await loginFromHeader(page, text, "12345678");
+        await openProduct(page, text);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const purchase = page.getByRole("button", { name: text.addToCart, exact: true });
+        await expect(purchase).toBeInViewport({ ratio: 1 });
+        await page.getByRole("button", {
+          name: language === "uz" ? "Miqdorni oshirish" : "Увеличить количество",
+        }).click();
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await expect(purchase).toBeInViewport({ ratio: 1 });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: testInfo.outputPath("storefront-artifacts", `${language}-${theme}-product.png`) });
+        if (language === "ru" && theme === "light") {
+          await page.setViewportSize({ width: 320, height: 740 });
+          await expect(purchase).toBeInViewport({ ratio: 1 });
+          expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+          await page.screenshot({ path: testInfo.outputPath("storefront-artifacts", "320px-ru-light-product.png") });
+        }
+        await purchase.click();
+        await expect.poll(() => purchaseApi.requestsFor("POST", "/cart/items").length).toBe(1);
+        expect(purchaseApi.requestsFor("POST", "/cart/items")[0]?.body).toMatchObject({ quantity: 2 });
+        await expect(page).toHaveURL(/\/cart$/);
         await expectNoNetworkEscapes(page, purchaseApi);
       });
 

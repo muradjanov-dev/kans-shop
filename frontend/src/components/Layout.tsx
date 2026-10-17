@@ -19,7 +19,7 @@ export function Layout() {
   const hideMobileNavigation = pathname.startsWith("/product/") || pathname.startsWith("/checkout");
 
   return (
-    <div className="storefront-shell flex min-h-screen w-full flex-col">
+    <div className={`storefront-shell flex min-h-screen w-full flex-col${pathname.startsWith("/product/") ? " storefront-product-detail" : ""}`}>
       <StorefrontHeader cartCount={itemsCount} isAuthenticated={isAuthenticated} />
       <main className="app-main">
         <Outlet />
