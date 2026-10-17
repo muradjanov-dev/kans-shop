@@ -77,19 +77,19 @@ export function ProductPage() {
   const outOfStock = maximumQuantity !== undefined && maximumQuantity < minimumQuantity;
 
   return (
-    <div className="page-shell page-shell-wide">
+    <div className="product-page page-shell page-shell-wide">
       <Link
-        className="mb-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:text-white"
+        className="product-back mb-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:text-white"
         state={{ restoreCatalogScrollY: scrollY }}
         to={returnTo}
       >
         ← {t("common.back")}
       </Link>
-      <div className="grid gap-7 md:grid-cols-2 md:items-start md:gap-12">
-        <div className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--soft)] p-3 sm:p-5 dark:bg-slate-800 dark:border-white/10">
+      <div className="product-detail-grid grid gap-7 md:grid-cols-2 md:items-start md:gap-12">
+        <div className="product-detail-gallery overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--soft)] p-3 sm:p-5 dark:bg-slate-800 dark:border-white/10">
           <ProductGallery images={product.images} name={name} />
         </div>
-        <div className="flex flex-col gap-5 md:py-4">
+        <div className="product-detail-info flex flex-col gap-5 md:py-4">
           {product.is_featured && (
             <span className="w-fit rounded-full bg-[var(--orange)]/15 px-3 py-1.5 text-xs font-semibold text-[#93451E]">
               {t("product.featured")}
@@ -137,7 +137,7 @@ export function ProductPage() {
             </p>
           )}
           {!outOfStock && (
-            <div className="mt-3 flex w-full flex-wrap items-center gap-3 border-t border-[var(--line)] pt-6 dark:border-white/10">
+            <div className="product-purchase mt-3 flex w-full flex-wrap items-center gap-3 border-t border-[var(--line)] pt-6 dark:border-white/10">
               <QuantityStepper
                 disabled={pending}
                 max={maximumQuantity}

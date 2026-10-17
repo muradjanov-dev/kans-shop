@@ -24,7 +24,7 @@ export function CategoryTile({
   return (
     <button
       aria-current={selected ? "true" : undefined}
-      className={`group flex min-h-11 min-w-0 items-center gap-3 rounded-2xl border p-3 text-left shadow-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+      className={`category-tile group flex min-h-11 min-w-0 items-center gap-3 rounded-2xl border p-3 text-left shadow-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
         selected
           ? "border-brand bg-violet-50 text-violet-900 dark:bg-violet-400/15 dark:text-violet-100"
           : "border-slate-200 bg-white text-slate-900 hover:border-violet-300 dark:border-white/10 dark:bg-slate-900 dark:text-white"
@@ -32,7 +32,7 @@ export function CategoryTile({
       onClick={() => onSelect(category)}
       type="button"
     >
-      <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
+      <span className="category-tile-image flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
         {imageUrl && !imageFailed ? (
           <img
             alt=""

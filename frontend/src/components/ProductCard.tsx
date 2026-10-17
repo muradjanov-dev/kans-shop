@@ -80,17 +80,17 @@ export function ProductCard({ product }: { product: Product }) {
           </button>
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-1.5 px-1 pb-1 pt-3">
+      <div className="product-card-info flex flex-1 flex-col gap-1.5 px-1 pb-1 pt-3">
         <Link
           className="flex flex-1 flex-col gap-1.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           onClick={rememberCatalogScroll}
           state={detailState}
           to={`/product/${product.id}`}
         >
-          <p className="line-clamp-2 min-h-10 text-sm font-semibold text-slate-900 dark:text-slate-100">
+          <p className="product-card-name line-clamp-2 min-h-10 text-sm font-semibold text-slate-900 dark:text-slate-100">
             {name}
           </p>
-          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <div className="product-card-price flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
             <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
               {formatExactPrice(product.price)}
             </span>
