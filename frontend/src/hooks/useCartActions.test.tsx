@@ -214,6 +214,97 @@ describe("cart action recovery", () => {
     }
   });
 
+  it("renews a stored Mini App session from Telegram when the app opens", async () => {
+    const originalApiAdapter = api.defaults.adapter;
+    const originalAxiosAdapter = axios.defaults.adapter;
+    const fresh = jwt(42).replace("signature", "fresh-signature");
+    useAuthStore.getState().setTokens({ access_token: jwt(42), refresh_token: "weeks-old", is_admin: false });
+    Object.defineProperty(window, "Telegram", {
+      configurable: true,
+      value: { WebApp: { initData: "signed-init-data", initDataUnsafe: { user: { id: 999, language_code: "uz" } } } },
+    });
+    const telegramSignIns: string[] = [];
+    axios.defaults.adapter = async (config) => {
+      telegramSignIns.push(config.url ?? "");
+      return {
+        data: { access_token: fresh, refresh_token: "fresh-refresh", token_type: "bearer", is_admin: false },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        config,
+      };
+    };
+    api.defaults.adapter = async (config) => response(
+      config,
+      config.url?.endsWith("/cart") ? { items: [], subtotal: "0", items_count: 0 } : [],
+      200,
+    );
+
+    try {
+      renderWithProviders(<App />);
+
+      await waitFor(() => expect(useAuthStore.getState().refreshToken).toBe("fresh-refresh"));
+      expect(useAuthStore.getState().accessToken).toBe(fresh);
+      expect(telegramSignIns.filter((url) => url.endsWith("/auth/telegram"))).toHaveLength(1);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    } finally {
+      api.defaults.adapter = originalApiAdapter;
+      axios.defaults.adapter = originalAxiosAdapter;
+      delete (window as Window & { Telegram?: unknown }).Telegram;
+    }
+  });
+
+  it("signs a Telegram customer back in instead of asking for a login code", async () => {
+    const originalApiAdapter = api.defaults.adapter;
+    const originalAxiosAdapter = axios.defaults.adapter;
+    Object.defineProperty(window, "Telegram", {
+      configurable: true,
+      value: { WebApp: { initData: "signed-init-data", initDataUnsafe: { user: { id: 999, language_code: "uz" } } } },
+    });
+    // The first Telegram sign-in is refused (as when a session silently ran out); the tap retries it.
+    let telegramAttempts = 0;
+    axios.defaults.adapter = async (config) => {
+      telegramAttempts += 1;
+      if (telegramAttempts === 1) {
+        throw new AxiosError("expired", "ERR_BAD_REQUEST", config, null, {
+          data: {}, status: 401, statusText: "Unauthorized", headers: new AxiosHeaders(), config,
+        });
+      }
+      return {
+        data: { access_token: jwt(42), refresh_token: "refresh-42", token_type: "bearer", is_admin: false },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        config,
+      };
+    };
+    const cartPosts: unknown[] = [];
+    api.defaults.adapter = async (config) => {
+      if (config.method === "post" && config.url === "/cart/items") {
+        cartPosts.push(config.data);
+        return response(config, { items: [], subtotal: "1000", items_count: 1 } as unknown as Cart);
+      }
+      return response(config, { items: [], subtotal: "0", items_count: 0 }, 200);
+    };
+    const user = userEvent.setup();
+
+    try {
+      renderWithProviders(<ProductCard product={product} />, "/", true);
+      await waitFor(() => expect(telegramAttempts).toBe(1));
+
+      await user.click(screen.getByRole("button", { name: "Savatga qo'shish" }));
+
+      await waitFor(() => expect(cartPosts).toHaveLength(1));
+      expect(telegramAttempts).toBe(2);
+      expect(useAuthStore.getState().userId).toBe("42");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    } finally {
+      api.defaults.adapter = originalApiAdapter;
+      axios.defaults.adapter = originalAxiosAdapter;
+      delete (window as Window & { Telegram?: unknown }).Telegram;
+    }
+  });
+
   it("starts at minimum quantity and stops at available stock on the detail page", async () => {
     const detailProduct = { ...product, min_order_qty: 3, stock_qty: 5 };
     const originalAdapter = api.defaults.adapter;

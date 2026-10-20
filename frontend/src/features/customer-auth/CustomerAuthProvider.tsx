@@ -11,6 +11,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { track } from "@/lib/analytics";
 import { api, cancelAuthenticatedRequests, getApiErrorCode } from "@/lib/api";
+import { isTelegramWebApp } from "@/lib/telegram";
+import { signInWithTelegram } from "@/lib/telegramSession";
 import { setCustomerCartFromServer } from "@/lib/cartCache";
 import { customerQueryKeys } from "@/hooks/queries";
 import { useTranslate } from "@/lib/i18n";
@@ -78,8 +80,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const authEpoch = useAuthStore((state) => state.authEpoch);
   const login = useCustomerCodeLogin();
   const [pendingIntent, setPendingIntent] = useState<PendingCustomerAction | null>(() => readPendingAdd(Date.now()));
+  // Inside Telegram the code dialog never opens: Telegram itself signs the customer in.
   const [dialogOpen, setDialogOpen] = useState(
-    () => !useAuthStore.getState().accessToken && readPendingAdd(Date.now()) !== null,
+    () => !isTelegramWebApp() && !useAuthStore.getState().accessToken && readPendingAdd(Date.now()) !== null,
   );
   const [actionPending, setActionPending] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -205,6 +208,24 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [authEpoch, queryClient, setIntent, userId]);
 
+  // A Telegram customer whose stored session ran out (refresh refused) is signed straight
+  // back in from Telegram instead of being left a guest who would be asked for a code.
+  useEffect(() => {
+    if (accessToken || !isTelegramWebApp()) return;
+    void signInWithTelegram();
+  }, [accessToken]);
+
+  /** Sign in for a tap that needs an account; outside Telegram that is the code dialog. */
+  const requestSignIn = useCallback(() => {
+    if (!isTelegramWebApp()) {
+      setDialogOpen(true);
+      return;
+    }
+    void signInWithTelegram({ force: true }).then((signedIn) => {
+      if (!signedIn) setErrorCode("TELEGRAM_SESSION_EXPIRED");
+    });
+  }, []);
+
   useEffect(() => {
     if (!pendingIntent || !accessToken || !userId) return;
     if (attemptedKeysRef.current.has(pendingIntent.mutationKey)) return;
@@ -227,8 +248,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     pendingOwnerRef.current = useAuthStore.getState().userId;
     setIntent(intent);
     setErrorCode(null);
-    if (!useAuthStore.getState().accessToken) setDialogOpen(true);
-  }, [setIntent]);
+    if (!useAuthStore.getState().accessToken) requestSignIn();
+  }, [requestSignIn, setIntent]);
 
   const addFavorite = useCallback((productId: number) => {
     if (pendingIntentRef.current || useAuthStore.getState().accessToken) return;
@@ -241,20 +262,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     pendingOwnerRef.current = null;
     setErrorCode(null);
     setExpiredActionKind(null);
-    setDialogOpen(true);
-  }, [setIntent]);
+    requestSignIn();
+  }, [requestSignIn, setIntent]);
 
   const retry = useCallback(() => {
     const intent = pendingIntentRef.current;
     if (!intent) return;
     const current = useAuthStore.getState();
     if (!current.accessToken || !current.userId) {
-      setDialogOpen(true);
       setErrorCode(null);
+      requestSignIn();
       return;
     }
     void runIntent(intent, current.authEpoch, current.userId);
-  }, [runIntent]);
+  }, [requestSignIn, runIntent]);
 
   const cancelLogin = useCallback(() => {
     loginGenerationRef.current += 1;
@@ -294,8 +315,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const openLogin = useCallback(() => {
     setErrorCode(null);
     setExpiredActionKind(null);
-    setDialogOpen(true);
-  }, []);
+    requestSignIn();
+  }, [requestSignIn]);
 
   const logout = useCallback(() => {
     loginGenerationRef.current += 1;
@@ -336,7 +357,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       />
       {errorCode && pendingIntent && !dialogOpen && (
         <div className="fixed bottom-28 left-3 right-3 z-[90] mx-auto flex max-w-md flex-col gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-800 shadow-lg dark:bg-red-950/80 dark:text-red-100" role="alert">
-          <p>{t(pendingIntent.kind === "cart_add" ? "cart.action_pending" : "favorite.action_pending")}</p>
+          <p>{errorCode === "TELEGRAM_SESSION_EXPIRED"
+            ? t("auth.telegram_reopen")
+            : t(pendingIntent.kind === "cart_add" ? "cart.action_pending" : "favorite.action_pending")}</p>
           <div className="flex gap-2">
             <button className="rounded-lg bg-brand px-3 py-2 font-semibold text-white" onClick={retry} type="button">
               {t(pendingIntent.kind === "cart_add" ? "cart.retry" : "favorite.retry_action")}

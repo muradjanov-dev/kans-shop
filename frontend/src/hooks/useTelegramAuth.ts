@@ -1,21 +1,17 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
-import { API_BASE_URL } from "@/lib/api";
 import {
   initTelegramWebApp,
   isTelegramWebApp,
-  telegramInitData,
   telegramLanguageCode,
 } from "@/lib/telegram";
+import { signInWithTelegram } from "@/lib/telegramSession";
 import { useAuthStore } from "@/store/auth";
 import { useLanguageStore } from "@/store/language";
-import type { TokenPair } from "@/types/api";
 
 type AuthStatus = "pending" | "ready" | "unavailable";
 
 export function useTelegramAuth(): AuthStatus {
   const [status, setStatus] = useState<AuthStatus>("pending");
-  const setTokens = useAuthStore((state) => state.setTokens);
   const accessToken = useAuthStore((state) => state.accessToken);
   const setTelegramLanguage = useLanguageStore((state) => state.setTelegramLanguage);
 
@@ -26,23 +22,17 @@ export function useTelegramAuth(): AuthStatus {
       setTelegramLanguage(telegramLanguageCode());
 
       if (accessToken) {
+        // Show the shop at once and renew the stored session from Telegram behind it. A
+        // session saved weeks ago would otherwise run out mid-visit and leave the customer a
+        // guest who gets asked for a login code inside Telegram.
         setStatus("ready");
+        void signInWithTelegram({ force: true });
         return;
       }
 
-      const expectedEpoch = useAuthStore.getState().authEpoch;
-
-      axios
-        .post<TokenPair>(`${API_BASE_URL}/auth/telegram`, { init_data: telegramInitData() })
-        .then(({ data }) => {
-          if (cancelled) return;
-          if (useAuthStore.getState().authEpoch !== expectedEpoch) return;
-          setTokens(data);
-          setStatus("ready");
-        })
-        .catch(() => {
-          if (!cancelled) setStatus("unavailable");
-        });
+      void signInWithTelegram({ force: true }).then((signedIn) => {
+        if (!cancelled) setStatus(signedIn ? "ready" : "unavailable");
+      });
     }
 
     // Some Telegram clients (notably Desktop) populate initData a beat after our bundle

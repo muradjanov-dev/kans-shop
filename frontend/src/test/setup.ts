@@ -1,12 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach } from "vitest";
+import { resetTelegramSessionForTests } from "@/lib/telegramSessionState";
 import { useAuthStore } from "@/store/auth";
 import { useLanguageStore } from "@/store/language";
 
 beforeEach(() => {
   window.localStorage.clear();
   useAuthStore.getState().clear();
+  resetTelegramSessionForTests();
   useLanguageStore.setState({ language: "uz", hasUserPreference: false });
   if (!window.matchMedia) {
     window.matchMedia = (query: string) => ({
