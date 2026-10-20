@@ -1,3 +1,4 @@
+import html
 from collections.abc import Callable
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -55,7 +56,13 @@ from app.db.models.enums import OrderType, PaymentMethod, PaymentProvider
 from app.db.models.order import Order
 from app.db.models.user import User
 from app.db.repositories import setting_repository
-from app.services import cart_service, order_service, payment_service, purchase_service
+from app.services import (
+    cart_service,
+    geocoding,
+    order_service,
+    payment_service,
+    purchase_service,
+)
 from app.services.after_commit import commit_with_after_commit
 from app.services.checkout_quote import CheckoutQuote, quote_checkout
 from app.services.receipt_service import attach_card_transfer_receipt
@@ -449,14 +456,28 @@ async def on_phone_text(message: Message, state: FSMContext, _: Callable) -> Non
 
 
 @router.message(CheckoutStates.entering_address, F.location)
-async def on_address_location(message: Message, state: FSMContext, _: Callable) -> None:
+async def on_address_location(
+    message: Message, state: FSMContext, _: Callable, lang: str = "uz"
+) -> None:
     if message.location is None:
         return
-    await state.update_data(
-        address=None, latitude=message.location.latitude, longitude=message.location.longitude
+    latitude = message.location.latitude
+    longitude = message.location.longitude
+    # The courier needs words, not just a pin: look up the street for the shared point. The
+    # coordinates stay on the order either way, so admins always get an exact map link.
+    address = await geocoding.reverse_geocode(
+        Decimal(str(latitude)), Decimal(str(longitude)), language=lang
     )
+    await state.update_data(address=address, latitude=latitude, longitude=longitude)
     await state.set_state(CheckoutStates.entering_address_comment)
-    await message.answer("✅", reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        (
+            _("checkout.location_address", address=html.escape(address, quote=False))
+            if address
+            else _("checkout.location_saved")
+        ),
+        reply_markup=ReplyKeyboardRemove(),
+    )
     await message.answer(
         _("checkout.enter_address_comment"), reply_markup=address_comment_step_keyboard(_)
     )

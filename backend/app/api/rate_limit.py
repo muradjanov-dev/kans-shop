@@ -27,6 +27,10 @@ ADMIN_CODE_REQUEST_PATH = "/api/v1/auth/admin/code/request"
 ADMIN_CODE_REQUEST_LIMIT = 5
 ADMIN_CODE_REQUEST_WINDOW_SECONDS = 600
 _ADMIN_CODE_REQUEST_RATE_KEY_PREFIX = "ratelimit:admin_code_request:"
+# Each lookup may reach OpenStreetMap, whose policy allows about one request per second.
+GEOCODE_PATH = "/api/v1/geocode/reverse"
+GEOCODE_LIMIT = 10
+GEOCODE_WINDOW_SECONDS = 60
 
 _ATOMIC_INCREMENT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
@@ -133,6 +137,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
         ):
             return _rate_limited_response("Too many code requests, please wait")
+
+        if request.url.path == GEOCODE_PATH and not await _under_limit(
+            f"ratelimit:geocode:{client_ip}", GEOCODE_LIMIT, GEOCODE_WINDOW_SECONDS
+        ):
+            return _rate_limited_response("Too many location lookups, please wait")
 
         is_checkout = request.method == "POST" and request.url.path == CHECKOUT_PATH
         if is_checkout and not await _under_limit(

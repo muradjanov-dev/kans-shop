@@ -12,6 +12,12 @@ import type { CheckoutPayload, Order, OrderType, PaymentMethod } from "@/types/a
 type CheckoutField = "name" | "phone" | "address";
 type CheckoutErrors = Partial<Record<CheckoutField, string>>;
 
+/** A shared delivery point, kept as the exact decimal strings sent to the API. */
+export interface CheckoutLocation {
+  latitude: string;
+  longitude: string;
+}
+
 interface CheckoutAttempt {
   payload: CheckoutPayload;
   key: string;
@@ -75,16 +81,31 @@ function isUnknownOutcome(error: unknown): boolean {
 }
 
 function getErrors(
-  values: { name: string; phone: string; address: string },
+  values: { name: string; phone: string; address: string; hasLocation: boolean },
   orderType: OrderType,
 ): CheckoutErrors {
   const errors: CheckoutErrors = {};
   if (!values.name.trim()) errors.name = "checkout.validation.name";
   if (!isValidUzPhone(values.phone)) errors.phone = "checkout.validation.phone";
-  if (orderType === "delivery" && !values.address.trim()) {
+  // A shared location is enough on its own: the courier gets the exact map point.
+  if (orderType === "delivery" && !values.address.trim() && !values.hasLocation) {
     errors.address = "checkout.validation.address";
   }
   return errors;
+}
+
+function deliverySnapshot(
+  orderType: OrderType,
+  address: string,
+  addressComment: string,
+  location: CheckoutLocation | null,
+): Partial<CheckoutPayload> {
+  if (orderType !== "delivery") return {};
+  return {
+    address: address.trim() || null,
+    address_comment: addressComment.trim() || null,
+    ...(location ? { latitude: location.latitude, longitude: location.longitude } : {}),
+  };
 }
 
 export function useCheckoutFlow() {
@@ -100,6 +121,7 @@ export function useCheckoutFlow() {
   const [phone, setPhoneState] = useState("");
   const [address, setAddressState] = useState("");
   const [addressComment, setAddressCommentState] = useState("");
+  const [location, setLocationState] = useState<CheckoutLocation | null>(null);
   const [paymentMethod, setPaymentMethodState] = useState<PaymentMethod>("cash");
   const [comment, setCommentState] = useState("");
   const [touched, setTouched] = useState<CheckoutField[]>([]);
@@ -153,6 +175,7 @@ export function useCheckoutFlow() {
     phoneEditedRef.current = false;
     setAddressState("");
     setAddressCommentState("");
+    setLocationState(null);
     setPaymentMethodState("cash");
     setCommentState("");
     setTouched([]);
@@ -180,8 +203,8 @@ export function useCheckoutFlow() {
 
   const locked = Boolean(attempt || recoveryRecord || checkout.isPending);
   const allErrors = useMemo(
-    () => getErrors({ name, phone, address }, orderType),
-    [address, name, orderType, phone],
+    () => getErrors({ name, phone, address, hasLocation: Boolean(location) }, orderType),
+    [address, location, name, orderType, phone],
   );
   const visibleErrors = useMemo(() => {
     const result: CheckoutErrors = {};
@@ -227,6 +250,12 @@ export function useCheckoutFlow() {
   const setAddress = useCallback((value: string) => updateField(setAddressState, value), [updateField]);
   const setAddressComment = useCallback((value: string) => updateField(setAddressCommentState, value), [updateField]);
   const setComment = useCallback((value: string) => updateField(setCommentState, value), [updateField]);
+  const setLocation = useCallback((value: CheckoutLocation | null) => {
+    if (locked) return;
+    setLocationState(value);
+    setSubmitError(null);
+    setSubmitAttempted(false);
+  }, [locked]);
 
   const touch = useCallback((field: CheckoutField) => {
     setTouched((current) => current.includes(field) ? current : [...current, field]);
@@ -282,15 +311,13 @@ export function useCheckoutFlow() {
   const submit = useCallback(async () => {
     if (locked || !isAuthenticated) return;
     setSubmitAttempted(true);
-    const validation = getErrors({ name, phone, address }, orderType);
+    const validation = getErrors({ name, phone, address, hasLocation: Boolean(location) }, orderType);
     if (Object.keys(validation).length) return;
     if (!quote?.ready || !quoteOffersPaymentMethod || quote.total === null || !quote.quote_fingerprint) return;
     if (quoteConfirmationRequired && confirmedQuoteFingerprint !== quote.quote_fingerprint) return;
     if ((cart?.items.length ?? 0) === 0) return;
 
-    const addressSnapshot = orderType === "delivery"
-      ? { address: address.trim(), address_comment: addressComment.trim() || null }
-      : {};
+    const addressSnapshot = deliverySnapshot(orderType, address, addressComment, location);
     const payload: CheckoutPayload = {
       order_type: orderType,
       customer_name: name.trim(),
@@ -322,6 +349,7 @@ export function useCheckoutFlow() {
     comment,
     confirmedQuoteFingerprint,
     isAuthenticated,
+    location,
     locked,
     name,
     orderType,
@@ -344,14 +372,12 @@ export function useCheckoutFlow() {
     setConfirmedQuoteFingerprint(quote.quote_fingerprint);
     setQuoteConfirmationRequired(false);
     setSubmitError(null);
-    const validation = getErrors({ name, phone, address }, orderType);
+    const validation = getErrors({ name, phone, address, hasLocation: Boolean(location) }, orderType);
     if (Object.keys(validation).length) {
       setSubmitAttempted(true);
       return;
     }
-    const addressSnapshot = orderType === "delivery"
-      ? { address: address.trim(), address_comment: addressComment.trim() || null }
-      : {};
+    const addressSnapshot = deliverySnapshot(orderType, address, addressComment, location);
     const payload: CheckoutPayload = {
       order_type: orderType,
       customer_name: name.trim(),
@@ -375,7 +401,7 @@ export function useCheckoutFlow() {
     }
     setAttempt(nextAttempt);
     void performAttempt(nextAttempt);
-  }, [address, addressComment, comment, locked, name, orderType, performAttempt, phone, quote, quoteOffersPaymentMethod, quotePaymentMethod, userId]);
+  }, [address, addressComment, comment, location, locked, name, orderType, performAttempt, phone, quote, quoteOffersPaymentMethod, quotePaymentMethod, userId]);
 
   const quoteCanSubmit = Boolean(
     quote?.ready && quoteOffersPaymentMethod && quote.total !== null && quote.quote_fingerprint,
@@ -407,6 +433,8 @@ export function useCheckoutFlow() {
     setAddress,
     addressComment,
     setAddressComment,
+    location,
+    setLocation,
     paymentMethod,
     setPaymentMethod,
     comment,

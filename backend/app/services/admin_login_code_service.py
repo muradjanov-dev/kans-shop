@@ -29,7 +29,8 @@ return 0
 async def issue_admin_login_code(redis: Redis, telegram_id: int) -> str:
     owner = str(telegram_id)
     latest_key = f"{ADMIN_LATEST_CODE_KEY_PREFIX}{owner}"
-    previous_code = await redis.get(latest_key)
+    previous = await redis.get(latest_key)
+    previous_code = previous.decode() if isinstance(previous, bytes) else previous
 
     for _attempt in range(10):
         code = f"{secrets.randbelow(1_000_000):06d}"
@@ -41,7 +42,7 @@ async def issue_admin_login_code(redis: Redis, telegram_id: int) -> str:
         raise RuntimeError("Could not allocate a unique admin login code")
 
     await redis.set(latest_key, code, ex=CODE_TTL_SECONDS)
-    if previous_code and str(previous_code) != code:
+    if previous_code and previous_code != code:
         await redis.eval(
             _DELETE_IF_OWNED_SCRIPT, 1, f"{ADMIN_LOGIN_KEY_PREFIX}{previous_code}", owner
         )

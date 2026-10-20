@@ -11,8 +11,27 @@ import { setSystemTheme } from "@/store/theme";
 // avoids shipping the SDK's bundled second copy of the bridge, which fought with the script
 // tag over the same global.
 
+export interface TelegramLocationData {
+  latitude: number;
+  longitude: number;
+  horizontal_accuracy?: number | null;
+}
+
+// Bot API 8.0+ location access, granted per bot in Telegram's own settings.
+export interface TelegramLocationManager {
+  isInited?: boolean;
+  isLocationAvailable?: boolean;
+  isAccessRequested?: boolean;
+  isAccessGranted?: boolean;
+  init?: (callback?: () => void) => unknown;
+  getLocation?: (callback: (data: TelegramLocationData | null) => void) => unknown;
+  openSettings?: () => unknown;
+}
+
 interface TelegramWebApp {
   initData?: string;
+  LocationManager?: TelegramLocationManager;
+  isVersionAtLeast?: (version: string) => boolean;
   initDataUnsafe?: {
     user?: { id?: number; first_name?: string; last_name?: string; language_code?: string };
   };
@@ -60,6 +79,19 @@ export function initTelegramWebApp(): void {
   } catch (error) {
     console.error("Telegram WebApp init failed (continuing without it)", error);
   }
+}
+
+/** Telegram's location API, only inside a Telegram client new enough to support it. */
+export function telegramLocationManager(): TelegramLocationManager | null {
+  const app = webApp();
+  if (!app || !isTelegramWebApp()) return null;
+  try {
+    if (app.isVersionAtLeast && !app.isVersionAtLeast("8.0")) return null;
+  } catch {
+    return null;
+  }
+  const manager = app.LocationManager;
+  return manager?.getLocation ? manager : null;
 }
 
 export function telegramLanguageCode(): "uz" | "ru" {

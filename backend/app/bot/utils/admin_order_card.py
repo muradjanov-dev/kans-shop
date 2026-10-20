@@ -1,3 +1,4 @@
+import html
 from collections.abc import Callable
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -17,6 +18,7 @@ from app.core.config import settings
 from app.db.models.enums import OrderStatus, OrderType, PaymentMethod, PaymentStatus
 from app.db.models.order import Order
 from app.db.models.user import User
+from app.services.geocoding import map_links
 from app.services.receipt_service import has_private_receipt_evidence
 
 ORDER_TYPE_LABEL_KEYS = {
@@ -37,6 +39,11 @@ ADMIN_PAYMENT_LABEL_KEYS = {
 
 def _format_price(price: Decimal) -> str:
     return f"{price:,.0f}".replace(",", " ")
+
+
+def _text(value: str) -> str:
+    """Escape text for HTML parse mode, keeping apostrophes ("Ko'k darvoza") readable."""
+    return html.escape(value, quote=False)
 
 
 def build_admin_order_text(
@@ -63,14 +70,29 @@ def build_admin_order_text(
             "admin.type_label", value=translator(ORDER_TYPE_LABEL_KEYS[order.order_type.value])
         )
     )
+    # The card is sent with HTML parse mode: customer text and geocoded addresses are escaped
+    # so a stray "<" or "&" cannot make Telegram reject the whole order notification.
     if order.address:
-        lines.append(translator("admin.address_label", value=order.address))
+        lines.append(translator("admin.address_label", value=_text(order.address)))
     elif order.latitude is not None:
         lines.append(
             translator("admin.address_label", value=f"{order.latitude}, {order.longitude}")
         )
+    if order.latitude is not None and order.longitude is not None:
+        google, yandex = map_links(order.latitude, order.longitude)
+        lines.append(
+            translator(
+                "admin.map_label",
+                google=html.escape(google, quote=True),
+                yandex=html.escape(yandex, quote=True),
+            )
+        )
+    if order.address_comment:
+        lines.append(
+            translator("admin.address_comment_label", value=_text(order.address_comment))
+        )
     if order.comment:
-        lines.append(translator("admin.comment_label", value=order.comment))
+        lines.append(translator("admin.comment_label", value=_text(order.comment)))
 
     lines.append(translator("admin.divider"))
     lines.append(translator("admin.items_header"))

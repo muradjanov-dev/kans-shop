@@ -7,6 +7,7 @@ from app.api.v1 import (
     cart,
     catalog,
     favorites,
+    geocode,
     orders,
     profile,
     receipts,
@@ -23,6 +24,7 @@ router.include_router(catalog.router)
 router.include_router(favorites.router)
 router.include_router(cart.router)
 router.include_router(orders.router)
+router.include_router(geocode.router)
 router.include_router(receipts.router)
 router.include_router(settings.router)
 router.include_router(admin_router)

@@ -180,6 +180,8 @@ export interface CheckoutPayload {
   payment_method: PaymentMethod;
   address?: string | null;
   address_comment?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
   comment?: string | null;
   purchase_contract_version: 1;
   expected_total: string;

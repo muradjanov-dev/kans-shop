@@ -4,6 +4,7 @@ import { formatExactPrice } from "@/lib/format";
 import type { Address } from "@/types/api";
 import type { AddressInput } from "@/hooks/customer";
 import type { OrderType, PaymentMethod } from "@/types/api";
+import { LocationPicker } from "./LocationPicker";
 import type { useCheckoutFlow } from "./useCheckoutFlow";
 
 type CheckoutFlow = ReturnType<typeof useCheckoutFlow>;
@@ -132,6 +133,8 @@ export function CheckoutForm({
                         ({ id }) => String(id) === selectedId,
                       );
                       if (savedAddress) {
+                        // A saved address is a different place than the phone's position.
+                        flow.setLocation(null);
                         flow.setAddress(savedAddress.address_text);
                         flow.setAddressComment(
                           savedAddress.address_comment ?? "",
@@ -166,6 +169,17 @@ export function CheckoutForm({
                   </button>
                 </div>
               )}
+              <LocationPicker
+                address={flow.address}
+                disabled={flow.locked}
+                location={flow.location}
+                onAddress={(value) => {
+                  setSelectedAddressId("");
+                  setAddressSaved(false);
+                  flow.setAddress(value);
+                }}
+                onLocation={flow.setLocation}
+              />
               <Field
                 label={t("checkout.address")}
                 error={

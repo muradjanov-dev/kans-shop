@@ -68,6 +68,17 @@ class Settings(BaseSettings):
     media_base_url: str = Field(default="http://localhost:8000/media", alias="MEDIA_BASE_URL")
     private_media_root: str = Field(default="/app/private_media", alias="PRIVATE_MEDIA_ROOT")
 
+    # --- Reverse geocoding (delivery location -> written address) ---
+    # OpenStreetMap Nominatim by default: no key, but an identifying User-Agent and at most one
+    # request per second (see app/services/geocoding.py). Set GEOCODER_ENABLED=false to turn off.
+    geocoder_enabled: bool = Field(default=True, alias="GEOCODER_ENABLED")
+    geocoder_url: str = Field(
+        default="https://nominatim.openstreetmap.org", alias="GEOCODER_URL"
+    )
+    geocoder_user_agent: str = Field(
+        default="KansShop/1.0 (+https://kans.standart-eko.uz)", alias="GEOCODER_USER_AGENT"
+    )
+
     # --- Misc ---
     default_language: str = Field(default="uz", alias="DEFAULT_LANGUAGE")
     timezone: str = Field(default="Asia/Tashkent", alias="TIMEZONE")

@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from decimal import Decimal
 from urllib.parse import unquote, urlsplit, urlunsplit
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.core.config import settings
 from app.db.models import Base
 from app.db.models.admin import Admin
 from app.db.models.category import Category
@@ -24,6 +26,12 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://kansshop:kansshop@localhost:5432/kansshop_test",
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_live_geocoding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may reach the real geocoder; geocoding tests opt in with a mock transport."""
+    monkeypatch.setattr(settings, "geocoder_enabled", False)
 
 
 def _validate_test_database_url() -> None:

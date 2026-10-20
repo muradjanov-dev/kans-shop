@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,6 +60,27 @@ async def test_order_text_includes_key_fields(
     assert "+998901234567" in text
     assert "Chilonzor 9" in text
     assert product.name_uz in text
+
+
+async def test_order_text_links_the_delivery_point_and_escapes_customer_text(
+    db_session: AsyncSession, user: User, product: Product
+) -> None:
+    order = await _make_order(
+        db_session,
+        user,
+        product,
+        address="Yuqori Darxon 12 & <Do'kon>",
+        address_comment="Ko'k darvoza",
+        latitude=Decimal("41.285600"),
+        longitude=Decimal("69.203400"),
+    )
+
+    text = build_admin_order_text(order, user, translator=translator)
+
+    assert "Yuqori Darxon 12 &amp; &lt;Do'kon&gt;" in text
+    assert "Ko'k darvoza" in text
+    assert 'href="https://maps.google.com/?q=41.285600,69.203400"' in text
+    assert 'href="https://yandex.uz/maps/?pt=69.203400,41.285600&amp;z=17&amp;l=map"' in text
 
 
 async def test_order_text_shows_no_username_placeholder_when_missing(
