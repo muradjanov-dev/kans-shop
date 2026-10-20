@@ -118,25 +118,36 @@ _BENEFITS: list[tuple[re.Pattern[str], str]] = [
         "hujjatlaringizga rasmiy va ishonchli ko'rinish beradi",
     ),
     (
-        re.compile(r"творч|ijod|рисов|bo['‘ʻ]?yoq|akvarel|plastilin|kraska", re.I),
+        re.compile(
+            r"творч|ijod|рисов|rasm|albom|rangli|guash|bo['‘ʻ]?yoq|bo['‘ʻ]?yama|akvarel"
+            r"|plastilin|mo['‘ʻ]?yqalam|pazl|kraska",
+            re.I,
+        ),
         "ijodga ilhom beradi va ranglarni jonlantiradi",
     ),
     (
-        re.compile(r"папк|архив|papka|arxiv|fayl|registr", re.I),
+        re.compile(r"папк|архив|papka|arxiv|fayl|registr|skorosshivatel", re.I),
         "hujjatlar doim joyida va tartibli turadi",
     ),
     (re.compile(r"книг|kitob|book", re.I), "o'qishni yoqimli odatga aylantiradi"),
     (
-        re.compile(r"бумаж|бумаг|qog['‘ʻ]?oz|paper|daftar|тетрад|блокнот|jurnal|журнал", re.I),
+        re.compile(
+            r"бумаж|бумаг|qog['‘ʻ]?oz|paper|daftar|тетрад|блокнот|bloknot|jurnal|журнал"
+            r"|stiker|xatcho['‘ʻ]?p",
+            re.I,
+        ),
         "har bir varag'i silliq va ishonchli",
     ),
+    # Before the writing tools: "qalam yelim" is glue and "qalamtarosh" a sharpener.
+    (re.compile(r"yelim|клей", re.I), "qog'ozni toza va mustahkam yopishtiradi"),
+    (re.compile(r"qalamtarosh|точилк", re.I), "qalamni bir zumda o'tkir qiladi"),
     (
         re.compile(r"письм|ручк|yozuv|ruchka|pen|qalam|маркер|marker|карандаш", re.I),
         "yozganda qo'l charchamaydi, chiziq esa bir tekis chiqadi",
     ),
     (re.compile(r"школ|maktab|school", re.I), "darsga tayyorgarlikni ancha yengillashtiradi"),
     (
-        re.compile(r"быт|maishiy|xo['‘ʻ]?jalik|batareya|батарей", re.I),
+        re.compile(r"быт|maishiy|xo['‘ʻ]?jalik|batarey|батарей|салфет|salfetka", re.I),
         "uyda ham, ofisda ham doim asqotadi",
     ),
     (
@@ -144,7 +155,11 @@ _BENEFITS: list[tuple[re.Pattern[str], str]] = [
         "ishni tez va puxta bitirishga yordam beradi",
     ),
     (
-        re.compile(r"офис|ofis|office|калькулятор|kalkulyator|степлер|скотч|нож", re.I),
+        re.compile(
+            r"офис|ofis|office|калькулятор|kalkulyator|степлер|stepler|скотч|skotch|нож"
+            r"|pichoq|qaychi|lotok|kanselyariya",
+            re.I,
+        ),
         "ish stolini tartibli va qulay qiladi",
     ),
 ]
@@ -172,14 +187,22 @@ def _capitalize(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
+# Two products of the same kind would otherwise praise the second one with the first's words.
+_SECOND_BENEFIT = "kundalik ishda doim asqotadi"
+
+
 def _story_from_template(products: Sequence[CaptionProduct], template: str) -> str:
     first = products[0]
     second = products[1] if len(products) > 1 else products[0]
+    first_benefit = benefit_for(first)
+    second_benefit = benefit_for(second)
+    if second is not first and second_benefit == first_benefit:
+        second_benefit = _SECOND_BENEFIT
     values = {
         "p1": _short_name(first.name),
         "p2": _short_name(second.name),
-        "b1": benefit_for(first),
-        "b2": benefit_for(second),
+        "b1": first_benefit,
+        "b2": second_benefit,
     }
     values |= {key.upper(): _capitalize(value) for key, value in values.items()}
     return template.format(**values)

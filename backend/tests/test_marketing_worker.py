@@ -1,5 +1,6 @@
 """Scheduling and publishing of the daily channel advert (real Postgres, fake Telegram)."""
 
+import re
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -69,7 +70,12 @@ async def session_maker(
             for index in range(3):
                 product = Product(
                     category_id=category.id,
-                    name_uz=f"Advert daftar {index}",
+                    # The first one carries a Russian 1C name, as most of the catalog does.
+                    name_uz=(
+                        "Ручка шариковая Spark Luxor чер."
+                        if index == 0
+                        else f"Advert daftar {index}"
+                    ),
                     name_ru=f"Тетрадь {index}",
                     sku=f"ADV-TEST-{index}",
                     price=Decimal("9500"),
@@ -143,6 +149,9 @@ async def test_first_advert_goes_out_immediately_then_one_a_day_at_post_time(
     assert caption == first.caption and len(caption) <= 1024
     assert "🤖 Buyurtma: @kans_test_bot" in caption
     assert caption.rstrip().endswith("📣 @kansshop_test")
+    # The Russian catalog name is advertised in Uzbek: one language from start to end.
+    assert "Luxor Spark sharikli ruchka, qora" in caption
+    assert not re.search("[А-Яа-яЁё]", caption)
 
     # The same day never gets a second advert.
     assert (

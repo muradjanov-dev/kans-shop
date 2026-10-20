@@ -38,6 +38,7 @@ from app.db.repositories import setting_repository
 from app.db.repositories.product_repository import public_visibility_predicate
 from app.services.inventory_policy import get_inventory_policy
 from app.services.marketing.captions import CaptionContext, CaptionProduct, build_caption
+from app.services.marketing.uz_names import uzbek_product_name
 from app.services.marketing.video import AdBrand, AdProduct, render_advert
 
 log = get_logger(__name__)
@@ -220,7 +221,8 @@ async def pick_products(
     return [
         _PickedProduct(
             id=product.id,
-            name=product.name_uz,
+            # The catalog's name_uz is often the Russian 1C name; the advert stays Uzbek.
+            name=uzbek_product_name(product.name_uz),
             price=product.price,
             old_price=(
                 product.old_price
