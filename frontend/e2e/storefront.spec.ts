@@ -201,6 +201,30 @@ for (const language of languages) {
         await expect(page.getByRole("heading", { name: text.allProducts })).toBeVisible();
       });
 
+      test("behaviour_analytics_reach_the_api", async ({ page, purchaseApi, storefrontApi }) => {
+        test.skip(language !== "uz" || theme !== "light", "One language and theme is enough");
+        await openCatalog(page, language, theme, storefrontApi);
+        await openProduct(page, text);
+        // Leaving the tab flushes the batch at once (keepalive), instead of the 20 s timer.
+        await page.evaluate(() => {
+          Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+          document.dispatchEvent(new Event("visibilitychange"));
+        });
+        await expect.poll(() => purchaseApi.analyticsBatches.length).toBeGreaterThan(0);
+
+        const productId = storefrontApi.product.id;
+        const batches = purchaseApi.analyticsBatches as Array<{ platform: string; visitor_id: string; events: Array<Record<string, unknown>> }>;
+        const events = batches.flatMap((batch) => batch.events);
+        expect(events).toEqual(expect.arrayContaining([
+          expect.objectContaining({ type: "page_view", path: "/" }),
+          expect.objectContaining({ type: "click", target: "card_image", product_id: productId }),
+          expect.objectContaining({ type: "page_view", path: `/product/${productId}`, product_id: productId }),
+          expect.objectContaining({ type: "product_view", product_id: productId }),
+        ]));
+        expect(batches[0]).toMatchObject({ platform: "web", visitor_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+        await expectNoNetworkEscapes(page, purchaseApi);
+      });
+
       test("mobile_purchase_controls_remain_available", async ({ page, purchaseApi, storefrontApi }, testInfo) => {
         test.skip(page.viewportSize()?.width !== 390, "Mobile purchase dock");
         await openCatalog(page, language, theme, storefrontApi);
