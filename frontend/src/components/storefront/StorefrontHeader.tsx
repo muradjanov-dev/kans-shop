@@ -107,7 +107,7 @@ export function StorefrontHeader({
           )}
           <Link className="brand-link flex min-h-11 items-center rounded-lg font-semibold tracking-tight text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:text-white" to="/">
             <span aria-hidden="true" className="brand-mark"><svg width="25" height="28" viewBox="0 0 28 32" fill="none"><path d="M7 5v22M21 5 8 17l14 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/><circle cx="22" cy="5" r="3" fill="#EE7938"/></svg></span>
-            <span className="brand-name" aria-label="Kans Shop">kans<span>.</span></span>
+            <span className="brand-name"><span>Kans</span> <span>Shop</span></span>
           </Link>
         </div>
 

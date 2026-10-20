@@ -10,3 +10,10 @@ it('offers the catalog when a saved customer URL no longer exists', () => {
   expect(screen.getByRole('heading', { name: 'Sahifa topilmadi' })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Katalogga qaytish' })).toHaveAttribute('href', '/');
 });
+it('shows the full brand name in the header', () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/old-campaign']}><App /></MemoryRouter></QueryClientProvider>);
+  const home = screen.getByRole('link', { name: 'Kans Shop' });
+  expect(home).toHaveAttribute('href', '/');
+  expect(home).toHaveTextContent('Kans Shop');
+});
