@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useLocation } from "react-router-dom";
 import { ProductCard } from "@/components/ProductCard";
 import { CatalogFilters } from "@/components/storefront/CatalogFilters";
@@ -42,23 +42,29 @@ export function CatalogPage() {
     () => readCatalogQuery(new URLSearchParams(serializedParams)),
     [serializedParams],
   );
+  // setSearchParams hands its updater the params of the last render, not the last update, so
+  // two quick changes (min price, then max price) could drop the first one. Each update builds
+  // on the newest params instead.
+  const latestParams = useRef(searchParams);
+  useLayoutEffect(() => {
+    latestParams.current = searchParams;
+  }, [searchParams]);
   const updateParams = useCallback((patch: Partial<CatalogQuery>, clearAll = false) => {
-    setSearchParams((current) => {
-      const next = clearAll ? new URLSearchParams() : new URLSearchParams(current);
-      const update = (key: string, value: string | null) => {
-        if (value === null || value === "") next.delete(key);
-        else next.set(key, value);
-      };
-      if ("q" in patch) update("q", patch.q?.trim() ? patch.q : null);
-      if ("category" in patch) update("category", patch.category ? String(patch.category) : null);
-      if ("min_price" in patch) update("min_price", patch.min_price?.trim() ?? null);
-      if ("max_price" in patch) update("max_price", patch.max_price?.trim() ?? null);
-      if ("in_stock" in patch) update("in_stock", patch.in_stock ? "true" : null);
-      if ("sort" in patch) update("sort", patch.sort === "default" ? null : patch.sort ?? null);
-      if ("page" in patch) update("page", patch.page && patch.page > 1 ? String(patch.page) : "1");
-      else if (!clearAll) next.set("page", "1");
-      return next;
-    }, { replace: true });
+    const next = clearAll ? new URLSearchParams() : new URLSearchParams(latestParams.current);
+    const update = (key: string, value: string | null) => {
+      if (value === null || value === "") next.delete(key);
+      else next.set(key, value);
+    };
+    if ("q" in patch) update("q", patch.q?.trim() ? patch.q : null);
+    if ("category" in patch) update("category", patch.category ? String(patch.category) : null);
+    if ("min_price" in patch) update("min_price", patch.min_price?.trim() ?? null);
+    if ("max_price" in patch) update("max_price", patch.max_price?.trim() ?? null);
+    if ("in_stock" in patch) update("in_stock", patch.in_stock ? "true" : null);
+    if ("sort" in patch) update("sort", patch.sort === "default" ? null : patch.sort ?? null);
+    if ("page" in patch) update("page", patch.page && patch.page > 1 ? String(patch.page) : "1");
+    else if (!clearAll) next.set("page", "1");
+    latestParams.current = next;
+    setSearchParams(next, { replace: true });
   }, [setSearchParams]);
   const [debouncedQuery, setDebouncedQuery] = useState(query.q.trim());
   const [filtersOpen, setFiltersOpen] = useState(() =>

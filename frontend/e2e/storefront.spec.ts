@@ -54,6 +54,7 @@ const copy = {
     featured: "Tavsiya etilgan",
     back: "Orqaga",
     search: "Mahsulotlarni qidirish",
+    filters: "Filtrlar",
     minPrice: "Minimal narx",
     maxPrice: "Maksimal narx",
     inStock: "Faqat mavjud",
@@ -121,6 +122,7 @@ const copy = {
     featured: "Рекомендуем",
     back: "Назад",
     search: "Поиск товаров",
+    filters: "Фильтры",
     minPrice: "Минимальная цена",
     maxPrice: "Максимальная цена",
     inStock: "В наличии",
@@ -232,6 +234,7 @@ for (const language of languages) {
         const search = page.locator("main").getByRole("searchbox", { name: text.search });
         await search.fill(text.product);
         await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe(text.product);
+        await unfoldFilters(page, text);
         await page.getByRole("textbox", { name: text.minPrice }).fill("4000");
         await page.getByRole("textbox", { name: text.maxPrice }).fill("6000");
         const stockFilter = page.getByRole("checkbox", { name: text.inStock });
@@ -266,6 +269,8 @@ for (const language of languages) {
         expect(restored.searchParams.get("in_stock")).toBe("true");
         expect(restored.searchParams.get("sort")).toBe("newest");
         await expect(page.locator("main").getByRole("searchbox", { name: text.search })).toHaveValue(text.product);
+        // Active filters keep the panel open on the way back, even on phones.
+        await expect(page.getByRole("textbox", { name: text.minPrice })).toHaveValue("4000");
         await expectNoNetworkEscapes(page, purchaseApi);
       });
 
@@ -431,6 +436,16 @@ async function openCatalog(
   await expect(page.getByRole("heading", { name: text.featured })).toHaveCount(0);
 }
 
+/** Phones fold the catalog filters behind one button; wider screens always show them. */
+async function unfoldFilters(page: Page, text: typeof copy[Language]): Promise<void> {
+  // The name gains a count badge ("Filtrlar 2") once filters are active.
+  const toggle = page.getByRole("button", { name: new RegExp(`^${escapeRegExp(text.filters)}( \\d+)?$`) });
+  if (!(await toggle.isVisible())) return;
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
 async function openProduct(page: Page, text: typeof copy[Language]): Promise<void> {
   await page.locator("article").filter({ hasText: text.product }).first().getByRole("link").first().click();
   await expect(page.getByRole("heading", { name: text.product })).toBeVisible();
@@ -503,6 +518,12 @@ async function assertStorefrontNavigation(page: Page, text: typeof copy[Language
 }
 
 async function assertTouchTargets(page: Page): Promise<void> {
+  // Measure the settled layout: a card caught mid-entrance (translateY easing) can report
+  // a 44px button as 43.99px. Only short entrances are awaited; the drifting background
+  // loops forever and the carousel progress bar runs for seconds.
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter((animation) => Number(animation.effect?.getComputedTiming().endTime ?? Infinity) <= 1500)
+    .map((animation) => animation.finished.catch(() => undefined))));
   const smallTargets = await page.locator("a:visible, button:visible, input:visible, select:visible, textarea:visible")
     .evaluateAll((elements) => elements.flatMap((element) => {
       const isCheckbox = element instanceof HTMLInputElement &&

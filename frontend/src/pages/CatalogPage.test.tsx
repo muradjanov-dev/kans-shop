@@ -257,6 +257,25 @@ describe("CatalogPage", () => {
     expect(requests.at(-1)?.params?.page).toBe(1);
   });
 
+  it("keeps both price filters when they change before the page re-renders", async () => {
+    renderCatalog("/?q=pen");
+    const minPrice = await screen.findByRole("textbox", { name: "Minimal narx" });
+    const maxPrice = screen.getByRole("textbox", { name: "Maksimal narx" });
+
+    // One batch: the second change runs before React renders the first one.
+    act(() => {
+      fireEvent.change(minPrice, { target: { value: "4000" } });
+      fireEvent.change(maxPrice, { target: { value: "6000" } });
+    });
+
+    await waitFor(() => {
+      const search = new URLSearchParams(screen.getByTestId("route-location").textContent?.split("?")[1]);
+      expect(search.get("q")).toBe("pen");
+      expect(search.get("min_price")).toBe("4000");
+      expect(search.get("max_price")).toBe("6000");
+    });
+  });
+
   it("test_category_tree_and_breadcrumb_navigation", async () => {
     get.mockImplementation(async (url: string, config?: AxiosRequestConfig) => {
       if (url === "/catalog/categories") return response(categoryChildren(config?.params?.parent_id));
