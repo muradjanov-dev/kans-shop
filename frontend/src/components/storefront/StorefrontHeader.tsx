@@ -42,6 +42,7 @@ export function StorefrontHeader({
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const showBack = location.pathname !== "/";
+  const insideTelegram = isTelegramWebApp();
   const destinations = [
     { to: "/", label: t("nav.catalog") },
     { to: "/orders", label: t("nav.orders") },
@@ -146,14 +147,17 @@ export function StorefrontHeader({
           <LanguageSwitcher />
           <ThemeToggle />
           {isAuthenticated ? (
-            <>
+            // Inside Telegram the Mini App signs the customer in from initData, so a code-based
+            // account switch is never needed there; it only confused people as a "refresh" icon.
+            insideTelegram ? null : <>
               <button
                 aria-label={t("auth.switch_account")}
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-sm font-medium text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/15 dark:bg-slate-900 dark:text-slate-100"
                 onClick={openLogin}
+                title={t("auth.switch_account")}
                 type="button"
               >
-                <span aria-hidden="true" className="xl:hidden">↻</span>
+                <svg aria-hidden="true" className="size-5 xl:hidden" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6" /><path d="M5 20c.9-3.6 3.6-5.4 7-5.4s6.1 1.8 7 5.4" /></svg>
                 <span className="hidden xl:inline">{t("auth.switch_account")}</span>
               </button>
               <button
