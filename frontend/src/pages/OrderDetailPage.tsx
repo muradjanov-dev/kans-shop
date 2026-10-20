@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Spinner } from "@/components/Spinner";
 import { ErrorState } from "@/components/ErrorState";
+import { BankTransferInstructions } from "@/features/checkout/BankTransferInstructions";
 import { ReceiptUpload } from "@/features/checkout/ReceiptUpload";
 import { useCustomerAuth } from "@/features/customer-auth/CustomerAuthProvider";
 import { useOrder, usePayOrder } from "@/hooks/queries";
 import { OrderTimeline } from "@/pages/OrderTimeline";
 import { useTranslate, type TranslationKey } from "@/lib/i18n";
 import { formatExactPrice } from "@/lib/format";
+import { isBankAccountNumber } from "@/lib/paymentRequisites";
 import { useAuthStore } from "@/store/auth";
 import { WebApp } from "@/lib/telegram";
 import type { OrderStatus, OrderType, PaymentProvider } from "@/types/api";
@@ -177,7 +179,16 @@ export function OrderDetailPage() {
       </div>
 
       {order.payment_method === "card_transfer" &&
-        order.payment_instructions && (
+        order.payment_instructions &&
+        isBankAccountNumber(order.payment_instructions.card_number) && (
+          <BankTransferInstructions
+            order={order}
+            className="surface mt-6 p-5 sm:p-6 dark:border-white/10 dark:bg-slate-900"
+          />
+        )}
+      {order.payment_method === "card_transfer" &&
+        order.payment_instructions &&
+        !isBankAccountNumber(order.payment_instructions.card_number) && (
           <section className="surface mt-6 p-5 sm:p-6 dark:border-white/10 dark:bg-slate-900">
             <h2 className="text-sm font-semibold text-[var(--ink)] dark:text-white">
               {t("checkout.transfer_instructions")}

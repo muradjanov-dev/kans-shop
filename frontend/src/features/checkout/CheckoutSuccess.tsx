@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import { useLotLinks, usePayOrder } from "@/hooks/queries";
 import { useTranslate, type TranslationKey } from "@/lib/i18n";
 import { formatExactPrice } from "@/lib/format";
+import { isBankAccountNumber } from "@/lib/paymentRequisites";
 import { WebApp } from "@/lib/telegram";
 import type { Order, PaymentProvider } from "@/types/api";
+import { BankTransferInstructions } from "./BankTransferInstructions";
 import { ReceiptUpload } from "./ReceiptUpload";
 
 const ONLINE_PROVIDERS: PaymentProvider[] = ["click", "payme", "paynet"];
@@ -113,7 +115,13 @@ export function CheckoutSuccess({ order }: { order: Order }) {
         )}
 
         {order.payment_method === "card_transfer" &&
-          order.payment_instructions && (
+          order.payment_instructions &&
+          isBankAccountNumber(order.payment_instructions.card_number) && (
+            <BankTransferInstructions order={order} />
+          )}
+        {order.payment_method === "card_transfer" &&
+          order.payment_instructions &&
+          !isBankAccountNumber(order.payment_instructions.card_number) && (
             <section className="rounded-2xl bg-[var(--paper)] p-5 dark:bg-slate-800">
               <h2 className="mb-2 text-sm text-xl font-bold text-brand dark:text-white">
                 {t("checkout.transfer_instructions")}

@@ -25,6 +25,7 @@ from app.bot.keyboards.inline.main_menu import main_menu_inline_keyboard
 from app.bot.states.receipt_redirect import ReceiptRedirectStates
 from app.bot.utils.i18n import translate
 from app.bot.utils.messages import answer_with_inline_keyboard
+from app.bot.utils.transfer_details import transfer_details_text
 from app.core.exceptions import (
     ForbiddenError,
     OrderAlreadyProcessedError,
@@ -72,11 +73,12 @@ async def _handle_receipt_redirect(
     await state.update_data(order_id=order.id)
     total = f"{order.total:,.0f}".replace(",", " ")
     await message.answer(
-        translator(
-            "checkout.card_details",
-            card_number=card_number,
-            card_holder=card_holder,
+        transfer_details_text(
+            translator,
+            number=card_number,
+            holder=card_holder,
             total=total,
+            order_number=order.order_number,
         )
     )
 

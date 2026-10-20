@@ -37,6 +37,7 @@ from app.bot.states.checkout import CheckoutStates
 from app.bot.utils.helpers import is_valid_uz_phone, normalize_uz_phone
 from app.bot.utils.messages import answer_callback_safely, require_message
 from app.bot.utils.receipt_upload import download_telegram_receipt
+from app.bot.utils.transfer_details import transfer_details_text
 from app.core.config import settings
 from app.core.exceptions import (
     CartEmptyError,
@@ -150,10 +151,10 @@ async def _request_card_receipt(
     )
     await state.set_state(CheckoutStates.uploading_receipt)
     await message.answer(
-        translator(
-            "checkout.card_details",
-            card_number=instructions["card_number"],
-            card_holder=instructions["card_holder"],
+        transfer_details_text(
+            translator,
+            number=instructions["card_number"],
+            holder=instructions["card_holder"],
             total=_format_price(quote.total),
         ),
         reply_markup=back_cancel_keyboard(translator),
