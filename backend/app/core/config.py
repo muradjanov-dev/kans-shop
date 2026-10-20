@@ -79,6 +79,16 @@ class Settings(BaseSettings):
         default="KansShop/1.0 (+https://kans.standart-eko.uz)", alias="GEOCODER_USER_AGENT"
     )
 
+    # --- Daily channel advert (app/services/marketing) ---
+    # One rendered video advert per day in the shop channel. The channel defaults to the
+    # required-subscription channel; the first advert goes out as soon as the worker starts.
+    marketing_enabled: bool = Field(default=True, alias="MARKETING_ENABLED")
+    marketing_channel_id: int | None = Field(default=None, alias="MARKETING_CHANNEL_ID")
+    marketing_post_time: str = Field(default="11:00", alias="MARKETING_POST_TIME")
+    # Optional: with a key the caption is written by Claude, otherwise by built-in templates.
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    marketing_llm_model: str = Field(default="claude-opus-5-5", alias="MARKETING_LLM_MODEL")
+
     # --- Misc ---
     default_language: str = Field(default="uz", alias="DEFAULT_LANGUAGE")
     timezone: str = Field(default="Asia/Tashkent", alias="TIMEZONE")
@@ -101,7 +111,11 @@ class Settings(BaseSettings):
     paynet_api_base_url: str = Field(default="", alias="PAYNET_API_BASE_URL")
 
     @field_validator(
-        "error_channel_id", "orders_channel_id", "required_channel_id", mode="before"
+        "error_channel_id",
+        "orders_channel_id",
+        "required_channel_id",
+        "marketing_channel_id",
+        mode="before",
     )
     @classmethod
     def _blank_str_to_none(cls, value: object) -> object:

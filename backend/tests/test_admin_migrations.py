@@ -17,7 +17,7 @@ from app.core.config import settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 PHASE1_HEAD = "1e6b8d02a9c4"
-CURRENT_HEAD = "4b9d2ac7e501"
+CURRENT_HEAD = "6d4c1f2a8b90"
 
 
 @contextmanager

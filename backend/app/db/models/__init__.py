@@ -10,6 +10,7 @@ from app.db.models.cart import Cart, CartItem
 from app.db.models.cart_mutation import CartMutation
 from app.db.models.category import Category
 from app.db.models.favorite import Favorite
+from app.db.models.marketing_post import MarketingPost
 from app.db.models.notification_outbox import NotificationOutbox
 from app.db.models.order import Order
 from app.db.models.order_item import OrderItem
@@ -36,6 +37,7 @@ __all__ = [
     "CartMutation",
     "Category",
     "Favorite",
+    "MarketingPost",
     "NotificationOutbox",
     "Order",
     "OrderItem",

@@ -46,6 +46,12 @@ aiofiles==25.1.0
 # --- HTTP client (aiogram dep + used directly in tests) ---
 httpx==0.28.1
 
+# --- Daily channel advert (app/services/marketing) ---
+# imageio-ffmpeg ships a static ffmpeg binary in its wheel, so the image needs no apt package.
+# anthropic is only called when ANTHROPIC_API_KEY is set (Claude-written captions).
+imageio-ffmpeg==0.6.0
+anthropic==1.15.0
+
 # --- Dev / test / lint ---
 pytest==9.1.1
 pytest-asyncio==1.4.0
