@@ -1,12 +1,20 @@
 import json
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request, Response
+from aiogram import Bot
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_admin_session_principal, get_current_admin, get_db
-from app.api.schemas.auth import AdminCodeAuthIn, AdminSessionOut
+from app.api.deps import get_admin_session_principal, get_bot, get_current_admin, get_db
+from app.api.schemas.auth import (
+    AdminCodeAuthIn,
+    AdminCodeRequestIn,
+    AdminCodeRequestOut,
+    AdminSessionOut,
+)
+from app.bot.utils.i18n import SUPPORTED_LANGUAGES, translate
 from app.core.config import settings
 from app.core.exceptions import (
     AdminSessionInvalidError,
@@ -14,9 +22,19 @@ from app.core.exceptions import (
     InvalidOrExpiredAdminCodeError,
     UnsupportedMediaTypeError,
 )
+from app.core.logging import get_logger
 from app.core.redis import get_redis
 from app.db.models.admin import Admin
+from app.db.models.user import User
 from app.db.repositories import admin_repository
+from app.services.admin_login_code_service import (
+    ADMIN_LOGIN_KEY_PREFIX,
+    CODE_TTL_SECONDS,
+    REQUEST_COOLDOWN_SECONDS,
+    claim_request_slot,
+    issue_admin_login_code,
+    release_request_slot,
+)
 from app.services.admin_session_service import (
     AdminSessionPrincipal,
     create_admin_session,
@@ -25,7 +43,10 @@ from app.services.admin_session_service import (
     revoke_all_admin_sessions,
 )
 
-ADMIN_LOGIN_KEY_PREFIX = "admin_login:"
+log = get_logger(__name__)
+
+__all__ = ["ADMIN_LOGIN_KEY_PREFIX", "router"]
+
 ADMIN_COOKIE_NAME = "__Host-kans-admin"
 ADMIN_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
@@ -50,6 +71,92 @@ def _session_out(admin: Admin, principal: AdminSessionPrincipal) -> AdminSession
     )
 
 
+def _require_json(request: Request, message: str) -> None:
+    content_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].strip()
+    if content_type.lower() != "application/json" and not content_type.lower().endswith(
+        "+json"
+    ):
+        raise UnsupportedMediaTypeError(message)
+
+
+async def _find_admin_by_identifier(session: AsyncSession, identifier: str) -> Admin | None:
+    """Resolve a Telegram user ID or @username to an active admin, or None."""
+    value = identifier.strip()
+    if value.isdigit():
+        admin = await admin_repository.get_by_telegram_id(session, int(value))
+    else:
+        username = value.removeprefix("@").strip().lower()
+        if not username:
+            return None
+        telegram_id = await session.scalar(
+            select(User.telegram_id).where(func.lower(User.username) == username).limit(1)
+        )
+        if telegram_id is None:
+            return None
+        admin = await admin_repository.get_by_telegram_id(session, telegram_id)
+    if admin is None or not admin.is_active:
+        return None
+    return admin
+
+
+async def _send_admin_login_code(
+    bot: Bot, *, telegram_id: int, code: str, language: str
+) -> None:
+    try:
+        await bot.send_message(
+            telegram_id,
+            translate(language, "admin.login_code", code=code, minutes=CODE_TTL_SECONDS // 60),
+        )
+    except Exception:
+        # Telegram unreachable or the admin blocked the bot: let them ask again right away.
+        log.warning("admin_login_code_delivery_failed", telegram_id=telegram_id, exc_info=True)
+        await release_request_slot(get_redis(), telegram_id)
+
+
+@router.post("/code/request", response_model=AdminCodeRequestOut)
+async def request_admin_code(
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db, scope="function"),
+) -> AdminCodeRequestOut:
+    """Send a fresh five-minute login code to the admin's Telegram chat.
+
+    The answer is the same whether or not the identifier belongs to an admin, so the page
+    cannot be used to discover who the admins are; delivery happens after the response.
+    """
+    _require_exact_origin(request)
+    _require_json(request, "Admin code request requires JSON")
+    _no_store(response)
+    result = AdminCodeRequestOut(
+        expires_in=CODE_TTL_SECONDS, resend_after=REQUEST_COOLDOWN_SECONDS
+    )
+    try:
+        payload = AdminCodeRequestIn.model_validate(await request.json())
+    except (json.JSONDecodeError, UnicodeDecodeError, ValidationError):
+        return result
+
+    admin = await _find_admin_by_identifier(session, payload.identifier)
+    if admin is None:
+        return result
+
+    redis = get_redis()
+    if not await claim_request_slot(redis, admin.telegram_id):
+        return result
+    code = await issue_admin_login_code(redis, admin.telegram_id)
+    language = await session.scalar(
+        select(User.language).where(User.telegram_id == admin.telegram_id).limit(1)
+    )
+    background_tasks.add_task(
+        _send_admin_login_code,
+        get_bot(request),
+        telegram_id=admin.telegram_id,
+        code=code,
+        language=language if language in SUPPORTED_LANGUAGES else "uz",
+    )
+    return result
+
+
 @router.post(
     "/code/exchange",
     response_model=AdminSessionOut,
@@ -66,11 +173,7 @@ async def exchange_admin_code(
     session: AsyncSession = Depends(get_db, scope="function"),
 ) -> AdminSessionOut:
     _require_exact_origin(request)
-    content_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].strip()
-    if content_type.lower() != "application/json" and not content_type.lower().endswith(
-        "+json"
-    ):
-        raise UnsupportedMediaTypeError("Admin code exchange requires JSON")
+    _require_json(request, "Admin code exchange requires JSON")
 
     try:
         payload = AdminCodeAuthIn.model_validate(await request.json())

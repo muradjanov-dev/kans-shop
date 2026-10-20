@@ -15,6 +15,11 @@ export interface AdminSession {
 }
 
 type AdminActionResult = { ok: boolean };
+
+export interface AdminCodeRequestResult {
+  expires_in: number;
+  resend_after: number;
+}
 type UnauthorizedListener = () => void;
 type AdminRequestConfig = InternalAxiosRequestConfig & { _adminSessionGeneration?: number };
 
@@ -66,6 +71,9 @@ function data<T>(request: Promise<AxiosResponse<T>>): Promise<T> {
 }
 
 export const adminApi = Object.assign(client, {
+  requestCode(identifier: string): Promise<AdminCodeRequestResult> {
+    return data(client.post<AdminCodeRequestResult>("/auth/admin/code/request", { identifier }));
+  },
   exchangeCode(code: string): Promise<AdminSession> {
     return data(client.post<AdminSession>(codeExchangePath, { code }));
   },

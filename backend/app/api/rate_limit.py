@@ -22,6 +22,11 @@ CODE_EXCHANGE_PATHS = {
     "/api/v1/auth/admin/code/exchange",
 }
 _CODE_EXCHANGE_RATE_KEY_PREFIX = "ratelimit:auth_code:"
+# Each request makes the bot message an admin, so keep it well below the exchange budget.
+ADMIN_CODE_REQUEST_PATH = "/api/v1/auth/admin/code/request"
+ADMIN_CODE_REQUEST_LIMIT = 5
+ADMIN_CODE_REQUEST_WINDOW_SECONDS = 600
+_ADMIN_CODE_REQUEST_RATE_KEY_PREFIX = "ratelimit:admin_code_request:"
 
 _ATOMIC_INCREMENT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
@@ -117,6 +122,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
         ):
             return _rate_limited_response("Too many code attempts, please wait")
+
+        if (
+            request.method == "POST"
+            and request.url.path == ADMIN_CODE_REQUEST_PATH
+            and not await _under_atomic_limit(
+                f"{_ADMIN_CODE_REQUEST_RATE_KEY_PREFIX}{client_ip}",
+                ADMIN_CODE_REQUEST_LIMIT,
+                ADMIN_CODE_REQUEST_WINDOW_SECONDS,
+            )
+        ):
+            return _rate_limited_response("Too many code requests, please wait")
 
         is_checkout = request.method == "POST" and request.url.path == CHECKOUT_PATH
         if is_checkout and not await _under_limit(
