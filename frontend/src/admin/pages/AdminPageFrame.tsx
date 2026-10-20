@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { AdminPageProps } from "@/admin/adminRoutes";
 import type { DecimalValue } from "@/admin/adminTypes";
+import { formatUzDateTime } from "@/lib/format";
 import { useTranslate } from "@/lib/i18n";
 import { useLanguageStore } from "@/store/language";
 
@@ -87,7 +88,8 @@ export function formatAdminDate(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) return value;
   const language = useLanguageStore.getState().language;
-  return new Intl.DateTimeFormat(language === "uz" ? "uz-UZ" : "ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(date);
+  if (language === "uz") return formatUzDateTime(date);
+  return new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 export function adminQueryErrorCode(error: unknown): string | null {
