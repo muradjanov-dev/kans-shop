@@ -108,9 +108,12 @@ export function ProductCard({ product }: { product: Product }) {
             </p>
           )}
           <p className="text-xs text-slate-500 dark:text-slate-400">{t("product.sku")}: {product.sku}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {t("product.min_order", { qty: product.min_order_qty })}
-          </p>
+          {/* "Minimum order: 1" on every card is noise; show it only when it actually limits. */}
+          {product.min_order_qty > 1 && (
+            <p className="text-xs font-medium text-[var(--orange)]">
+              {t("product.min_order", { qty: product.min_order_qty })}
+            </p>
+          )}
         </Link>
         {outOfStock && (
           <span className="text-xs font-medium text-red-600 dark:text-red-300">{t("product.out_of_stock")}</span>

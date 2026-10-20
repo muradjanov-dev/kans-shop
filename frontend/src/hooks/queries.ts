@@ -15,6 +15,7 @@ import type {
   PaymentProvider,
   Product,
   PublicSettings,
+  ShowcaseProduct,
 } from "@/types/api";
 
 export const customerQueryKeys = {
@@ -52,6 +53,18 @@ export function useFeaturedProducts(limit = 10) {
       });
       return data;
     },
+  });
+}
+
+export function useShowcaseProducts() {
+  return useQuery({
+    queryKey: ["showcase-products"],
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<ShowcaseProduct[]>("/catalog/showcase", { signal });
+      return Array.isArray(data) ? data : [];
+    },
+    staleTime: 60_000,
+    retry: false,
   });
 }
 

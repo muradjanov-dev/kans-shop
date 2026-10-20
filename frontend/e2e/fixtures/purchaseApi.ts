@@ -214,6 +214,9 @@ export class PurchaseApiFixture {
   readonly unhandledApiRequests: string[] = [];
   readonly products = [structuredClone(product)];
   readonly categories = [structuredClone(category)];
+  // Empty by default so journeys see only the brand slide and product names stay unique.
+  showcaseProducts: Array<Record<string, unknown>> = [];
+  readonly analyticsBatches: unknown[] = [];
   telegramBridgeRequests = 0;
   failNextAddAfterCommit = false;
   failNextCheckoutAfterCommit = false;
@@ -359,6 +362,15 @@ export class PurchaseApiFixture {
     }
     if (method === "GET" && path === "/catalog/featured") {
       await this.fulfill(route, { json: this.products });
+      return;
+    }
+    if (method === "GET" && path === "/catalog/showcase") {
+      await this.fulfill(route, { json: this.showcaseProducts });
+      return;
+    }
+    if (method === "POST" && path === "/analytics/events") {
+      this.analyticsBatches.push(body);
+      await this.fulfill(route, { status: 202, json: { accepted: true } });
       return;
     }
     if (method === "GET" && path === "/catalog/search") {

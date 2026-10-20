@@ -3,6 +3,7 @@ import { localizedField } from "@/lib/format";
 import { useTranslate } from "@/lib/i18n";
 import { useLanguageStore } from "@/store/language";
 import type { Category } from "@/types/api";
+import { CategoryIcon } from "./CategoryIcon";
 
 export function CategoryTile({
   category,
@@ -44,10 +45,10 @@ export function CategoryTile({
         ) : (
           <span
             aria-label={t("catalog.category_image_unavailable")}
-            className="flex size-full items-center justify-center bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+            className="category-tile-icon flex size-full items-center justify-center"
             role="img"
           >
-            <span aria-hidden="true" className="size-7 rounded-lg border-2 border-current opacity-40" />
+            <CategoryIcon className="size-8" name={`${category.name_uz} ${category.name_ru}`} />
           </span>
         )}
       </span>

@@ -5,8 +5,7 @@ import { CatalogFilters } from "@/components/storefront/CatalogFilters";
 import { CategoryBreadcrumbs } from "@/components/storefront/CategoryBreadcrumbs";
 import { CategoryTile } from "@/components/storefront/CategoryTile";
 import { ErrorState } from "@/components/ErrorState";
-import { Spinner } from "@/components/Spinner";
-import { StationeryArt } from "@/components/StationeryArt";
+import { HeroCarousel } from "@/components/storefront/HeroCarousel";
 import { useCatalog, useCategoryTree } from "@/hooks/useCatalog";
 import { useFeaturedProducts, usePublicSettings } from "@/hooks/queries";
 import { isRateLimitedError } from "@/lib/api";
@@ -62,6 +61,9 @@ export function CatalogPage() {
     }, { replace: true });
   }, [setSearchParams]);
   const [debouncedQuery, setDebouncedQuery] = useState(query.q.trim());
+  const [filtersOpen, setFiltersOpen] = useState(() =>
+    Boolean(query.min_price || query.max_price || query.in_stock || query.sort !== "default"),
+  );
   const restoredCatalogScroll = useRef(false);
 
   useEffect(() => {
@@ -130,23 +132,23 @@ export function CatalogPage() {
     if (await catalog.loadMore()) updateParams({ page: query.page + 1 });
   }
 
+  const activeFilterCount = [
+    query.min_price,
+    query.max_price,
+    stockTrackingEnabled && query.in_stock,
+    query.sort !== "default",
+  ].filter(Boolean).length;
+
   const hasActiveFilters = Boolean(
     query.q.trim() || query.category || query.min_price || query.max_price || (stockTrackingEnabled && query.in_stock) || query.sort !== "default",
   );
 
   return (
     <div className="catalog-page space-y-7 pb-8">
-      <section className="catalog-hero relative overflow-hidden rounded-[24px] bg-[#E4EDE5] px-6 py-7 sm:px-10 sm:py-10">
-        <div className="relative z-10 max-w-[62%] sm:max-w-[54%]">
-          <p className="mb-4 text-xs font-medium text-[#4D6954] sm:text-sm">{language === "ru" ? "Для учёбы, работы и новых идей" : "O‘qish, ish va yangi g‘oyalar uchun"}</p>
-          <h1 className="text-[30px] font-bold leading-[1.12] tracking-[-.04em] text-[#153F32] sm:text-5xl lg:text-[60px]">{language === "ru" ? "Большие идеи начинаются с малого." : "Katta g‘oyalar kichik narsalardan boshlanadi."}</h1>
-          <p className="mt-4 hidden max-w-sm text-sm leading-6 text-[#4D6954] sm:block">{language === "ru" ? "Любимая ручка, чистая тетрадь и всё, что нужно вашему рабочему столу." : "Sevimli ruchka, yangi daftar va ish stolingiz uchun kerakli barcha buyumlar."}</p>
-          <a href="#catalog" className="primary-button mt-5 inline-flex items-center gap-3 px-4 py-3 text-xs sm:px-6 sm:text-sm">{language === "ru" ? "Выбрать товары" : "Mahsulot tanlash"}<span aria-hidden="true">↓</span></a>
-        </div>
-        <StationeryArt className="absolute -right-14 bottom-3 w-[58%] max-w-[490px] sm:-right-5 sm:bottom-0 lg:right-2" />
-      </section>
+      <h1 className="sr-only">{t("hero.page_title")}</h1>
+      <HeroCarousel />
       <div id="catalog" className="catalog-toolbar scroll-mt-24 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{t("catalog.title")}</h2><p className="mt-1 text-sm text-slate-500">{language === "ru" ? "Найдите то, что нужно каждый день." : "Har kuni kerak bo‘ladigan buyumlarni toping."}</p></div>
+        <div><h2 className="catalog-section-title text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{t("catalog.title")}</h2><p className="mt-1 text-sm text-slate-500">{language === "ru" ? "Найдите то, что нужно каждый день." : "Har kuni kerak bo‘ladigan buyumlarni toping."}</p></div>
         <div className="relative w-full sm:max-w-80">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="pointer-events-none absolute left-4 top-3.5 size-5 text-slate-500" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg>
         <input
@@ -195,23 +197,37 @@ export function CatalogPage() {
           categoryId={effectiveCategoryId}
           onSelect={(categoryId) => updateParams({ category: categoryId })}
         />
-        <CatalogFilters
-          onChange={updateFilters}
-          onClear={() => updateParams({}, true)}
-          showStockFilter={stockTrackingEnabled}
-          values={{
-            min_price: query.min_price,
-            max_price: query.max_price,
-            in_stock: catalogQuery.in_stock,
-            sort: query.sort,
-          }}
-        />
+        {/* On phones the filters fold behind one button so products start higher up. */}
+        <button
+          aria-controls="catalog-filters-panel"
+          aria-expanded={filtersOpen}
+          className="catalog-filters-toggle secondary-button"
+          onClick={() => setFiltersOpen((open) => !open)}
+          type="button"
+        >
+          <svg aria-hidden="true" className="size-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+          {t("catalog.filters_toggle")}
+          {activeFilterCount > 0 && <span className="catalog-filters-count">{activeFilterCount}</span>}
+        </button>
+        <div className={`catalog-filters-panel${filtersOpen ? " is-open" : ""}`} id="catalog-filters-panel">
+          <CatalogFilters
+            onChange={updateFilters}
+            onClear={() => updateParams({}, true)}
+            showStockFilter={stockTrackingEnabled}
+            values={{
+              min_price: query.min_price,
+              max_price: query.max_price,
+              in_stock: catalogQuery.in_stock,
+              sort: query.sort,
+            }}
+          />
+        </div>
       </div>
 
 
       {featuredQuery.data && featuredQuery.data.length > 0 && (
         <section aria-labelledby="featured-products-heading" className="catalog-featured mb-7">
-          <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-white" id="featured-products-heading">
+          <h2 className="catalog-section-title mb-3 text-lg font-semibold text-slate-900 dark:text-white" id="featured-products-heading">
             {t("catalog.featured")}
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 sm:gap-4">
@@ -221,13 +237,19 @@ export function CatalogPage() {
       )}
 
       <section aria-labelledby="all-products-heading" className="catalog-products">
-        <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-white" id="all-products-heading">
+        <h2 className="catalog-section-title mb-3 text-lg font-semibold text-slate-900 dark:text-white" id="all-products-heading">
           {t("catalog.all_products")}
         </h2>
         {catalog.isLoading ? (
-          <div className="flex flex-col items-center gap-2 py-10" role="status">
-            <Spinner />
-            <p className="text-sm text-slate-500">{t("catalog.loading")}</p>
+          <div className="catalog-skeleton-grid grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 sm:gap-4" role="status">
+            <span className="sr-only">{t("catalog.loading")}</span>
+            {Array.from({ length: 8 }, (_, position) => (
+              <div aria-hidden="true" className="product-card-skeleton" key={position}>
+                <span className="product-card-skeleton-image" />
+                <span className="product-card-skeleton-line" />
+                <span className="product-card-skeleton-line is-short" />
+              </div>
+            ))}
           </div>
         ) : catalog.isError && catalog.products.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-10 text-center" role="alert">

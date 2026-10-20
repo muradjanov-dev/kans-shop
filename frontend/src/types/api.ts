@@ -173,6 +173,19 @@ export interface Order {
   items: OrderItem[];
 }
 
+/** One active product as the top carousel shows it (GET /catalog/showcase). */
+export interface ShowcaseProduct {
+  id: number;
+  name_uz: string;
+  name_ru: string;
+  price: string;
+  old_price: string | null;
+  image_url: string | null;
+  is_featured: boolean;
+  min_order_qty: number;
+  available: boolean;
+}
+
 export interface CheckoutPayload {
   order_type: OrderType;
   customer_name: string;

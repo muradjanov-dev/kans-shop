@@ -1,12 +1,15 @@
 from dataclasses import replace
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.api.schemas.catalog import CategoryOut, ProductOut, public_product_out
 from app.api.schemas.common import PageOut
+from app.db.models.product import Product
+from app.db.repositories import product_repository
 from app.services import catalog_service
 from app.services.common import DEFAULT_CATALOG_PAGE_SIZE, PUBLIC_CATALOG_PAGE_SIZE
 from app.services.inventory_policy import InventoryPolicy, get_inventory_policy
@@ -107,6 +110,69 @@ async def list_featured_products(
     products = await catalog_service.list_featured_products(session, limit=limit)
     inventory_policy = await get_inventory_policy(session)
     return [public_product_out(product, inventory_policy) for product in products]
+
+
+class ShowcaseProductOut(BaseModel):
+    """The few fields the storefront's top carousel needs for every active product."""
+
+    id: int
+    name_uz: str
+    name_ru: str
+    price: Decimal
+    old_price: Decimal | None
+    image_url: str | None
+    is_featured: bool
+    min_order_qty: int
+    available: bool
+
+
+def _main_image_url(product: Product) -> str | None:
+    images = sorted(product.images, key=lambda image: (not image.is_main, image.sort_order))
+    return next(
+        (image.url.strip() for image in images if image.url and image.url.strip()), None
+    )
+
+
+@router.get("/showcase", response_model=list[ShowcaseProductOut])
+async def list_showcase_products(
+    response: Response,
+    limit: int = Query(default=300, ge=1, le=500),
+    session: AsyncSession = Depends(get_db, scope="function"),
+) -> list[ShowcaseProductOut]:
+    """Every active product in one light request, featured ones first (top carousel)."""
+    policy = await get_inventory_policy(session)
+    products, _total = await product_repository.list_public(
+        session,
+        query=None,
+        category_id=None,
+        min_price=None,
+        max_price=None,
+        in_stock=False,
+        sort="default",
+        page=1,
+        limit=limit,
+    )
+    response.headers["Cache-Control"] = "public, max-age=60"
+    showcase: list[ShowcaseProductOut] = []
+    for product in sorted(products, key=lambda item: not item.is_featured):
+        minimum = policy.minimum_quantity(product)
+        available = not policy.stock_tracking_enabled or (product.stock_qty or 0) >= max(
+            1, minimum
+        )
+        showcase.append(
+            ShowcaseProductOut(
+                id=product.id,
+                name_uz=product.name_uz,
+                name_ru=product.name_ru,
+                price=product.price,
+                old_price=product.old_price,
+                image_url=_main_image_url(product),
+                is_featured=product.is_featured,
+                min_order_qty=minimum,
+                available=available,
+            )
+        )
+    return showcase
 
 
 @router.get("/products/{product_id}", response_model=ProductOut)
