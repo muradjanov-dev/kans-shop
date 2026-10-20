@@ -198,17 +198,15 @@ describe("cart action recovery", () => {
     try {
       renderWithProviders(<App />);
 
-      expect(await screen.findByRole("button", { name: "Сменить аккаунт" })).toBeInTheDocument();
-      expect(useAuthStore.getState().accessToken).toBe(token);
+      await waitFor(() => expect(useAuthStore.getState().accessToken).toBe(token));
       expect(useAuthStore.getState().userId).toBe("42");
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("button", { name: "Сменить аккаунт" }));
-      await screen.findByRole("dialog");
-      await user.click(screen.getByRole("button", { name: "Отмена" }));
+      expect(await screen.findByRole("navigation", { name: "Мобильное меню" })).toBeInTheDocument();
+      // Telegram signs the customer in from initData, so the header offers no code-based
+      // sign-in, account switching or logout that would only lead into the code dialog.
+      expect(screen.queryByRole("button", { name: "Сменить аккаунт" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Выйти" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "Выйти" }));
-      expect(useAuthStore.getState().accessToken).toBeNull();
-      expect(await screen.findByRole("button", { name: "Войти" })).toBeInTheDocument();
     } finally {
       api.defaults.adapter = originalApiAdapter;
       axios.defaults.adapter = originalAxiosAdapter;
