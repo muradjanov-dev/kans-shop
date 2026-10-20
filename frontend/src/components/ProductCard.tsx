@@ -27,10 +27,11 @@ export function ProductCard({ product }: { product: Product }) {
   useEffect(() => setImageFailed(false), [image?.id, image?.url]);
 
   return (
-    <article className="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-2.5 sm:p-3 dark:border-white/10 dark:bg-slate-900">
+    <article className="product-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-2.5 sm:p-3 dark:border-white/10 dark:bg-slate-900" data-track-product={product.id}>
       <div className="product-card-image relative aspect-square overflow-hidden rounded-xl bg-[#EDF1E7] dark:bg-slate-800">
         <Link
           className="flex size-full items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          data-track="card_image"
           onClick={rememberCatalogScroll}
           state={detailState}
           to={`/product/${product.id}`}
@@ -71,6 +72,7 @@ export function ProductCard({ product }: { product: Product }) {
         {!outOfStock && (
           <button
             aria-label={t("product.add_to_cart")}
+            data-track="card_add"
             className="product-card-add absolute bottom-2 right-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-brand text-lg font-bold text-white shadow-md transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50"
             disabled={pending}
             onClick={() => add(product.id, Math.max(1, product.min_order_qty), catalogReturnTo)}
@@ -83,6 +85,8 @@ export function ProductCard({ product }: { product: Product }) {
       <div className="product-card-info flex flex-1 flex-col gap-1.5 px-1 pb-1 pt-3">
         <Link
           className="flex flex-1 flex-col gap-1.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          data-track="card_details"
+          data-track-label={name}
           onClick={rememberCatalogScroll}
           state={detailState}
           to={`/product/${product.id}`}

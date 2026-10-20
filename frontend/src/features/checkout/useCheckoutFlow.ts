@@ -3,6 +3,7 @@ import axios from "axios";
 import { useCart, useCheckout } from "@/hooks/queries";
 import { useCustomerProfile } from "@/hooks/customer";
 import { useCheckoutQuote } from "@/hooks/checkout";
+import { track } from "@/lib/analytics";
 import { getApiErrorCode, getApiErrorMessage } from "@/lib/api";
 import { isValidUzPhone, normalizeUzPhone } from "@/lib/phone";
 import { WebApp } from "@/lib/telegram";
@@ -279,6 +280,11 @@ export function useCheckoutFlow() {
       if (currentAuth.userId !== userId || currentAuth.authEpoch !== authEpoch) return;
       finishAttempt(currentAttempt.key);
       setCreatedOrder(result);
+      track({
+        type: "order_placed",
+        label: result.order_number,
+        value: Math.min(Math.max(Math.round(Number(result.total) || 0), 0), 2_000_000_000),
+      });
     } catch (error) {
       const currentAuth = useAuthStore.getState();
       if (currentAuth.userId !== userId || currentAuth.authEpoch !== authEpoch) return;

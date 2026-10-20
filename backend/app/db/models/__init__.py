@@ -4,6 +4,7 @@ from app.db.models.admin import Admin
 from app.db.models.admin_audit_event import AdminAuditEvent
 from app.db.models.admin_order_message import AdminOrderMessage
 from app.db.models.admin_session import AdminSession
+from app.db.models.analytics import AnalyticsEvent, AnalyticsSession
 from app.db.models.broadcast import Broadcast
 from app.db.models.broadcast_recipient import BroadcastRecipient
 from app.db.models.cart import Cart, CartItem
@@ -29,6 +30,8 @@ __all__ = [
     "AdminAuditEvent",
     "AdminOrderMessage",
     "AdminSession",
+    "AnalyticsEvent",
+    "AnalyticsSession",
     "Base",
     "Broadcast",
     "BroadcastRecipient",

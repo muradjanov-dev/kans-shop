@@ -86,10 +86,10 @@ export function ProductPage() {
         ← {t("common.back")}
       </Link>
       <div className="product-detail-grid grid gap-7 md:grid-cols-2 md:items-start md:gap-12">
-        <div className="product-detail-gallery overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--soft)] p-3 sm:p-5 dark:bg-slate-800 dark:border-white/10">
+        <div className="product-detail-gallery overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--soft)] p-3 sm:p-5 dark:bg-slate-800 dark:border-white/10" data-track-section="product_gallery">
           <ProductGallery images={product.images} name={name} />
         </div>
-        <div className="product-detail-info flex flex-col gap-5 md:py-4">
+        <div className="product-detail-info flex flex-col gap-5 md:py-4" data-track-product={product.id} data-track-section="product_info">
           {product.is_featured && (
             <span className="w-fit rounded-full bg-[var(--orange)]/15 px-3 py-1.5 text-xs font-semibold text-[#93451E]">
               {t("product.featured")}
@@ -137,7 +137,7 @@ export function ProductPage() {
             </p>
           )}
           {!outOfStock && (
-            <div className="product-purchase mt-3 flex w-full flex-wrap items-center gap-3 border-t border-[var(--line)] pt-6 dark:border-white/10">
+            <div className="product-purchase mt-3 flex w-full flex-wrap items-center gap-3 border-t border-[var(--line)] pt-6 dark:border-white/10" data-track-area="product_buy">
               <QuantityStepper
                 disabled={pending}
                 max={maximumQuantity}

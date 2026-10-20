@@ -9,6 +9,7 @@ import { useTranslate, type TranslationKey } from "@/lib/i18n";
 
 export type AdminPageId =
   | "dashboard"
+  | "analytics"
   | "orders"
   | "catalog"
   | "customers"
@@ -36,6 +37,7 @@ export type AdminPageComponents = Partial<Record<AdminPageId, ComponentType<Admi
 
 export const adminRouteRegistry: readonly AdminRouteDefinition[] = [
   { id: "dashboard", path: "/admin", segment: "", titleKey: "admin.page.dashboard", navKey: "admin.nav.home", roles: ["operator", "manager", "superadmin"] },
+  { id: "analytics", path: "/admin/analytics", segment: "analytics", titleKey: "admin.page.analytics", navKey: "admin.nav.analytics", roles: ["manager", "superadmin"] },
   { id: "orders", path: "/admin/orders", segment: "orders", titleKey: "admin.page.orders", navKey: "admin.nav.orders", roles: ["operator", "manager", "superadmin"] },
   { id: "catalog", path: "/admin/catalog", segment: "catalog", titleKey: "admin.page.catalog", navKey: "admin.nav.catalog", roles: ["manager", "superadmin"] },
   { id: "customers", path: "/admin/customers", segment: "customers", titleKey: "admin.page.customers", navKey: "admin.nav.customers", roles: ["manager", "superadmin"] },

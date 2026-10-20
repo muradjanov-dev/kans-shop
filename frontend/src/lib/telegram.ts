@@ -34,6 +34,7 @@ interface TelegramWebApp {
   isVersionAtLeast?: (version: string) => boolean;
   initDataUnsafe?: {
     user?: { id?: number; first_name?: string; last_name?: string; language_code?: string };
+    start_param?: string;
   };
   colorScheme?: "light" | "dark";
   ready?: () => void;
@@ -100,6 +101,11 @@ export function telegramLanguageCode(): "uz" | "ru" {
 
 export function telegramInitData(): string {
   return webApp()?.initData ?? "";
+}
+
+/** The `startapp` parameter of the link that opened the Mini App (a campaign code). */
+export function telegramStartParam(): string {
+  return webApp()?.initDataUnsafe?.start_param ?? "";
 }
 
 // Kept as a `WebApp`-shaped object so call sites read naturally. The getters resolve against

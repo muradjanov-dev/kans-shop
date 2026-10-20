@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
+import { track } from "@/lib/analytics";
 import { api, cancelAuthenticatedRequests, getApiErrorCode } from "@/lib/api";
 import { setCustomerCartFromServer } from "@/lib/cartCache";
 import { customerQueryKeys } from "@/hooks/queries";
@@ -138,6 +139,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
           headers: { "Idempotency-Key": intent.mutationKey },
         });
       }
+      track(intent.kind === "cart_add"
+        ? { type: "add_to_cart", product_id: intent.productId, value: intent.quantity }
+        : { type: "favorite_add", product_id: intent.productId });
       const current = useAuthStore.getState();
       if (current.authEpoch !== expectedEpoch || current.userId !== expectedUserId) return;
       if (intent.kind === "cart_add" && cart) {

@@ -26,6 +26,7 @@ export function FavoriteButton({
       aria-busy={Boolean(userId && (favorite.isLoading || favorite.isMutationPending))}
       aria-label={favorite.isError && userId ? t("favorite.retry") : label}
       aria-pressed={isFavorite}
+      data-track="favorite"
       className={`flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-xl leading-none text-rose-600 shadow-sm transition-colors hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-wait disabled:opacity-60 dark:border-white/15 dark:bg-slate-900/95 dark:text-rose-300 dark:hover:bg-rose-950/40 ${className}`}
       disabled={Boolean(userId && (favorite.isLoading || favorite.isMutationPending))}
       onClick={() => {

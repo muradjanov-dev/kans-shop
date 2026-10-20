@@ -402,3 +402,32 @@ html { scroll-behavior:smooth; }
 .dark .hero-slide-visual img { box-shadow:0 18px 30px #00000059; }
 .dark .hero-carousel-thumbs img { border-radius:10px; background:#fff; }
 .dark .hero-carousel-arrow:hover:not(:disabled) { background:#ffffff29; }
+/* Admin analytics charts (admin/analytics/charts.tsx): chart tokens from the dataviz reference
+   palette, stepped separately for the light card (#fff) and the dark card (slate-950). */
+.admin-viz {
+  --viz-grid:#e1e0d9; --viz-axis:#c3c2b7; --viz-muted:#6b6a65; --viz-ink:#0b0b0b;
+  --viz-series:#2a78d6; --viz-track:#cde2fb; --viz-empty:#f1f1ee;
+  --viz-seq-0:#cde2fb; --viz-seq-1:#9ec5f4; --viz-seq-2:#6da7ec; --viz-seq-3:#3987e5;
+  --viz-seq-4:#256abf; --viz-seq-5:#184f95; --viz-seq-6:#0d366b;
+}
+.dark .admin-viz {
+  --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#a3a29b; --viz-ink:#f0efec;
+  --viz-series:#3987e5; --viz-track:#0d366b; --viz-empty:#111827;
+  --viz-seq-0:#0d366b; --viz-seq-1:#104281; --viz-seq-2:#1c5cab; --viz-seq-3:#2a78d6;
+  --viz-seq-4:#5598e7; --viz-seq-5:#86b6ef; --viz-seq-6:#b7d3f6;
+}
+.viz-tick { fill:var(--viz-muted); color:var(--viz-muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.viz-value { fill:var(--viz-ink); font-size:12px; font-weight:600; }
+.viz-tooltip { position:absolute; z-index:5; transform:translate(-50%,0); pointer-events:none; display:flex; flex-direction:column; gap:2px; min-width:7rem; padding:8px 10px; border:1px solid rgba(11,11,11,.1); border-radius:10px; background:#fff; box-shadow:0 8px 24px #0f172a1f; font-size:12px; color:#52514e; text-align:center; }
+.viz-tooltip strong { font-size:14px; color:#0b0b0b; }
+.dark .viz-tooltip { background:#0f172a; border-color:rgba(255,255,255,.1); color:#c3c2b7; }
+.dark .viz-tooltip strong { color:#f0efec; }
+.viz-track { position:relative; height:8px; overflow:hidden; border-radius:4px; background:var(--viz-track); }
+.viz-track-tall { height:14px; }
+.viz-fill { display:block; height:100%; border-radius:0 4px 4px 0; background:var(--viz-series); }
+.viz-heatmap { display:flex; flex-direction:column; gap:2px; min-width:34rem; }
+.viz-heat-row { display:flex; align-items:center; gap:2px; }
+.viz-heat-cell { display:inline-block; flex:1 1 0; min-width:12px; height:20px; border-radius:4px; }
+.viz-heat-cell.is-active { outline:2px solid var(--viz-ink); outline-offset:1px; }
+.viz-heat-hour { flex:1 1 0; min-width:12px; text-align:left; }
+.viz-legend-cell { display:inline-block; width:16px; height:12px; border-radius:3px; }

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { StationeryArt } from "@/components/StationeryArt";
 import { useShowcaseProducts } from "@/hooks/queries";
 import { useCartActions } from "@/hooks/useCartActions";
+import { track } from "@/lib/analytics";
 import { formatExactPrice } from "@/lib/format";
 import { useTranslate } from "@/lib/i18n";
 import { hasHigherOldPrice } from "@/lib/productDisplay";
@@ -91,6 +92,7 @@ export function HeroCarousel() {
     pointerStartX.current = null;
     if (Math.abs(distance) < SWIPE_THRESHOLD_PX) return;
     swiped.current = true;
+    track({ type: "carousel", section: "hero", target: distance < 0 ? "swipe_next" : "swipe_prev" });
     if (distance < 0) next();
     else previous();
   }
@@ -119,6 +121,7 @@ export function HeroCarousel() {
       aria-label={t("carousel.label")}
       aria-roledescription={t("carousel.roledescription")}
       className="hero-carousel"
+      data-track-section="hero"
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
       }}
@@ -153,7 +156,7 @@ export function HeroCarousel() {
       </div>
 
       <div className="hero-carousel-bar">
-        <button aria-label={t("carousel.previous")} className="hero-carousel-arrow" disabled={total < 2} onClick={previous} type="button">
+        <button aria-label={t("carousel.previous")} className="hero-carousel-arrow" data-track="carousel_prev" disabled={total < 2} onClick={previous} type="button">
           <Chevron direction="left" />
         </button>
         <div aria-hidden="true" className="hero-carousel-progress">
@@ -166,13 +169,14 @@ export function HeroCarousel() {
           aria-label={userPaused ? t("carousel.play") : t("carousel.pause")}
           aria-pressed={userPaused}
           className="hero-carousel-arrow"
+          data-track={userPaused ? "carousel_play" : "carousel_pause"}
           disabled={total < 2}
           onClick={() => setUserPaused((paused) => !paused)}
           type="button"
         >
           {userPaused ? <PlayIcon /> : <PauseIcon />}
         </button>
-        <button aria-label={t("carousel.next")} className="hero-carousel-arrow" disabled={total < 2} onClick={next} type="button">
+        <button aria-label={t("carousel.next")} className="hero-carousel-arrow" data-track="carousel_next" disabled={total < 2} onClick={next} type="button">
           <Chevron direction="right" />
         </button>
       </div>
@@ -183,6 +187,8 @@ export function HeroCarousel() {
             <li key={`${slide}-${item.id}`}>
               <button
                 aria-label={t("carousel.go_to", { name: productName(item, language) })}
+                data-track="carousel_thumb"
+                data-track-product={item.id}
                 onClick={() => go(slide, slide > index ? "next" : "prev")}
                 type="button"
               >
@@ -209,7 +215,7 @@ function BrandSlide() {
         <p className="hero-brand-title">{t("hero.title")}</p>
         <p className="hero-brand-subtitle">{t("hero.subtitle")}</p>
         <div className="hero-slide-actions">
-          <a className="primary-button" href="#catalog">
+          <a className="primary-button" data-track="hero_cta" href="#catalog">
             {t("hero.cta")}
             <span aria-hidden="true">↓</span>
           </a>
@@ -228,11 +234,11 @@ function ProductSlide({ product, language }: { product: ShowcaseProduct; languag
   const name = productName(product, language);
   const detail = `/product/${product.id}`;
   return (
-    <div className="hero-slide-grid">
+    <div className="hero-slide-grid" data-track-product={product.id}>
       <div className="hero-slide-copy">
         <p className="hero-eyebrow">{product.is_featured ? t("product.featured") : t("carousel.from_catalog")}</p>
         <p className="hero-slide-title">
-          <Link to={detail}>{name}</Link>
+          <Link data-track="carousel_product" to={detail}>{name}</Link>
         </p>
         <p className="hero-slide-price">
           <strong>{formatExactPrice(product.price)}</strong> <span>{t("common.som")}</span>
@@ -244,6 +250,7 @@ function ProductSlide({ product, language }: { product: ShowcaseProduct; languag
           {product.available && (
             <button
               className="primary-button"
+              data-track="carousel_add"
               disabled={pending}
               onClick={() => add(product.id, Math.max(1, product.min_order_qty), "/")}
               type="button"
@@ -251,13 +258,13 @@ function ProductSlide({ product, language }: { product: ShowcaseProduct; languag
               {pending ? "…" : t("carousel.add_to_cart")}
             </button>
           )}
-          <Link className="secondary-button hero-details-link" to={detail}>
+          <Link className="secondary-button hero-details-link" data-track="carousel_details" to={detail}>
             {t("carousel.details")}
             <span aria-hidden="true">→</span>
           </Link>
         </div>
       </div>
-      <Link aria-hidden="true" className="hero-slide-visual" tabIndex={-1} to={detail}>
+      <Link aria-hidden="true" className="hero-slide-visual" data-track="carousel_image" tabIndex={-1} to={detail}>
         <span className="hero-slide-halo" />
         {product.image_url ? (
           <img alt="" decoding="async" src={product.image_url} />

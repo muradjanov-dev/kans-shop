@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.admin import (
+    analytics,
     audit,
     broadcasts,
     categories,
@@ -23,6 +24,7 @@ router.include_router(users.router)
 router.include_router(settings.router)
 router.include_router(sources.router)
 router.include_router(stats.router)
+router.include_router(analytics.router)
 router.include_router(broadcasts.router)
 router.include_router(audit.router)
 router.include_router(team.router)

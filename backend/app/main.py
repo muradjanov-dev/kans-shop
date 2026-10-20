@@ -24,6 +24,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.redis import get_redis
 from app.core.security import verify_webhook_secret
 from app.db.session import async_session_maker
+from app.services.analytics_service import run_analytics_maintenance
 from app.services.broadcast_worker import run_broadcast_worker
 from app.services.marketing.worker import run_marketing_worker
 from app.services.notification_outbox_worker import run_outbox_worker
@@ -91,6 +92,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.marketing_worker_stop = stop_marketing_worker
     app.state.marketing_worker_task = marketing_worker_task
+    stop_analytics_maintenance = asyncio.Event()
+    analytics_maintenance_task = asyncio.create_task(
+        run_analytics_maintenance(session_maker, stop_analytics_maintenance),
+        name="analytics-maintenance",
+    )
+    app.state.analytics_maintenance_stop = stop_analytics_maintenance
+    app.state.analytics_maintenance_task = analytics_maintenance_task
 
     try:
         await setup_bot_commands(bot)
@@ -116,7 +124,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         stop_outbox_worker.set()
         stop_broadcast_worker.set()
         stop_marketing_worker.set()
-        await asyncio.gather(worker_task, broadcast_worker_task, marketing_worker_task)
+        stop_analytics_maintenance.set()
+        await asyncio.gather(
+            worker_task,
+            broadcast_worker_task,
+            marketing_worker_task,
+            analytics_maintenance_task,
+        )
         await bot.session.close()
 
 

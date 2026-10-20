@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useAdminAuth } from "@/admin/AdminAuthProvider";
 import type { AdminPageProps } from "@/admin/adminRoutes";
 import { useAdminOrders, useAdminStats } from "@/admin/adminQueries";
 import { useTranslate } from "@/lib/i18n";
@@ -19,8 +20,13 @@ export function DashboardPage({ route }: AdminPageProps) {
   const orders = useAdminOrders({ page: 1, limit: 5 });
   const recentOrders = orders.data?.items ?? [];
   const topProducts = stats.data?.top_products ?? [];
+  const { session } = useAdminAuth();
+  const canSeeAnalytics = session?.role === "manager" || session?.role === "superadmin";
 
   return <AdminPageFrame route={route}>
+    {canSeeAnalytics && <Link className="mb-4 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800 hover:bg-indigo-100 dark:border-indigo-400/30 dark:bg-indigo-400/10 dark:text-indigo-100" to="/admin/analytics">
+      <span>{t("admin.dashboard.open_analytics")}</span><span aria-hidden="true">→</span>
+    </Link>}
     {stats.isPending ? <AdminLoadingState /> : stats.isError ? <AdminErrorState onRetry={() => void stats.refetch()} /> : stats.data && <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard label={t("admin.dashboard.today_orders")} value={String(stats.data.orders_count)} />
       <MetricCard label={t("admin.dashboard.order_value")} value={formatAdminAmount(stats.data.order_value)} />

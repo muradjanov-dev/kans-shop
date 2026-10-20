@@ -57,7 +57,7 @@ export function CheckoutForm({
       <h1 className="page-title mb-7 dark:text-white">{t("checkout.title")}</h1>
 
       <div className="grid items-start gap-7 lg:grid-cols-[1fr_340px]">
-        <div className="surface space-y-5 p-5 sm:p-7 dark:border-white/10 dark:bg-slate-900">
+        <div className="surface space-y-5 p-5 sm:p-7 dark:border-white/10 dark:bg-slate-900" data-track-section="checkout_form">
           <Field label={t("checkout.order_type")}>
             <div className="grid gap-2 sm:grid-cols-3">
               {ORDER_TYPES.map((type) => (
@@ -296,7 +296,7 @@ export function CheckoutForm({
             />
           </Field>
         </div>
-        <div className="action-bar w-full flex flex-col gap-3 lg:top-28 dark:border-white/10 dark:bg-slate-900">
+        <div className="action-bar w-full flex flex-col gap-3 lg:top-28 dark:border-white/10 dark:bg-slate-900" data-track-area="checkout_summary">
           {flow.profileLoadError && (
             <div
               className="flex items-center justify-between gap-3 text-xs text-red-600"

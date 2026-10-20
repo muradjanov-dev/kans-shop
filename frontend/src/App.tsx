@@ -14,6 +14,7 @@ import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { Spinner } from "@/components/Spinner";
 import { CustomerAuthProvider } from "@/features/customer-auth/CustomerAuthProvider";
 import { AdminApplication } from "@/admin/adminRoutes";
+import { AnalyticsPage } from "@/admin/pages/AnalyticsPage";
 import { AuditPage } from "@/admin/pages/AuditPage";
 import { BroadcastsPage } from "@/admin/pages/BroadcastsPage";
 import { CatalogPage } from "@/admin/pages/CatalogPage";
@@ -30,6 +31,7 @@ export function App() {
   if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
     return <AdminApplication pageComponents={{
       dashboard: DashboardPage,
+      analytics: AnalyticsPage,
       orders: OrdersPage,
       catalog: CatalogPage,
       customers: CustomersPage,

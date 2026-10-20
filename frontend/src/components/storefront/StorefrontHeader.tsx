@@ -93,7 +93,7 @@ export function StorefrontHeader({
   }
 
   return (
-    <header className="storefront-header sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-white/10 dark:bg-slate-950/95">
+    <header className="storefront-header sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-white/10 dark:bg-slate-950/95" data-track-area="header">
       <div className="header-inner mx-auto flex min-h-16 max-w-7xl items-center gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8">
         <div className="flex min-w-0 shrink-0 items-center gap-2">
           {showBack && (

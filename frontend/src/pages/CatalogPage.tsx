@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { HeroCarousel } from "@/components/storefront/HeroCarousel";
 import { useCatalog, useCategoryTree } from "@/hooks/useCatalog";
 import { useFeaturedProducts, usePublicSettings } from "@/hooks/queries";
+import { track } from "@/lib/analytics";
 import { isRateLimitedError } from "@/lib/api";
 import { useTranslate } from "@/lib/i18n";
 import { useLanguageStore } from "@/store/language";
@@ -116,6 +117,15 @@ export function CatalogPage() {
   };
   const catalog = useCatalog(catalogQuery);
   const lastCatalogPage = catalog.pages.at(-1);
+  // Each finished search is counted once, with how many products it found (0 = a gap).
+  const searchTotal = catalog.isLoading ? undefined : catalog.pages[0]?.total;
+  const trackedSearch = useRef<string | null>(null);
+  useEffect(() => {
+    if (!debouncedQuery || searchTotal === undefined) return;
+    if (trackedSearch.current === debouncedQuery) return;
+    trackedSearch.current = debouncedQuery;
+    track({ type: "search", label: debouncedQuery, value: searchTotal });
+  }, [debouncedQuery, searchTotal]);
   useEffect(() => {
     const lastAvailablePage = lastCatalogPage ? Math.max(1, lastCatalogPage.total_pages) : null;
     if (lastAvailablePage !== null && query.page > lastAvailablePage) {
@@ -132,6 +142,15 @@ export function CatalogPage() {
 
   function updateFilters(patch: Partial<Pick<CatalogQuery, "min_price" | "max_price" | "in_stock" | "sort">>) {
     updateParams(patch);
+    for (const [key, value] of Object.entries(patch)) {
+      track({ type: "filter", target: key, label: String(value ?? "") });
+    }
+  }
+
+  function selectCategory(categoryId: number | null) {
+    updateParams({ category: categoryId });
+    const name = categoryId ? categoriesById.get(categoryId)?.name_uz : "all";
+    track({ type: "filter", target: "category", label: name ?? String(categoryId) });
   }
 
   async function loadMore(): Promise<void> {
@@ -153,7 +172,7 @@ export function CatalogPage() {
     <div className="catalog-page space-y-7 pb-8">
       <h1 className="sr-only">{t("hero.page_title")}</h1>
       <HeroCarousel />
-      <div id="catalog" className="catalog-toolbar scroll-mt-24 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div id="catalog" className="catalog-toolbar scroll-mt-24 flex flex-col justify-between gap-4 sm:flex-row sm:items-end" data-track-section="search">
         <div><h2 className="catalog-section-title text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{t("catalog.title")}</h2><p className="mt-1 text-sm text-slate-500">{language === "ru" ? "Найдите то, что нужно каждый день." : "Har kuni kerak bo‘ladigan buyumlarni toping."}</p></div>
         <div className="relative w-full sm:max-w-80">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="pointer-events-none absolute left-4 top-3.5 size-5 text-slate-500" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg>
@@ -182,13 +201,13 @@ export function CatalogPage() {
           />
         </div>
       ) : childCategories.length > 0 ? (
-        <section aria-label={t("catalog.categories")} className="catalog-categories mb-5">
+        <section aria-label={t("catalog.categories")} className="catalog-categories mb-5" data-track-section="categories">
           <div className="category-rail grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
             {childCategories.map((category) => (
               <CategoryTile
                 category={category}
                 key={category.id}
-                onSelect={(nextCategory) => updateParams({ category: nextCategory.id })}
+                onSelect={(nextCategory) => selectCategory(nextCategory.id)}
                 selected={category.id === effectiveCategoryId}
               />
             ))}
@@ -197,11 +216,11 @@ export function CatalogPage() {
       ) : null}
 
 
-      <div className="catalog-controls">
+      <div className="catalog-controls" data-track-section="filters">
         <CategoryBreadcrumbs
           categories={categories}
           categoryId={effectiveCategoryId}
-          onSelect={(categoryId) => updateParams({ category: categoryId })}
+          onSelect={(categoryId) => selectCategory(categoryId)}
         />
         {/* On phones the filters fold behind one button so products start higher up. */}
         <button
@@ -232,7 +251,7 @@ export function CatalogPage() {
 
 
       {featuredQuery.data && featuredQuery.data.length > 0 && (
-        <section aria-labelledby="featured-products-heading" className="catalog-featured mb-7">
+        <section aria-labelledby="featured-products-heading" className="catalog-featured mb-7" data-track-section="featured">
           <h2 className="catalog-section-title mb-3 text-lg font-semibold text-slate-900 dark:text-white" id="featured-products-heading">
             {t("catalog.featured")}
           </h2>
@@ -242,7 +261,7 @@ export function CatalogPage() {
         </section>
       )}
 
-      <section aria-labelledby="all-products-heading" className="catalog-products">
+      <section aria-labelledby="all-products-heading" className="catalog-products" data-track-section="products">
         <h2 className="catalog-section-title mb-3 text-lg font-semibold text-slate-900 dark:text-white" id="all-products-heading">
           {t("catalog.all_products")}
         </h2>

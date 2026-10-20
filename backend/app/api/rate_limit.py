@@ -31,6 +31,11 @@ _ADMIN_CODE_REQUEST_RATE_KEY_PREFIX = "ratelimit:admin_code_request:"
 GEOCODE_PATH = "/api/v1/geocode/reverse"
 GEOCODE_LIMIT = 10
 GEOCODE_WINDOW_SECONDS = 60
+# Behaviour analytics batches have their own budget, outside the general one, so many
+# shoppers behind one NAT can never be slowed down by their own statistics.
+ANALYTICS_PATH = "/api/v1/analytics/events"
+ANALYTICS_LIMIT = 120
+ANALYTICS_WINDOW_SECONDS = 60
 
 _ATOMIC_INCREMENT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
@@ -110,6 +115,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = trusted_client_ip(request)
+
+        if request.url.path == ANALYTICS_PATH:
+            if not await _under_limit(
+                f"ratelimit:analytics:{client_ip}", ANALYTICS_LIMIT, ANALYTICS_WINDOW_SECONDS
+            ):
+                return _rate_limited_response("Too many analytics batches, please slow down")
+            return await call_next(request)
 
         if not await _under_limit(
             f"ratelimit:general:{client_ip}", GENERAL_LIMIT, GENERAL_WINDOW_SECONDS

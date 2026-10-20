@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { track } from "@/lib/analytics";
 import { api } from "@/lib/api";
 import { customerQueryKeys } from "@/hooks/queries";
 import { useAuthStore } from "@/store/auth";
@@ -153,6 +154,7 @@ export function useFavoriteState(productId: number) {
       return true;
     },
     onSuccess: (isFavorite) => {
+      track({ type: isFavorite ? "favorite_add" : "favorite_remove", product_id: productId });
       if (!isCurrentOwner(userId, authEpoch)) return;
       queryClient.setQueryData<FavoriteState>(customerQueryKeys.favoriteState(userId, productId), {
         is_favorite: isFavorite,
