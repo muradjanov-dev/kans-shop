@@ -45,11 +45,18 @@ export function CatalogPage() {
   );
   // setSearchParams hands its updater the params of the last render, not the last update, so
   // two quick changes (min price, then max price) could drop the first one. Each update builds
-  // on the newest params instead.
+  // on the newest params instead. The router commits navigations in a transition, so an
+  // older update can still commit after a newer one was issued: until our last update has
+  // landed, those in-between commits are ignored. Changes from elsewhere (back button, a
+  // link) are adopted as soon as nothing of ours is pending.
   const latestParams = useRef(searchParams);
+  const pendingParams = useRef<{ value: string; at: number } | null>(null);
   useLayoutEffect(() => {
+    const pending = pendingParams.current;
+    if (pending && serializedParams !== pending.value && Date.now() - pending.at < 2000) return;
+    pendingParams.current = null;
     latestParams.current = searchParams;
-  }, [searchParams]);
+  }, [searchParams, serializedParams]);
   const updateParams = useCallback((patch: Partial<CatalogQuery>, clearAll = false) => {
     const next = clearAll ? new URLSearchParams() : new URLSearchParams(latestParams.current);
     const update = (key: string, value: string | null) => {
@@ -65,6 +72,7 @@ export function CatalogPage() {
     if ("page" in patch) update("page", patch.page && patch.page > 1 ? String(patch.page) : "1");
     else if (!clearAll) next.set("page", "1");
     latestParams.current = next;
+    pendingParams.current = { value: next.toString(), at: Date.now() };
     setSearchParams(next, { replace: true });
   }, [setSearchParams]);
   const [debouncedQuery, setDebouncedQuery] = useState(query.q.trim());
