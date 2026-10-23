@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -21,7 +21,7 @@ from app.db.models.marketing_post import MarketingPost
 from app.db.models.product import Product
 from app.db.models.product_image import ProductImage
 from app.services.marketing import worker
-from app.services.marketing.video import RenderedVideo
+from app.services.marketing.video import RenderedVideo, advert_style
 
 TASHKENT = ZoneInfo("Asia/Tashkent")
 CHANNEL = -1009000000001
@@ -98,21 +98,21 @@ async def session_maker(
 
 
 @pytest.fixture(autouse=True)
-def rendered(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-    """No network, no ffmpeg: photos and the video are stubbed; returns product counts."""
+def rendered(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, str]]:
+    """No network, no ffmpeg: photos and the video are stubbed; returns (products, style)."""
     monkeypatch.setattr(settings, "marketing_enabled", True)
     monkeypatch.setattr(settings, "marketing_channel_id", CHANNEL)
     monkeypatch.setattr(settings, "marketing_post_time", "11:00")
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     monkeypatch.setattr(settings, "bot_username", "kans_test_bot")
     monkeypatch.setattr(settings, "error_channel_id", ERRORS)
-    calls: list[int] = []
+    calls: list[tuple[int, str]] = []
 
     async def fake_image(_url: str, _client: object) -> Image.Image:
         return Image.new("RGB", (40, 40), (200, 120, 60))
 
-    def fake_render(products: list[object], _brand: object) -> RenderedVideo:
-        calls.append(len(products))
+    def fake_render(products: list[object], _brand: object, *, style: Any) -> RenderedVideo:
+        calls.append((len(products), style.key))
         return RenderedVideo(b"\x00\x00\x00\x18ftypmp42", 720, 900, 18.6)
 
     monkeypatch.setattr(worker, "load_image", fake_image)
@@ -132,7 +132,7 @@ async def _set_updated_at(maker: async_sessionmaker[AsyncSession], value: dateti
 
 
 async def test_first_advert_goes_out_immediately_then_one_a_day_at_post_time(
-    session_maker: async_sessionmaker[AsyncSession], rendered: list[int]
+    session_maker: async_sessionmaker[AsyncSession], rendered: list[tuple[int, str]]
 ) -> None:
     bot: Any = FakeBot()
 
@@ -141,7 +141,8 @@ async def test_first_advert_goes_out_immediately_then_one_a_day_at_post_time(
     assert first is not None and first.status == "sent"
     assert first.message_id == 701 and first.channel_id == CHANNEL
     assert first.attempts == 1 and first.posted_at is not None
-    assert len(first.product_ids) == 3 and rendered == [3]
+    assert len(first.product_ids) == 3 and [count for count, _style in rendered] == [3]
+    assert rendered[0][1] == advert_style(date(2031, 3, 10).toordinal()).key
     video = bot.videos[0]
     assert video["chat_id"] == CHANNEL and video["parse_mode"] == "HTML"
     assert video["duration"] == 19 and video["supports_streaming"] is True
@@ -165,6 +166,8 @@ async def test_first_advert_goes_out_immediately_then_one_a_day_at_post_time(
 
     assert second is not None and second.status == "sent" and second.message_id == 702
     assert [post.status for post in await _posts(session_maker)] == ["sent", "sent"]
+    # Tomorrow's video never looks like today's.
+    assert rendered[1][1] != rendered[0][1]
     assert len(bot.videos) == 2
 
 

@@ -39,7 +39,7 @@ from app.db.repositories.product_repository import public_visibility_predicate
 from app.services.inventory_policy import get_inventory_policy
 from app.services.marketing.captions import CaptionContext, CaptionProduct, build_caption
 from app.services.marketing.uz_names import uzbek_product_name
-from app.services.marketing.video import AdBrand, AdProduct, render_advert
+from app.services.marketing.video import AdBrand, AdProduct, advert_style, render_advert
 
 log = get_logger(__name__)
 
@@ -344,7 +344,9 @@ async def publish_due_advert(
             )
             for product, photo in zip(picked, photos, strict=True)
         ]
-        rendered = await asyncio.to_thread(render_advert, ad_products, brand)
+        # A different look every day: theme, layout, motion and transitions follow the date.
+        style = advert_style(today.toordinal())
+        rendered = await asyncio.to_thread(render_advert, ad_products, brand, style=style)
         message = await bot.send_video(
             chat_id=target,
             video=BufferedInputFile(rendered.data, filename="kans-shop.mp4"),
@@ -385,7 +387,12 @@ async def publish_due_advert(
             )
         )
         post = await session.get(MarketingPost, post_id)
-    log.info("marketing_advert_sent", post_id=post_id, message_id=message.message_id)
+    log.info(
+        "marketing_advert_sent",
+        post_id=post_id,
+        message_id=message.message_id,
+        style=style.key,
+    )
     return post
 
 
